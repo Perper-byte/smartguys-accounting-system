@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Environment Variables (NEVER push this!)
+.env
+
+# Build outputs
+dist/
+build/
+out/
+release/
+
+# Testing and Logs
+coverage/
+npm-debug.log*
+
+# OS Files
+.DS_Store
+Thumbs.db
