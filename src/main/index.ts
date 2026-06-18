@@ -1,17 +1,31 @@
+// src/main/index.ts
+import path from 'path';
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { AuthService } from './services/auth.service';
+import { main } from 'ts-node/dist/bin';
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true, // MANDATORY FOR SECURITY
       nodeIntegration: false,
     },
   });
 
+  // Force DevTools to open automatically to inspect any UI logs
+  mainWindow.webContents.openDevTools();
+
+  // LOAD THE REACT FRONTEND!
+  // In development, load the Vite dev server URL. In production, load the local compile HTMl file.
+  const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
+  if (devServerUrl) {
+    mainWindow.loadURL(devServerUrl);
+  } else {
+    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  }
 }
 
 app.whenReady().then(() => {
@@ -20,12 +34,19 @@ app.whenReady().then(() => {
   //------------------------------------------
   // IPC HANDLERS: React asks, Node.js answers
   //------------------------------------------
-  ipcMain.handle('auth:login', async, username, password) => {
+  ipcMain.handle('auth:login', async (event, username, password) => {
     try {
       const user = await AuthService.login(username, password);
       return { success: true, data: user};
     } catch (error: any) {
       return { success: false, error: error.message };
     }
-  }
+  });
 })
+
+// Quit when all windows are close, except on macOS
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});
