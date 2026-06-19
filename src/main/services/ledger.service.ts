@@ -19,12 +19,19 @@ export interface JournalEntryInput {
 }
 
 export class LedgerService {
+    /**
+     * 
+     * The "Mathematical Brain"
+     * Intercepts transaction, validates double-entry logic, and saves to MySQL.
+     * 
+     */
     static async createJournalEntry(input: JournalEntryInput) {
+        // Structural Validation
         if (!input.lines || input.lines.length < 2) {
-            throw new Error("Validation Error: A journal entry must contain at least 2 transaction lines.");
+            throw new Error("Validation Error: A journal entry requires at least two accounts (a debit and a credit).");
         }
 
-        // 1. Calculate Debit and Credit Sums
+        // Mathematical Validation (Double-Entry Interception)
         let totalDebits = 0;
         let totalCredits = 0;
 
@@ -40,15 +47,15 @@ export class LedgerService {
         const debitsFormatted = totalDebits.toFixed(2);
         const creditsFormatted = totalCredits.toFixed(2);
 
-        // 2. Strict Double-Entry Mathematical Constraint
+        // Strict Double-Entry Mathematical Constraint
         if (debitsFormatted !== creditsFormatted) {
             throw new Error(
-                `Accounting Error: Total Debits (₱${debitsFormatted}) must precisely equal Total Credits (₱${creditsFormatted})
+                `Double-Entry Violation: Total Debits (₱${debitsFormatted}) must precisely equal Total Credits (₱${creditsFormatted})
                 to maintain ledger balance.`
             );
         }
 
-        // 3. Database Write Transaction (ACID Complaint)
+        // Database Write Transaction (ACID Complaint)
         return await prisma.$transaction(async (tx) => {
             // Create the main Journal Entry
             const entry = await tx.journalEntry.create({
@@ -61,7 +68,7 @@ export class LedgerService {
                 },
             });
 
-            // Bulk create the corresponding Journal Lines
+            // Map lines to the database schema
             const linesData = input.lines.map((line) => ({
                 entry_id: entry.id,
                 account_id: line.accountId,
@@ -69,6 +76,7 @@ export class LedgerService {
                 credit: line.credit,
             }));
 
+            // Bulk insert the journal lines
             await tx.journalLine.createMany({
                 data: linesData,
             });
