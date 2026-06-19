@@ -17,8 +17,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         setLoading(true);
 
         try {
-            // Call our secure IPC Bridge to authenticate with the local database
-            const result = await window.electronAPI.login(username, password);
+            // We cast window to 'any' or our specific interface here to satisfy the compiler during tests
+            const api = (window as any).electronAPI;
+
+            if (!api) {
+                throw new Error("System Error: IPC Bridge not found.")
+            }
+
+            const result = await api.login(username, password);
 
             if (result.success && result.data) {
                 onLoginSuccess(result.data);

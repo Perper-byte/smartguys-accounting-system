@@ -1,14 +1,39 @@
 // src/renderer/src/App.tsx
-import { useState } from "react";
+import * as React from 'react';
+import { useState, useEffect } from 'react';
 import { LoginScreen } from "./components/LoginScreen";
 
-function App(): JSX.Element {
-  const [currentUser, setCurrentUser] = useState<{ id: string; username: string; role: string } | null>(null);
+// DEFINE THE STRICT ROLE-BASED TABS 
+const ALL_TABS = [
+  { id: 'dashboard', label: 'Analytics Dashboard', icon: '📊', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
+  { id: 'journal', label: 'Journal Entry', icon: '📝', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
+  { id: 'disbursement', label: 'Disbursements', icon: '💸', allowedRoles: ['CASHIER'] },
+  { id: 'ledger', label: 'General Ledger', icon: '📖', allowedRoles: ['ACCOUNTANT'] },
+  { id: 'statements', label: 'Financial Statements', icon: '📄', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
+  { id: 'bir', label: 'BIR Tax Reports', icon: '🏛️', allowedRoles: ['MANAGER'] },
+  { id: 'backup', label: 'Database Backup', icon: '💾', allowedRoles: ['IT_PERSONNEL'] },
+];
 
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'journal' | 'ledger' | 'disbursement' | 'bir'>('dashboard');
+function App(): React.ReactElement {
+  const [currentUser, setCurrentUser] = useState<{ id: string; username: string; role: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<string>('');
+
+  // FILTER TABS DYNAMICALLY
+  // When a user logs in, filter the tabs they are allowed to see
+  const permittedTabs = currentUser
+    ? ALL_TABS.filter(tab => tab.allowedRoles.includes(currentUser.role))
+    : [];
+
+  // Automatically set the first permitted tab as the active tab upon login
+  useEffect(() => {
+    if (currentUser && permittedTabs.length > 0 && !permittedTabs.find(t => t.id === activeTab)) {
+      setActiveTab(permittedTabs[0].id);
+    }
+  }, [currentUser]);
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setActiveTab('');
   };
 
   if (!currentUser) {
@@ -17,6 +42,7 @@ function App(): JSX.Element {
 
   return (
     <div className="flex h-screen bg-[#121214] text-[#e1e1e6] overflow-hidden">
+
       {/* PERSISTENT LEFT SIDEBAR */}
       <aside className="w-64 bg-[#202024] border-r border-[#29292e] flex flex-col justify-between">
         <div>
@@ -29,22 +55,16 @@ function App(): JSX.Element {
             <p className="text-[10px] text-[#7c7c8a] mt-1 font-medium tracking-wider uppercase">Accounting System</p>
           </div>
 
-          {/* Navigation Links */}
+          {/* Navigation Links (FILTERED BY ROLE) */}
           <nav className="p-4 space-y-1">
-            {[
-              { id: 'dashboard', label: 'Dashboard', icon: '📊'},
-              { id: 'journal', label: 'Journal Entry', icon: '📝'},
-              { id: 'ledger', label: 'General Ledger', icon: '📖'},
-              { id: 'disbursement', label: 'Disbursements', icon: '💸'},
-              { id: 'bir', label: 'BIR Tax Reports', icon: '🏛️'},
-            ].map((tab) => (
+            {permittedTabs.map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
+                onClick={() => setActiveTab(tab.id)}
                 className={`w-full flex items-center space-x-3 px-4 py-3 rounded-md text-sm font-medium transition ${
                   activeTab === tab.id
-                  ? 'bg-[#4f46e5] text-white shadow-md'
-                  : 'text-[#8d8d99] hover:bg-[#29292e] hover:text-white'
+                    ? 'bg-[#4f46e5] text-white shadow-md'
+                    : 'text-[#8d8d99] hover:bg-[#29292e] hover:text-white'
                 }`}
               >
                 <span>{tab.icon}</span>
@@ -58,7 +78,8 @@ function App(): JSX.Element {
         <div className="p-4 border-t border-[#29292e] bg-[#121214]/50 flex items-center justify-between">
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white truncate">{currentUser.username}</p>
-            <p className="text-[10px] text-[#8d8d99] uppercase font-bold tracking-wide">{currentUser.role || 'Accountant'}</p>
+            {/* Added proper rendering of the role */}
+            <p className="text-[10px] text-[#8d8d99] uppercase font-bold tracking-wide">{currentUser.role}</p>
           </div>
           <button
             onClick={handleLogout}
@@ -76,7 +97,7 @@ function App(): JSX.Element {
         {/* TOP STATUS BAR */}
         <header className="h-16 bg-[#202024] border-b border-[#29292e] flex items-center justify-between px-8">
           <h2 className="text-lg font-bold text-white tracking-wide capitalize">
-            {activeTab === 'dashboard' ? 'Overview' : activeTab.replace('-', ' ')}
+            {permittedTabs.find(t => t.id === activeTab)?.label || 'Workspace'}
           </h2>
           <div className="flex items-center space-x-4">
             <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
@@ -86,39 +107,67 @@ function App(): JSX.Element {
 
         {/* WORKSPACE CONTENT PANELS */}
         <main className="flex-1 p-8 overflow-y-auto bg-[#121214]">
-          {activeTab === 'dashboard' && (
-            <div className="space-y-6">
-              <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
-                <h3 className="text-lg font-bold text-white">🎉 Welcome to the SmartGuys Accounting Core</h3>
-                <p className="text-sm text-[#8d8d99] mt-1">
-                  You are securely logged into the LAN-based database environment. Start navigating using the sidebar.
+
+          {/* Security Fallback: If user hacks UI state to force a tab they don't own */}
+          {!permittedTabs.find(t => t.id === activeTab) ? (
+              <div className="p-6 bg-red-500/10 border border-red-500/30 rounded-lg text-center">
+                <h3 className="text-red-500 font-bold">⚠️ Access Denied</h3>
+                <p className="text-sm text-red-400 mt-1">
+                  Your role ({currentUser.role}) does not have permission to view this module.
                 </p>
               </div>
-            </div>
-          )}
+          ) : (
+            <>
+              { /* RENDER THE ACTIVE SCREEN */}
+              {activeTab === 'dashboard' && (
+                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
+                  <h3 className="text-lg font-bold text-white">Analytics Dashboard</h3>
+                  <p className="text-sm text-[#8d8d99]">Charts and KPI cards will go here.</p>
+                </div>
+              )}
 
-          {activeTab === 'journal' && (
-            <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg text-center">
-              <p className="text-[#8d8d99]">The Journal Entry transaction engine UI will go here.</p>
-            </div>
-          )}
+              {activeTab === 'journal' && (
+                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
+                  <h3 className="text-lg font-bold text-white">Journal Entry Module</h3>
+                  <p className="text-sm text-[#8d8d99]">The transaction engine UI will go here.</p>
+                </div>
+              )}
 
-          {activeTab === 'ledger' && (
-            <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg text-center">
-              <p className="text-[#8d8d99]">The General Ledger and Running Balance view will go here.</p>
-            </div>
-          )}
+              {activeTab === 'disbursement' && (
+                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
+                  <h3 className="text-lg font-bold text-white">Cash Disbursement</h3>
+                  <p className="text-sm text-[#8d8d99]">The voucher forms will go here.</p>
+                </div>
+              )}
 
-          {activeTab === 'disbursement' && (
-            <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg text-center">
-              <p className="text-[#8d8d99]">The Cash Disbursement registers will go here.</p>
-            </div>
-          )}
+              {activeTab === 'ledger' && (
+                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
+                  <h3 className="text-lg font-bold text-white">General Ledger</h3>
+                  <p className="text-sm text-[#8d8d99]">The running balance will go here.</p>
+                </div>
+              )}
 
-          {activeTab === 'bir' && (
-            <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg text-center">
-              <p className="text-[#8d8d99]">The BIR Quarterly Form 2550Q generation will go here.</p>
-            </div>
+              {activeTab === 'statements' && (
+                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
+                  <h3 className="text-lg font-bold text-white">Financial Statements</h3>
+                  <p className="text-sm text-[#8d8d99]">Balance sheet and Income statement generator.</p>
+                </div>
+              )}
+
+              {activeTab === 'bir' && (
+                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
+                  <h3 className="text-lg font-bold text-white">BIR Tax Reports</h3>
+                  <p className="text-sm text-[#8d8d99]">Quarterly Form 2550Q generation.</p>
+                </div>
+              )}
+
+              {activeTab === 'backup' && (
+                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
+                  <h3 className="text-lg font-bold text-white">Database Backup</h3>
+                  <p className="text-sm text-[#8d8d99]">SQL dump generation for IT Personnel.</p>
+                </div>
+              )}
+            </>
           )}
         </main>
       </div>
