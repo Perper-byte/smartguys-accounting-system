@@ -1,4 +1,5 @@
 // src/renderer/src/App.tsx
+import { CashDisbursementForm } from './components/CashDisbursementForm';
 import { JournalEntryForm } from './components/JournalEntryForm';
 import * as React from 'react';
 import { useState, useEffect } from 'react';
@@ -8,7 +9,7 @@ import { LoginScreen } from "./components/LoginScreen";
 const ALL_TABS = [
   { id: 'dashboard', label: 'Analytics Dashboard', icon: '📊', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'journal', label: 'Journal Entry', icon: '📝', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
-  { id: 'disbursement', label: 'Disbursements', icon: '💸', allowedRoles: ['CASHIER'] },
+  { id: 'disbursement', label: 'Disbursements', icon: '💸', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
   { id: 'ledger', label: 'General Ledger', icon: '📖', allowedRoles: ['ACCOUNTANT'] },
   { id: 'statements', label: 'Financial Statements', icon: '📄', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'bir', label: 'BIR Tax Reports', icon: '🏛️', allowedRoles: ['MANAGER'] },
@@ -132,10 +133,7 @@ function App(): React.ReactElement {
               )}
 
               {activeTab === 'disbursement' && (
-                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
-                  <h3 className="text-lg font-bold text-white">Cash Disbursement</h3>
-                  <p className="text-sm text-[#8d8d99]">The voucher forms will go here.</p>
-                </div>
+                <CashDisbursementForm userId={currentUser.id} />
               )}
 
               {activeTab === 'ledger' && (
