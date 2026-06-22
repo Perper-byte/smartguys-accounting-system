@@ -1,9 +1,12 @@
 // src/renderer/src/global.d.ts
 interface Window {
     electronAPI: {
-        login: (username: string, password: string) =. Promise<{
+        login: (username: string, password: string) => Promise<any>;
+        getAccounts: () => Promise<any[]>;
+        submitJournalEntry: (entryData: any) => Promise<{
             success: boolean;
-            data?: { id: string; username: string; role: string };
+            entryId?: string;
+            referenceNo?: string;
             error?: string:
         }>;
     };

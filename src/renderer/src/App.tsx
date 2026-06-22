@@ -1,4 +1,5 @@
 // src/renderer/src/App.tsx
+import { JournalEntryForm } from './components/JournalEntryForm';
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { LoginScreen } from "./components/LoginScreen";
@@ -127,10 +128,7 @@ function App(): React.ReactElement {
               )}
 
               {activeTab === 'journal' && (
-                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
-                  <h3 className="text-lg font-bold text-white">Journal Entry Module</h3>
-                  <p className="text-sm text-[#8d8d99]">The transaction engine UI will go here.</p>
-                </div>
+                <JournalEntryForm userId={currentUser.id} />
               )}
 
               {activeTab === 'disbursement' && (

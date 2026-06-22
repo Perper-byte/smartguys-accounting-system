@@ -1,4 +1,5 @@
 // src/main/index.ts
+import { LedgerService } from './services/ledger.service'; 
 import path from 'path';
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { AuthService } from './services/auth.service';
@@ -14,9 +15,6 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-
-  // Force DevTools to open automatically to inspect any UI logs
-  mainWindow.webContents.openDevTools();
 
   // LOAD THE REACT FRONTEND!
   // In development, load the Vite dev server URL. In production, load the local compile HTMl file.
@@ -38,6 +36,23 @@ app.whenReady().then(() => {
     try {
       const user = await AuthService.login(username, password);
       return { success: true, data: user};
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('ledger:getAccounts', async () => {
+    try {
+      return await LedgerService.getAccounts();
+    } catch (error) {
+      console.error(error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('ledger:submitEntry', async (event, entryData) => {
+    try {
+      return await LedgerService.createJournalEntry(entryData);
     } catch (error: any) {
       return { success: false, error: error.message };
     }

@@ -80,4 +80,10 @@ export class LedgerService {
             };
         });
     }
+    static async getAccounts() {
+        return await prisma.account.findMany({
+            include: { account_type: true },
+            orderBy: { code: 'asc' }
+        });
+    }
 }
