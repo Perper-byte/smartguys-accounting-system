@@ -86,4 +86,62 @@ export class LedgerService {
             orderBy: { code: 'asc' }
         });
     }
+
+    static async getAccountLedger(accountId: string) {
+        // Get the account to know its normal balance (DEBIT or CREDIT)
+        const account = await prisma.account.findUnique({
+            where: { code: accountId },
+            include: { account_type: true }
+        });
+
+        if (!account) throw new Error("Account not found");
+
+        const normalBalance = account.account_type.normal_balance; // 'DEBIT' or 'CREDIT'
+
+        // Fetch all journal lines for this account, ordered by date
+        const lines = await prisma.journalLine.findMany({
+            where: { account_id: accountId },
+            include: {
+                entry: {
+                    include: { payee: true }
+                }
+            },
+            orderBy: {
+                entry: { date: 'asc' } // Oldest to newest for running balance
+            }
+        });
+
+        // Calculate the running balance chronologically
+        let runningBalance = 0;
+
+        const formattedLines = lines.map(line => {
+            const debit = Number(line.debit);
+            const credit = Number(line.credit);
+
+            // Add or subtract based on the normal balance of the account
+            if (normalBalance === 'DEBIT') {
+                runningBalance = runningBalance + debit - credit;
+            } else {
+                runningBalance = runningBalance + credit - debit;
+            }
+
+            return {
+                id: line.id,
+                date: line.entry.date,
+                referenceNo: line.entry.reference_no,
+                description: line.entry.description,
+                payee: line.entry.payee?.name || '-',
+                debit: debit,
+                credit: credit,
+                balance: runningBalance
+            };
+        });
+
+        return {
+            accountCode: account.code,
+            accountName: account.name,
+            normalBalance: normalBalance,
+            transactions: formattedLines
+        };
+    }
 }

@@ -1,4 +1,5 @@
 // src/renderer/src/App.tsx
+import { GeneralLedgerView } from './components/GeneralLedgerView';
 import { CashDisbursementForm } from './components/CashDisbursementForm';
 import { JournalEntryForm } from './components/JournalEntryForm';
 import * as React from 'react';
@@ -9,6 +10,7 @@ import { LoginScreen } from "./components/LoginScreen";
 const ALL_TABS = [
   { id: 'dashboard', label: 'Analytics Dashboard', icon: '📊', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'journal', label: 'Journal Entry', icon: '📝', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
+  { id: 'adjusting', label: 'Adjusting Entries', icon: '🔧', allowedRoles: ['ACCOUNTANT'] },
   { id: 'disbursement', label: 'Disbursements', icon: '💸', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
   { id: 'ledger', label: 'General Ledger', icon: '📖', allowedRoles: ['ACCOUNTANT'] },
   { id: 'statements', label: 'Financial Statements', icon: '📄', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
@@ -63,11 +65,10 @@ function App(): React.ReactElement {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-md text-sm font-medium transition ${
-                  activeTab === tab.id
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-md text-sm font-medium transition ${activeTab === tab.id
                     ? 'bg-[#4f46e5] text-white shadow-md'
                     : 'text-[#8d8d99] hover:bg-[#29292e] hover:text-white'
-                }`}
+                  }`}
               >
                 <span>{tab.icon}</span>
                 <span>{tab.label}</span>
@@ -87,8 +88,8 @@ function App(): React.ReactElement {
             onClick={handleLogout}
             title="Log out of system"
             className="p-2 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded transition"
-            >
-              🚪
+          >
+            🚪
           </button>
         </div>
       </aside>
@@ -112,12 +113,12 @@ function App(): React.ReactElement {
 
           {/* Security Fallback: If user hacks UI state to force a tab they don't own */}
           {!permittedTabs.find(t => t.id === activeTab) ? (
-              <div className="p-6 bg-red-500/10 border border-red-500/30 rounded-lg text-center">
-                <h3 className="text-red-500 font-bold">⚠️ Access Denied</h3>
-                <p className="text-sm text-red-400 mt-1">
-                  Your role ({currentUser.role}) does not have permission to view this module.
-                </p>
-              </div>
+            <div className="p-6 bg-red-500/10 border border-red-500/30 rounded-lg text-center">
+              <h3 className="text-red-500 font-bold">⚠️ Access Denied</h3>
+              <p className="text-sm text-red-400 mt-1">
+                Your role ({currentUser.role}) does not have permission to view this module.
+              </p>
+            </div>
           ) : (
             <>
               { /* RENDER THE ACTIVE SCREEN */}
@@ -131,16 +132,16 @@ function App(): React.ReactElement {
               {activeTab === 'journal' && (
                 <JournalEntryForm userId={currentUser.id} />
               )}
+              {activeTab === 'adjusting' && (
+                <JournalEntryForm userId={currentUser.id} isAdjusting={true} />
+              )}
 
               {activeTab === 'disbursement' && (
                 <CashDisbursementForm userId={currentUser.id} />
               )}
 
               {activeTab === 'ledger' && (
-                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
-                  <h3 className="text-lg font-bold text-white">General Ledger</h3>
-                  <p className="text-sm text-[#8d8d99]">The running balance will go here.</p>
-                </div>
+                <GeneralLedgerView />
               )}
 
               {activeTab === 'statements' && (

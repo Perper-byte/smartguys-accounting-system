@@ -3,10 +3,9 @@ import { contextBridge, IpcMainServiceWorker, ipcRenderer } from 'electron';
 // Define exactly what the Frontend is allowed to ask the Backend to do.
 export const api = {
   login: (username, password) => ipcRenderer.invoke('auth:login', username, password),
-
-  // NEW ROUTES
   getAccounts: () => ipcRenderer.invoke('ledger:getAccounts'),
-  submitJournalEntry: (entryData) => ipcRenderer.invoke('ledger:submitEntry', entryData)
+  submitJournalEntry: (entryData) => ipcRenderer.invoke('ledger:submitEntry', entryData),
+  getAccountLedger: (accountId) => ipcRenderer.invoke('ledger:getAccountLedger', accountId)
 };
 
 // Expose the API to the React window

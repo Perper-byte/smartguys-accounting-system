@@ -3,11 +3,7 @@ interface Window {
     electronAPI: {
         login: (username: string, password: string) => Promise<any>;
         getAccounts: () => Promise<any[]>;
-        submitJournalEntry: (entryData: any) => Promise<{
-            success: boolean;
-            entryId?: string;
-            referenceNo?: string;
-            error?: string:
-        }>;
+        submitJournalEntry: (entryData: any) => Promise<any>;
+        getAccountLedger: (accountId: string) => Promise<any>;
     };
 }

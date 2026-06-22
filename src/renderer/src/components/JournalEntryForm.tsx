@@ -2,11 +2,11 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 
-export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
+export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean }> = ({ userId, isAdjusting = false }) => {
     const [accounts, setAccounts] = useState<any[]>([]);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [refNo, setRefNo] = useState('');
-    const [description, setDescription] = useState('');
+    const [refNo, setRefNo] = useState(isAdjusting ? 'ADJ-' : '');
+    const [description, setDescription] = useState(isAdjusting ? 'Adjusting Entry: ' : '');
     // Start with 2 empty lines since Double-Entry requires at least 2
     const [lines, setLines] = useState([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
     const [status, setStatus] = useState<{ type: 'error' | 'success', msg: string } | null>(null);
@@ -81,8 +81,8 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
     return (
         <div className="max-w-4xl mx-auto bg-[#202024] border border-[#29292e] rounded-lg p-8 shadow-lg">
             <div className="flex justify-between items-center mb-6 border-b border-[#29292e] pb-4">
-                <h2 className="text-xl font-bold text-white tracking-wide">New Journal Entry</h2>
-                <span className="bg-[#4f46e5]/20 text-[#4f46e5] text-xs px-3 py-1 rounded font-bold uppercase tracking-widest border border-[#4f46e5]/30">General Journal</span>
+                <h2 className="text-xl font-bold text-white tracking-wide">{isAdjusting ? 'Record Adjusting Entry' : 'New Journal Entry'}</h2>
+                <span className="bg-[#4f46e5]/20 text-[#4f46e5] text-xs px-3 py-1 rounded font-bold uppercase tracking-widest border border-[#4f46e5]/30">{isAdjusting ? 'Adjusting Journal' : 'General Journal'}</span>
             </div>
 
             {status && (

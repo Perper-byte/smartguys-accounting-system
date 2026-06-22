@@ -1,5 +1,5 @@
 // src/main/index.ts
-import { LedgerService } from './services/ledger.service'; 
+import { LedgerService } from './services/ledger.service';
 import path from 'path';
 import { app, BrowserWindow, ipcMain } from 'electron'
 import { AuthService } from './services/auth.service';
@@ -28,14 +28,14 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
-  
+
   //------------------------------------------
   // IPC HANDLERS: React asks, Node.js answers
   //------------------------------------------
   ipcMain.handle('auth:login', async (event, username, password) => {
     try {
       const user = await AuthService.login(username, password);
-      return { success: true, data: user};
+      return { success: true, data: user };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
@@ -55,6 +55,14 @@ app.whenReady().then(() => {
       return await LedgerService.createJournalEntry(entryData);
     } catch (error: any) {
       return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('ledger:getAccountLedger', async (event, accountId) => {
+    try {
+      return await LedgerService.getAccountLedger(accountId);
+    } catch (error: any) {
+      return { error: error.message };
     }
   });
 })
