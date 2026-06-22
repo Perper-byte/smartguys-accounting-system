@@ -47,11 +47,12 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
 
         expect(screen.getByText('john_accountant')).toBeInTheDocument();
         expect(screen.getByText('ACCOUNTANT')).toBeInTheDocument();
-        expect(screen.getAllByText(/Analytics Dashboard/i).length).toBeGreaterThan(0);
 
         // Check denials
-        expect(screen.queryByText('Disbursements')).not.toBeInTheDocument();
+        expect(screen.getAllByText(/Analytics Dashboard/i).length).toBeGreaterThan(0);
+        expect(screen.queryByText('Disbursements')).toBeInTheDocument();
         expect(screen.queryByText('Database Backup')).not.toBeInTheDocument();
+        expect(screen.queryByText('BIR Tax Reports')).not.toBeInTheDocument();
     });
 
     test('📊 Cashier Permissions: Should render Cashier-specific links', async () => {
