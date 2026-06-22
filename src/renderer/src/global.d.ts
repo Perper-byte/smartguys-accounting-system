@@ -5,5 +5,8 @@ interface Window {
         getAccounts: () => Promise<any[]>;
         submitJournalEntry: (entryData: any) => Promise<any>;
         getAccountLedger: (accountId: string) => Promise<any>;
+        getTrialBalance: () => Promise<any>;
+        getIncomeStatement: () => Promise<any>;
+        getBalanceSheet: () => Promise<any>;
     };
 }

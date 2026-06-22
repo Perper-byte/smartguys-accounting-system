@@ -1,4 +1,5 @@
 // src/main/index.ts
+import { ReportsService } from './services/reports.service';
 import { LedgerService } from './services/ledger.service';
 import path from 'path';
 import { app, BrowserWindow, ipcMain } from 'electron'
@@ -61,6 +62,29 @@ app.whenReady().then(() => {
   ipcMain.handle('ledger:getAccountLedger', async (event, accountId) => {
     try {
       return await LedgerService.getAccountLedger(accountId);
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  });
+  ipcMain.handle('reports:getTrialBalance', async () => {
+    try {
+      return await ReportsService.getTrialBalance();
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('reports:getIncomeStatement', async () => {
+    try {
+      return await ReportsService.getIncomeStatement();
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('reports:getBalanceSheet', async () => {
+    try {
+      return await ReportsService.getBalanceSheet();
     } catch (error: any) {
       return { error: error.message };
     }

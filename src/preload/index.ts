@@ -5,7 +5,10 @@ export const api = {
   login: (username, password) => ipcRenderer.invoke('auth:login', username, password),
   getAccounts: () => ipcRenderer.invoke('ledger:getAccounts'),
   submitJournalEntry: (entryData) => ipcRenderer.invoke('ledger:submitEntry', entryData),
-  getAccountLedger: (accountId) => ipcRenderer.invoke('ledger:getAccountLedger', accountId)
+  getAccountLedger: (accountId) => ipcRenderer.invoke('ledger:getAccountLedger', accountId),
+  getTrialBalance: () => ipcRenderer.invoke('reports:getTrialBalance'),
+  getIncomeStatement: () => ipcRenderer.invoke('reports:getIncomeStatement'),
+  getBalanceSheet: () => ipcRenderer.invoke('reports:getBalanceSheet')
 };
 
 // Expose the API to the React window

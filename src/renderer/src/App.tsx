@@ -1,4 +1,5 @@
 // src/renderer/src/App.tsx
+import { FinancialStatementsView } from './components/FinancialStatementsView';
 import { GeneralLedgerView } from './components/GeneralLedgerView';
 import { CashDisbursementForm } from './components/CashDisbursementForm';
 import { JournalEntryForm } from './components/JournalEntryForm';
@@ -66,8 +67,8 @@ function App(): React.ReactElement {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`w-full flex items-center space-x-3 px-4 py-3 rounded-md text-sm font-medium transition ${activeTab === tab.id
-                    ? 'bg-[#4f46e5] text-white shadow-md'
-                    : 'text-[#8d8d99] hover:bg-[#29292e] hover:text-white'
+                  ? 'bg-[#4f46e5] text-white shadow-md'
+                  : 'text-[#8d8d99] hover:bg-[#29292e] hover:text-white'
                   }`}
               >
                 <span>{tab.icon}</span>
@@ -145,10 +146,7 @@ function App(): React.ReactElement {
               )}
 
               {activeTab === 'statements' && (
-                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
-                  <h3 className="text-lg font-bold text-white">Financial Statements</h3>
-                  <p className="text-sm text-[#8d8d99]">Balance sheet and Income statement generator.</p>
-                </div>
+                <FinancialStatementsView />
               )}
 
               {activeTab === 'bir' && (
