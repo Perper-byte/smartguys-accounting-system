@@ -24,6 +24,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@prisma/client": "^6.19.3",
+    "exceljs": "^4.4.0",
     "ts-node": "^10.9.2"
   },
   "devDependencies": {

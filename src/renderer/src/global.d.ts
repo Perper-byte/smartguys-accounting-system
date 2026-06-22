@@ -8,5 +8,7 @@ interface Window {
         getTrialBalance: () => Promise<any>;
         getIncomeStatement: () => Promise<any>;
         getBalanceSheet: () => Promise<any>;
+        exportTrialBalanceExcel: () => Promise<any>;
+        exportPDF: (filename: string) => Promise<{ success: boolean; filePath?: string; error?: string }>;
     };
 }

@@ -1,8 +1,10 @@
 // src/main/index.ts
+import * as fs from 'fs';
+import { ExportService } from './services/export.service';
 import { ReportsService } from './services/reports.service';
 import { LedgerService } from './services/ledger.service';
 import path from 'path';
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog} from 'electron'
 import { AuthService } from './services/auth.service';
 import { main } from 'ts-node/dist/bin';
 
@@ -87,6 +89,43 @@ app.whenReady().then(() => {
       return await ReportsService.getBalanceSheet();
     } catch (error: any) {
       return { error: error.message };
+    }
+  });
+  ipcMain.handle('export:trialBalanceExcel', async () => {
+    try {
+      return await ExportService.exportTrialBalanceToExcel();
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('export:printToPDF', async (event, filename: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return { success: false, error: 'Window not found' };
+
+    // Prompt user where to save the PDF
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Save PDF Report',
+      defaultPath: filename,
+      filters: [{ name: 'PDF Documents', extensions: ['pdf'] }]
+    });
+
+    if (!filePath) return { success: false, error: 'Export cancelled' };
+
+    try {
+      // Instruct Electron's internal Chromium engine to render the screen as a PDF
+      const data = await win.webContents.printToPDF({
+        margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 },
+        printBackground: true, // Crucial: retains background colors and styles!
+        pageSize: 'A4',
+        landscape: false
+      });
+
+      // Write to Disk
+      fs.writeFileSync(filePath, data);
+      return { success: true, filePath };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
   });
 })

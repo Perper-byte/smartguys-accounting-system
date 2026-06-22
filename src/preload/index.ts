@@ -8,7 +8,9 @@ export const api = {
   getAccountLedger: (accountId) => ipcRenderer.invoke('ledger:getAccountLedger', accountId),
   getTrialBalance: () => ipcRenderer.invoke('reports:getTrialBalance'),
   getIncomeStatement: () => ipcRenderer.invoke('reports:getIncomeStatement'),
-  getBalanceSheet: () => ipcRenderer.invoke('reports:getBalanceSheet')
+  getBalanceSheet: () => ipcRenderer.invoke('reports:getBalanceSheet'),
+  exportTrialBalanceExcel: () => ipcRenderer.invoke('export:trialBalanceExcel'),
+  exportPDF: (filename: string) => ipcRenderer.invoke('export:printToPDF', filename)
 };
 
 // Expose the API to the React window

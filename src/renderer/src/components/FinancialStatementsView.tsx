@@ -37,10 +37,50 @@ export const FinancialStatementsView: React.FC = () => {
         return `₱ ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     };
 
+    const handleExportExcel = async () => {
+        const result = await (window as any).electronAPI.exportTrialBalanceExcel();
+        if (result.success) {
+            alert(`Report exported successfully to: ${result.filePath}`);
+        } else if (result.error) {
+            alert(`Export Failed: ${result.error}`);
+        }
+    };
+
+    const handleExportPDF = async () => {
+        const filename = `${statementType === 'trial' ? 'Trial_Balance' : statementType === 'income' ? 'Income_Statement' : 'Balance_Sheet'}.pdf`;
+        const result = await (window as any).electronAPI.exportPDF(filename);
+        if (result.success) {
+            alert(`PDF report saved successfully to: ${result.filePath}`);
+        } else if (result.error) {
+            alert(`PDF Generation Failed: ${result.error}`);
+        }
+    };
+
     return (
         <div className="max-w-5xl mx-auto bg-[#202024] border border-[#29292e] rounded-lg p-8 shadow-lg">
             <div className="flex justify-between items-center mb-6 border-b border-[#29292e] pb-4">
-                <h2 className="text-xl font-bold text-white tracking-wide">Monthly Financial Statements</h2>
+                <div>
+                    <h2 className="text-xl font-bold text-white tracking-wide">Monthly Financial Statements</h2>
+                    <div className="flex space-x-3 mt-3">
+                        {/* Export PDF Button (Works on all tabs) */}
+                        <button
+                            onClick={handleExportPDF}
+                            className="px-3 py-1.5 bg-[#29292e] hover:bg-[#323238] border border-[#3e3e44] text-[10px] font-bold text-white rounded-md tracking-wider uppercase transition flex items-center space-x-2"
+                        >
+                            <span>📄</span> <span>Export PDF</span>
+                        </button>
+
+                        {/* Export Excel Button (Only active/visible on Trial Balance) */}
+                        {statementType === 'trial' && (
+                            <button
+                                onClick={handleExportExcel}
+                                className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-[10px] font-bold text-emerald-400 rounded-md tracking-wider uppercase transition flex items-center space-x-2"
+                            >
+                                <span>📊</span> <span>Export Excel</span>
+                            </button>
+                        )}
+                    </div>
+                </div>
 
                 {/* Toggle Switch */}
                 <div className="flex bg-[#121214] p-1 rounded-md border border-[#29292e]">

@@ -6,3 +6,64 @@ body {
   color: #e1e1e6;
   font-family: system-ui, -apple-system, sans-serif;
 }
+
+@media print {
+  /* 1. HIDE the navigation sidebar, headers, and buttons from the print layout */
+  aside, 
+  header, 
+  button,
+  .flex.space-x-3 {
+    display: none !important;
+  }
+
+  /* 2. RESET Electron full-screen layout wrappers so they can print */
+  #app,
+  div.flex.h-screen,
+  div.flex-1.flex.flex-col.overflow-hidden {
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    position: static !important;
+  }
+
+  /* 3. Force body, HTML, and main workspace container to be print-friendly */
+  html, body, main {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+    height: auto !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* 4. Stretch the Financial Statement card to 100% full-screen width */
+  .max-w-5xl {
+    max-width: 100% !important;
+    width: 100% !important;
+    background-color: #ffffff !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* 5. Force all report text, headings, and labels to print in crisp black */
+  h2, h3, span, td, th, div, p {
+    color: #000000 !important;
+    border-color: #e2e8f0 !important;
+  }
+
+  /* Force debit/credit color values to render in dark, ink-friendly hues */
+  .text-emerald-400 {
+    color: #059669 !important; /* Crisp dark green */
+  }
+  .text-red-400, .text-red-500 {
+    color: #dc2626 !important; /* Crisp dark red */
+  }
+
+  /* Hide the statement selection toggle wrapper */
+  .bg-\[\#121214\] {
+    display: none !important;
+  }
+}
