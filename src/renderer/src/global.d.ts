@@ -11,5 +11,6 @@ interface Window {
         triggerBackup: () => Promise<any>;
         generate2550Q: (year: number, quarter: number) => Promise<any>;
         generateRelief: (year: number, quarter: number) => Promise<any>;
+        getAnalyticsMetrics: () => Promise<any>;
     };
 }

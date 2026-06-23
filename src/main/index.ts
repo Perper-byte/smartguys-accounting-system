@@ -1,4 +1,5 @@
 // src/main/index.ts
+import { AnalyticsService } from './services/analytics.service';
 import { TaxService } from './services/tax.service';
 import { BackupService } from './services/backup.service';
 import { ReportsService } from './services/reports.service';
@@ -107,6 +108,14 @@ app.whenReady().then(() => {
   ipcMain.handle('tax:generateRelief', async (event, year, quarter) => {
     try {
       return await TaxService.generateReliefAnnexes(year, quarter);
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('analytics:getMetrics', async () => {
+    try {
+      return await AnalyticsService.getDashboardMetrics();
     } catch (error: any) {
       return { error: error.message };
     }

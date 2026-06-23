@@ -1,4 +1,5 @@
 // src/renderer/src/App.tsx
+import { DashboardView } from './components/DashboardView';
 import { BIRReportsView } from './components/BIRReportsView';
 import { DatabaseBackupView } from './components/DatabaseBackupView';
 import { FinancialStatementsView } from './components/FinancialStatementsView';
@@ -126,10 +127,7 @@ function App(): React.ReactElement {
             <>
               { /* RENDER THE ACTIVE SCREEN */}
               {activeTab === 'dashboard' && (
-                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
-                  <h3 className="text-lg font-bold text-white">Analytics Dashboard</h3>
-                  <p className="text-sm text-[#8d8d99]">Charts and KPI cards will go here.</p>
-                </div>
+                <DashboardView />
               )}
 
               {activeTab === 'journal' && (
