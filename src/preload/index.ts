@@ -11,7 +11,9 @@ export const api = {
   getBalanceSheet: () => ipcRenderer.invoke('reports:getBalanceSheet'),
   exportTrialBalanceExcel: () => ipcRenderer.invoke('export:trialBalanceExcel'),
   exportPDF: (filename) => ipcRenderer.invoke('export:printToPDF', filename),
-  triggerBackup: () => ipcRenderer.invoke('backup:triggerBackup')
+  triggerBackup: () => ipcRenderer.invoke('backup:triggerBackup'),
+  generate2550Q: (year, quarter) => ipcRenderer.invoke('tax:generate2550Q', year, quarter),
+  generateRelief: (year, quarter) => ipcRenderer.invoke('tax:generateRelief', year, quarter)
 };
 
 // Expose the API to the React window

@@ -8,6 +8,8 @@ interface Window {
         getTrialBalance: () => Promise<any>;
         getIncomeStatement: () => Promise<any>;
         getBalanceSheet: () => Promise<any>;
-        triggerBackup: () => Promise<{ success: boolean; filePath?: string; error?: string; timestamp?: string }>;
+        triggerBackup: () => Promise<any>;
+        generate2550Q: (year: number, quarter: number) => Promise<any>;
+        generateRelief: (year: number, quarter: number) => Promise<any>;
     };
 }

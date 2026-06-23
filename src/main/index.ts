@@ -1,4 +1,5 @@
 // src/main/index.ts
+import { TaxService } from './services/tax.service';
 import { BackupService } from './services/backup.service';
 import { ReportsService } from './services/reports.service';
 import { LedgerService } from './services/ledger.service';
@@ -90,9 +91,25 @@ app.whenReady().then(() => {
       return { error: error.message };
     }
   });
-  
+
   ipcMain.handle('backup:triggerBackup', async () => {
     return await BackupService.executeBackup();
+  });
+
+  ipcMain.handle('tax:generate2550Q', async (event, year, quarter) => {
+    try {
+      return await TaxService.generate2550Q(year, quarter);
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('tax:generateRelief', async (event, year, quarter) => {
+    try {
+      return await TaxService.generateReliefAnnexes(year, quarter);
+    } catch (error: any) {
+      return { error: error.message };
+    }
   });
 })
 
