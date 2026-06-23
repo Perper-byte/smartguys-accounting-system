@@ -1,4 +1,5 @@
 // src/main/index.ts
+import { BackupService } from './services/backup.service';
 import { ReportsService } from './services/reports.service';
 import { LedgerService } from './services/ledger.service';
 import path from 'path';
@@ -88,6 +89,10 @@ app.whenReady().then(() => {
     } catch (error: any) {
       return { error: error.message };
     }
+  });
+  
+  ipcMain.handle('backup:triggerBackup', async () => {
+    return await BackupService.executeBackup();
   });
 })
 

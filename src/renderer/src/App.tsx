@@ -1,4 +1,5 @@
 // src/renderer/src/App.tsx
+import { DatabaseBackupView } from './components/DatabaseBackupView';
 import { FinancialStatementsView } from './components/FinancialStatementsView';
 import { GeneralLedgerView } from './components/GeneralLedgerView';
 import { CashDisbursementForm } from './components/CashDisbursementForm';
@@ -16,7 +17,7 @@ const ALL_TABS = [
   { id: 'ledger', label: 'General Ledger', icon: '📖', allowedRoles: ['ACCOUNTANT'] },
   { id: 'statements', label: 'Financial Statements', icon: '📄', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'bir', label: 'BIR Tax Reports', icon: '🏛️', allowedRoles: ['MANAGER'] },
-  { id: 'backup', label: 'Database Backup', icon: '💾', allowedRoles: ['IT_PERSONNEL'] },
+  { id: 'backup', label: 'Database Backup', icon: '💾', allowedRoles: ['IT_PERSONNEL', 'ACCOUNTANT'] },
 ];
 
 function App(): React.ReactElement {
@@ -157,10 +158,7 @@ function App(): React.ReactElement {
               )}
 
               {activeTab === 'backup' && (
-                <div className="p-6 bg-[#202024] border border-[#29292e] rounded-lg">
-                  <h3 className="text-lg font-bold text-white">Database Backup</h3>
-                  <p className="text-sm text-[#8d8d99]">SQL dump generation for IT Personnel.</p>
-                </div>
+                <DatabaseBackupView />
               )}
             </>
           )}

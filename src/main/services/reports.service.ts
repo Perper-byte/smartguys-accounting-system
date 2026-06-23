@@ -74,12 +74,14 @@ export class ReportsService {
         for (const line of trialBalance.lines) {
             if (line.accountType === 'Revenue') {
                 // Revenue has a credit balance
-                revenueLines.push({ name: line.accountName, amount: line.credit });
-                totalRevenue += line.credit;
+                const amount = line.credit - line.debit;
+                revenueLines.push({ name: line.accountName, amount });
+                totalRevenue += amount;
             } else if (line.accountType === 'Expense') {
                 // Expenses have a debit balance
-                expenseLines.push({ name: line.accountName, amount: line.debit });
-                totalExpenses += line.debit;
+                const amount = line.debit - line.credit;
+                expenseLines.push({ name: line.accountName, amount });
+                totalExpenses += amount;
             }
         }
 
