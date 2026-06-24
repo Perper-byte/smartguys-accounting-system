@@ -12,6 +12,11 @@ beforeAll(() => {
         value: {
             login: mockLogin,
             submitJournalEntry: jest.fn(),
+            getAnalyticsMetrics: jest.fn().mockResolvedValue({
+                kpi: { revenue: 0, expenses: 0, netCash: 0, margin: 0 },
+                expenseBreakdown: [],
+                trendData: { labels: [], revenue: [], expenses: [] }
+            }),
         },
         writable: true,
     });
@@ -29,7 +34,6 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
     });
 
     test('📊 Accountant Permissions: Should render Accountant-specific links', async () => {
-        // Mock the backend returning an Accountant User
         mockLogin.mockResolvedValue({
             success: true,
             data: { id: 'user-1', username: 'john_accountant', role: 'ACCOUNTANT' }
@@ -37,9 +41,8 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
 
         render(<App />);
 
-        // Simulate login interaction
-        fireEvent.change(screen.getByPlaceholderText(/Enter your username/i), { target: { value: 'accountant'} });
-        fireEvent.change(screen.getByPlaceholderText(/••••••/i), { target: { value: 'password123'} });
+        fireEvent.change(screen.getByPlaceholderText(/Enter your username/i), { target: { value: 'accountant' } });
+        fireEvent.change(screen.getByPlaceholderText(/••••••/i), { target: { value: 'password123' } });
 
         await act(async () => {
             fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
@@ -47,11 +50,11 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
 
         expect(screen.getByText('john_accountant')).toBeInTheDocument();
         expect(screen.getByText('ACCOUNTANT')).toBeInTheDocument();
-
-        // Check denials
         expect(screen.getAllByText(/Analytics Dashboard/i).length).toBeGreaterThan(0);
-        expect(screen.queryByText('Disbursements')).toBeInTheDocument();
-        expect(screen.getAllByText(/Database Backup/i).length).toBeGreaterThan(0);
+
+        // STRICT DENIALS: Accountant cannot see Cashier, Manager, or IT screens
+        expect(screen.queryByText('Disbursements')).not.toBeInTheDocument();
+        expect(screen.queryByText('Database Backup')).not.toBeInTheDocument();
         expect(screen.queryByText('BIR Tax Reports')).not.toBeInTheDocument();
     });
 
@@ -64,8 +67,8 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
         render(<App />);
 
         // Simulate login interaction
-        fireEvent.change(screen.getByPlaceholderText(/Enter your username/i), { target: { value: 'cashier'} });
-        fireEvent.change(screen.getByPlaceholderText(/••••••/i), { target: { value: 'password123'} });
+        fireEvent.change(screen.getByPlaceholderText(/Enter your username/i), { target: { value: 'cashier' } });
+        fireEvent.change(screen.getByPlaceholderText(/••••••/i), { target: { value: 'password123' } });
 
         await act(async () => {
             fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
@@ -92,14 +95,14 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
 
         render(<App />);
 
-        fireEvent.change(screen.getByPlaceholderText(/Enter your username/i), { target: { value: 'it'} });
-        fireEvent.change(screen.getByPlaceholderText(/••••••/i), { target: { value: 'password123'} });
+        fireEvent.change(screen.getByPlaceholderText(/Enter your username/i), { target: { value: 'it' } });
+        fireEvent.change(screen.getByPlaceholderText(/••••••/i), { target: { value: 'password123' } });
 
         await act(async () => {
             fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
         });
 
-         // VERIFY IT SIDEBAR LINKS
+        // VERIFY IT SIDEBAR LINKS
         expect(screen.getByText('admin_it')).toBeInTheDocument();
         expect(screen.getByText('IT_PERSONNEL')).toBeInTheDocument();
 

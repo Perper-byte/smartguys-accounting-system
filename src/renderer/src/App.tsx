@@ -15,11 +15,11 @@ const ALL_TABS = [
   { id: 'dashboard', label: 'Analytics Dashboard', icon: '📊', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'journal', label: 'Journal Entry', icon: '📝', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
   { id: 'adjusting', label: 'Adjusting Entries', icon: '🔧', allowedRoles: ['ACCOUNTANT'] },
-  { id: 'disbursement', label: 'Disbursements', icon: '💸', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
+  { id: 'disbursement', label: 'Disbursements', icon: '💸', allowedRoles: ['CASHIER'] },
   { id: 'ledger', label: 'General Ledger', icon: '📖', allowedRoles: ['ACCOUNTANT'] },
   { id: 'statements', label: 'Financial Statements', icon: '📄', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
-  { id: 'bir', label: 'BIR Tax Reports', icon: '🏛️', allowedRoles: ['MANAGER', 'ACCOUNTANT'] },
-  { id: 'backup', label: 'Database Backup', icon: '💾', allowedRoles: ['IT_PERSONNEL', 'ACCOUNTANT'] },
+  { id: 'bir', label: 'BIR Tax Reports', icon: '🏛️', allowedRoles: ['MANAGER'] },
+  { id: 'backup', label: 'Database Backup', icon: '💾', allowedRoles: ['IT_PERSONNEL'] },
 ];
 
 function App(): React.ReactElement {

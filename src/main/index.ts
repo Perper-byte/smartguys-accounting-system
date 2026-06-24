@@ -1,4 +1,5 @@
 // src/main/index.ts
+import { IPC_CHANNELS } from '../shared/ipc-channels';
 import { AnalyticsService } from './services/analytics.service';
 import { TaxService } from './services/tax.service';
 import { BackupService } from './services/backup.service';
@@ -36,7 +37,8 @@ app.whenReady().then(() => {
   //------------------------------------------
   // IPC HANDLERS: React asks, Node.js answers
   //------------------------------------------
-  ipcMain.handle('auth:login', async (event, username, password) => {
+  // Auth
+  ipcMain.handle(IPC_CHANNELS.AUTH.LOGIN, async (event, username, password) => {
     try {
       const user = await AuthService.login(username, password);
       return { success: true, data: user };
@@ -45,7 +47,8 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('ledger:getAccounts', async () => {
+  // Ledger
+  ipcMain.handle(IPC_CHANNELS.LEDGER.GET_ACCOUNTS, async () => {
     try {
       return await LedgerService.getAccounts();
     } catch (error) {
@@ -54,7 +57,7 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('ledger:submitEntry', async (event, entryData) => {
+  ipcMain.handle(IPC_CHANNELS.LEDGER.SUBMIT_ENTRY, async (event, entryData) => {
     try {
       return await LedgerService.createJournalEntry(entryData);
     } catch (error: any) {
@@ -62,14 +65,16 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('ledger:getAccountLedger', async (event, accountId) => {
+  ipcMain.handle(IPC_CHANNELS.LEDGER.GET_LEDGER, async (event, accountId) => {
     try {
       return await LedgerService.getAccountLedger(accountId);
     } catch (error: any) {
       return { error: error.message };
     }
   });
-  ipcMain.handle('reports:getTrialBalance', async () => {
+
+  // Reports
+  ipcMain.handle(IPC_CHANNELS.REPORTS.TRIAL_BALANCE, async () => {
     try {
       return await ReportsService.getTrialBalance();
     } catch (error: any) {
@@ -77,7 +82,7 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('reports:getIncomeStatement', async () => {
+  ipcMain.handle(IPC_CHANNELS.REPORTS.INCOME_STATEMENT, async () => {
     try {
       return await ReportsService.getIncomeStatement();
     } catch (error: any) {
@@ -85,7 +90,7 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('reports:getBalanceSheet', async () => {
+  ipcMain.handle(IPC_CHANNELS.REPORTS.BALANCE_SHEET, async () => {
     try {
       return await ReportsService.getBalanceSheet();
     } catch (error: any) {
@@ -93,11 +98,13 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('backup:triggerBackup', async () => {
+  // Backup
+  ipcMain.handle(IPC_CHANNELS.BACKUP.TRIGGER, async () => {
     return await BackupService.executeBackup();
   });
 
-  ipcMain.handle('tax:generate2550Q', async (event, year, quarter) => {
+  // Tax
+  ipcMain.handle(IPC_CHANNELS.TAX.GENERATE_2550Q, async (event, year, quarter) => {
     try {
       return await TaxService.generate2550Q(year, quarter);
     } catch (error: any) {
@@ -105,7 +112,7 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('tax:generateRelief', async (event, year, quarter) => {
+  ipcMain.handle(IPC_CHANNELS.TAX.GENERATE_RELIEF, async (event, year, quarter) => {
     try {
       return await TaxService.generateReliefAnnexes(year, quarter);
     } catch (error: any) {
@@ -113,7 +120,8 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle('analytics:getMetrics', async () => {
+  // Analytics
+  ipcMain.handle(IPC_CHANNELS.ANALYTICS.GET_METRICS, async () => {
     try {
       return await AnalyticsService.getDashboardMetrics();
     } catch (error: any) {

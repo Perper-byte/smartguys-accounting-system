@@ -57,7 +57,7 @@ async function main() {
         // Expenses
         { code: '5010', name: 'Medical Supplies Expense', type_id: 'type-expense' },
         { code: '5020', name: 'Utilities Expense', type_id: 'type-expense' },
-        { code: '5030', name: 'Salaries Expense', type_id: 'type-expense'},
+        { code: '5030', name: 'Salaries Expense', type_id: 'type-expense' },
     ];
 
     for (const acc of accounts) {
@@ -78,17 +78,30 @@ async function main() {
     const crypto = require('crypto');
     const passwordHash = crypto.createHash('sha256').update(dummyAccountantPassword).digest('hex');
 
-    await prisma.user.upsert({
-        where: { username: 'accountant' },
-        update: {},
-        create: {
-            username: 'accountant',
-            password_hash: passwordHash,
-            role: 'ACCOUNTANT',
-        },
-    }); 
+    const users = [
+        { username: 'cashier', role: 'CASHIER' },
+        { username: 'accountant', role: 'ACCOUNTANT' },
+        { username: 'manager', role: 'MANAGER' },
+        { username: 'it_admin', role: 'IT_PERSONNEL' }
+    ];
 
-    console.log('✅ Default Accountant user seeded (User: accountant, Pass: password123).');
+    for (const u of users) {
+        await prisma.user.upsert({
+            where: { username: u.username },
+            update: {},
+            create: {
+                username: u.username,
+                password_hash: passwordHash,
+                role: u.role as any,
+            },
+        });
+    }
+
+    console.log('✅ ALL Users seeded (Passwords are all: password123)');
+    console.log('   - cashier');
+    console.log('   - accountant');
+    console.log('   - manager');
+    console.log('   - it_admin');
     console.log('🌱 Database seeding completed successfully!');
 }
 
