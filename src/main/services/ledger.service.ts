@@ -13,6 +13,7 @@ export interface JournalEntryInput {
     date: Date;
     referenceNo: string;
     description: string;
+    vatType: string;  // <--- NEW: Backend now expects vatType from the frontend
     payeeId?: string;
     userId: string;
     lines: JournalLineInput[];
@@ -56,6 +57,11 @@ export class LedgerService {
                     date: input.date,
                     reference_no: input.referenceNo,
                     description: input.description,
+                    
+                    // NEW: Saving to database! 
+                    // (Note: if your prisma schema uses snake_case like vat_type, change this to vat_type)
+                    vatType: input.vatType, 
+                    
                     payee_id: input.payeeId || null,
                     user_id: input.userId,
                 },
@@ -80,6 +86,7 @@ export class LedgerService {
             };
         });
     }
+
     static async getAccounts() {
         return await prisma.account.findMany({
             include: { account_type: true },
