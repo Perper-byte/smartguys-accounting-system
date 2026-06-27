@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export interface JournalLineInput {
-    accountId: string; // e.g., "1010" for Cash in Bank
+    accountId: string; 
     debit: number;
     credit: number;
 }
@@ -13,8 +13,8 @@ export interface JournalEntryInput {
     date: Date;
     referenceNo: string;
     description: string;
-    vatType: string;  // <--- NEW: Backend now expects vatType from the frontend
-    payeeId?: string;
+    vatType: string;  
+    payeeId?: string; 
     userId: string;
     lines: JournalLineInput[];
 }
@@ -25,7 +25,6 @@ export class LedgerService {
             throw new Error("Validation Error: A journal entry must contain at least 2 transaction lines.");
         }
 
-        // 1. Calculate Debit and Credit Sums
         let totalDebits = 0;
         let totalCredits = 0;
 
@@ -37,37 +36,27 @@ export class LedgerService {
             totalCredits += line.credit;
         }
 
-        // Convert to 2-decimal strings to avoid floating point errors (e.g. 10.0000000001)
         const debitsFormatted = totalDebits.toFixed(2);
         const creditsFormatted = totalCredits.toFixed(2);
 
-        // 2. Strict Double-Entry Mathematical Constraint
         if (debitsFormatted !== creditsFormatted) {
             throw new Error(
-                `Accounting Error: Total Debits (₱${debitsFormatted}) must precisely equal Total Credits (₱${creditsFormatted})
-                to maintain ledger balance.`
+                `Accounting Error: Total Debits (₱${debitsFormatted}) must precisely equal Total Credits (₱${creditsFormatted}) to maintain ledger balance.`
             );
         }
 
-        // 3. Database Write Transaction (ACID Complaint)
         return await prisma.$transaction(async (tx) => {
-            // Create the main Journal Entry
             const entry = await tx.journalEntry.create({
                 data: {
                     date: input.date,
                     reference_no: input.referenceNo,
                     description: input.description,
-                    
-                    // NEW: Saving to database! 
-                    // (Note: if your prisma schema uses snake_case like vat_type, change this to vat_type)
-                    vatType: input.vatType, 
-                    
-                    payee_id: input.payeeId || null,
+                    vat_type: input.vatType, 
+                    payee_id: input.payeeId || null, 
                     user_id: input.userId,
                 },
             });
 
-            // Bulk create the corresponding Journal Lines
             const linesData = input.lines.map((line) => ({
                 entry_id: entry.id,
                 account_id: line.accountId,
@@ -75,15 +64,9 @@ export class LedgerService {
                 credit: line.credit,
             }));
 
-            await tx.journalLine.createMany({
-                data: linesData,
-            });
+            await tx.journalLine.createMany({ data: linesData });
 
-            return {
-                success: true,
-                entryId: entry.id,
-                referenceNo: entry.reference_no,
-            };
+            return { success: true, entryId: entry.id, referenceNo: entry.reference_no };
         });
     }
 
@@ -94,8 +77,43 @@ export class LedgerService {
         });
     }
 
+    static async getPayees() {
+        return await prisma.payee.findMany({ orderBy: { name: 'asc' } });
+    }
+
+    static async createPayee(name: string) {
+        try {
+            const newPayee = await prisma.payee.create({ data: { name: name } });
+            return { success: true, payee: newPayee };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    // NEW BALANCE FUNCTION
+    static async getPayeeBalance(payeeId: string) {
+        const lines = await prisma.journalLine.findMany({
+            where: {
+                entry: { payee_id: payeeId },
+                account_id: { in: ['1200', '2010'] } 
+            }
+        });
+
+        let arBalance = 0; 
+        let apBalance = 0; 
+
+        for (const line of lines) {
+            if (line.account_id === '1200') {
+                arBalance += Number(line.debit) - Number(line.credit);
+            } else if (line.account_id === '2010') {
+                apBalance += Number(line.credit) - Number(line.debit);
+            }
+        }
+
+        return { receivable: arBalance, payable: apBalance };
+    }
+
     static async getAccountLedger(accountId: string) {
-        // Get the account to know its normal balance (DEBIT or CREDIT)
         const account = await prisma.account.findUnique({
             where: { code: accountId },
             include: { account_type: true }
@@ -103,29 +121,20 @@ export class LedgerService {
 
         if (!account) throw new Error("Account not found");
 
-        const normalBalance = account.account_type.normal_balance; // 'DEBIT' or 'CREDIT'
+        const normalBalance = account.account_type.normal_balance; 
 
-        // Fetch all journal lines for this account, ordered by date
         const lines = await prisma.journalLine.findMany({
             where: { account_id: accountId },
-            include: {
-                entry: {
-                    include: { payee: true }
-                }
-            },
-            orderBy: {
-                entry: { date: 'asc' } // Oldest to newest for running balance
-            }
+            include: { entry: { include: { payee: true } } },
+            orderBy: { entry: { date: 'asc' } } 
         });
 
-        // Calculate the running balance chronologically
         let runningBalance = 0;
 
         const formattedLines = lines.map(line => {
             const debit = Number(line.debit);
             const credit = Number(line.credit);
 
-            // Add or subtract based on the normal balance of the account
             if (normalBalance === 'DEBIT') {
                 runningBalance = runningBalance + debit - credit;
             } else {
@@ -137,7 +146,8 @@ export class LedgerService {
                 date: line.entry.date,
                 referenceNo: line.entry.reference_no,
                 description: line.entry.description,
-                payee: line.entry.payee?.name || '-',
+                vatType: line.entry.vat_type, 
+                payee: line.entry.payee?.name || '-', 
                 debit: debit,
                 credit: credit,
                 balance: runningBalance
