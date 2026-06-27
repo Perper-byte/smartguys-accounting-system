@@ -1,6 +1,6 @@
 // src/renderer/src/components/JournalEntryForm.tsx
 import * as React from 'react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { AddPatientForm } from './AddPatientForm'; 
 
 export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean }> = ({ userId, isAdjusting = false }) => {
@@ -14,7 +14,6 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     const [payeeId, setPayeeId] = useState(''); 
     const [showAddPatient, setShowAddPatient] = useState(false);
     
-    // NEW: Searchable Dropdown States
     const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
     const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
     
@@ -45,6 +44,19 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         };
         fetchBalance();
     }, [payeeId]);
+
+    // NEW: Group the accounts by their Type (Asset, Liability, etc.)
+    const groupedAccounts = useMemo(() => {
+        return accounts.reduce((groups: any, acc: any) => {
+            // Get the name of the category (e.g. 'Asset'), default to 'Other' if missing
+            const categoryName = acc.account_type?.name || 'Other';
+            if (!groups[categoryName]) {
+                groups[categoryName] = [];
+            }
+            groups[categoryName].push(acc);
+            return groups;
+        }, {});
+    }, [accounts]);
 
     const handlePatientAdded = () => {
         setShowAddPatient(false); 
@@ -95,7 +107,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 setDescription('');
                 setVatType('VATABLE'); 
                 setPayeeId(''); 
-                setPayeeSearchQuery(''); // Reset search
+                setPayeeSearchQuery(''); 
                 setLines([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
             } else {
                 setStatus({ type: 'error', msg: result.error });
@@ -107,10 +119,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         }
     };
 
-    // Filter the patients based on what the user types!
     const filteredPayees = payees.filter(p => p.name.toLowerCase().includes(payeeSearchQuery.toLowerCase()));
-    
-    // Find the name of the currently selected patient to show on the button
     const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- No Patient Tagged --';
 
     return (
@@ -150,7 +159,6 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 </div>
             </div>
 
-            {/* --- CUSTOM SEARCHABLE PATIENT DROPDOWN --- */}
             <div className="mb-6 relative">
                 <div className="flex justify-between items-end mb-2">
                     <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider">Patient / Payee (For Accounts Receivable/Payable)</label>
@@ -161,7 +169,6 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
 
                 {showAddPatient && <AddPatientForm onPatientAdded={handlePatientAdded} />}
 
-                {/* The Custom Dropdown Trigger Button */}
                 <div className="relative mt-2">
                     <div 
                         onClick={() => setIsPayeeDropdownOpen(!isPayeeDropdownOpen)}
@@ -173,10 +180,8 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                         </svg>
                     </div>
 
-                    {/* The Popup Search Menu */}
                     {isPayeeDropdownOpen && (
                         <div className="absolute z-20 w-full mt-1 bg-[#202024] border border-[#29292e] rounded-md shadow-2xl overflow-hidden">
-                            {/* Search Input Box */}
                             <div className="p-2 border-b border-[#29292e] bg-[#121214]">
                                 <input 
                                     type="text" 
@@ -188,7 +193,6 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                 />
                             </div>
 
-                            {/* Filtered List of Patients */}
                             <ul className="max-h-48 overflow-y-auto">
                                 <li 
                                     onClick={() => { setPayeeId(''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }}
@@ -259,7 +263,18 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                     <div className="relative">
                                         <select value={line.accountId} onChange={e => updateLine(idx, 'accountId', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none cursor-pointer appearance-none pr-6">
                                             <option value="" className="bg-[#121214] text-[#8d8d99]">Select Account...</option>
-                                            {accounts.map(acc => <option key={acc.code} value={acc.code} className="bg-[#202024] text-white">{acc.code} - {acc.name}</option>)}
+                                            
+                                            {/* CHANGED: This dynamically creates the Asset, Liability, Equity groups! */}
+                                            {Object.entries(groupedAccounts).map(([category, accs]: any) => (
+                                                <optgroup key={category} label={`━━━ ${category.toUpperCase()} ━━━`} className="text-[#8d8d99] font-bold bg-[#121214]">
+                                                    {accs.map((acc: any) => (
+                                                        <option key={acc.code} value={acc.code} className="bg-[#202024] text-white font-normal">
+                                                            {acc.code} - {acc.name}
+                                                        </option>
+                                                    ))}
+                                                </optgroup>
+                                            ))}
+
                                         </select>
                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-[#8d8d99]">
                                             <svg className="w-3 h-3 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>

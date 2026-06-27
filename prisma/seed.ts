@@ -40,24 +40,48 @@ async function main() {
     console.log('✅ Standard Account Types seeded.');
 
     // 2. Seed Standard Chart of Accounts (COA) based on proposal Table 4 (Page-58-59)
+   // 2. Seed Standard Chart of Accounts (COA)
     const accounts = [
-        // Assets
+        // ==========================================
+        // 1000s - ASSETS (What the clinic owns)
+        // ==========================================
         { code: '1010', name: 'Cash in Bank', type_id: 'type-asset' },
+        { code: '1020', name: 'Petty Cash Fund', type_id: 'type-asset' },
         { code: '1200', name: 'Accounts Receivable', type_id: 'type-asset' },
+        { code: '1300', name: 'Input VAT', type_id: 'type-asset' },
+        { code: '1400', name: 'Prepaid Rent', type_id: 'type-asset' },
+        { code: '1500', name: 'Medical Equipment', type_id: 'type-asset' },
+        { code: '1501', name: 'Accumulated Depreciation', type_id: 'type-asset' },
 
-        // Liabilities
+        // ==========================================
+        // 2000s - LIABILITIES (What the clinic owes)
+        // ==========================================
         { code: '2010', name: 'Accounts Payable', type_id: 'type-liability' },
+        { code: '2020', name: 'Output VAT', type_id: 'type-liability' },
+        { code: '2030', name: 'VAT Payable', type_id: 'type-liability' },
+        { code: '2040', name: 'Salaries Payable', type_id: 'type-liability' },
+        { code: '2100', name: 'Bank Loans Payable', type_id: 'type-liability' },
 
-        // Equity
-        { code: '3010', name: 'Retained Earning', type_id: 'type-equity' },
+        // ==========================================
+        // 3000s - EQUITY (Owner's worth in the business)
+        // ==========================================
+        { code: '3010', name: 'Owner\'s Capital', type_id: 'type-equity' },
+        { code: '3020', name: 'Owner\'s Drawings', type_id: 'type-equity' },
 
-        // Revenue
-        { code: '4010', name: 'Service Revenue', type_id: 'type-revenue' },
+        // ==========================================
+        // 4000s - REVENUE (Money earned)
+        // ==========================================
+        { code: '4010', name: 'Consultation Fees', type_id: 'type-revenue' },
+        { code: '4020', name: 'Laboratory / Diagnostic Income', type_id: 'type-revenue' },
 
-        // Expenses
+        // ==========================================
+        // 5000s - EXPENSES (Money spent to run the business)
+        // ==========================================
         { code: '5010', name: 'Medical Supplies Expense', type_id: 'type-expense' },
         { code: '5020', name: 'Utilities Expense', type_id: 'type-expense' },
-        { code: '5030', name: 'Salaries Expense', type_id: 'type-expense' },
+        { code: '5040', name: 'Rent Expense', type_id: 'type-expense' },
+        { code: '5050', name: 'Depreciation Expense', type_id: 'type-expense' },
+        { code: '5100', name: 'Salaries and Wages', type_id: 'type-expense' },
     ];
 
     for (const acc of accounts) {
