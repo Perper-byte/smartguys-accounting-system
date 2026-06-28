@@ -49,6 +49,7 @@ async function main() {
         { code: '1020', name: 'Petty Cash Fund', type_id: 'type-asset' },
         { code: '1200', name: 'Accounts Receivable', type_id: 'type-asset' },
         { code: '1300', name: 'Input VAT', type_id: 'type-asset' },
+         { code: '1310', name: 'Creditable Withholding Tax (CWT)', type_id: 'type-asset' },
         { code: '1400', name: 'Prepaid Rent', type_id: 'type-asset' },
         { code: '1500', name: 'Medical Equipment', type_id: 'type-asset' },
         { code: '1501', name: 'Accumulated Depreciation', type_id: 'type-asset' },
@@ -60,10 +61,11 @@ async function main() {
         { code: '2020', name: 'Output VAT', type_id: 'type-liability' },
         { code: '2030', name: 'VAT Payable', type_id: 'type-liability' },
         { code: '2040', name: 'Salaries Payable', type_id: 'type-liability' },
+        { code: '2050', name: 'Expanded Withholding Tax (EWT) Payable', type_id: 'type-liability' },
         { code: '2100', name: 'Bank Loans Payable', type_id: 'type-liability' },
 
         // ==========================================
-        // 3000s - EQUITY (Owner's worth in the business)
+        // 3000s - EQUITY (Owner's worth in  the business)
         // ==========================================
         { code: '3010', name: 'Owner\'s Capital', type_id: 'type-equity' },
         { code: '3020', name: 'Owner\'s Drawings', type_id: 'type-equity' },
