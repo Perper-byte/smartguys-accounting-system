@@ -229,7 +229,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                         )}
                         {payeeBalance.payable > 0 && (
                             <span className="text-orange-400 font-bold bg-orange-400/10 px-3 py-1.5 rounded border border-orange-400/20 flex items-center shadow-sm">
-                                ⚠️ You owe supplier: ₱{payeeBalance.payable.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                ⚠️ Clinic owes them: ₱{payeeBalance.payable.toLocaleString(undefined, {minimumFractionDigits: 2})}
                             </span>
                         )}
                         {payeeBalance.receivable <= 0 && payeeBalance.payable <= 0 && (
