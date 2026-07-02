@@ -74,6 +74,7 @@ model JournalEntry {
   id           String   @id @default(uuid()) @db.VarChar(50)
   date         DateTime @db.DateTime
   reference_no String   @db.VarChar(100) // OR No., Invoice., Voucher No.
+  vat_type     String   @default("VATABLE") @db.VarChar(20) // "VATABLE", "EXEMPT", or "ZERO_RATED"
   description  String   @db.Text
   payee_id     String?  @db.VarChar(50) // FK (Nullable for non-cash transaction)
   user_id      String   @db.VarChar(50) // FK (The Cashier/Accountant who entered it)

@@ -21,6 +21,8 @@ function createWindow() {
     },
   });
 
+  
+
   // LOAD THE REACT FRONTEND!
   // In development, load the Vite dev server URL. In production, load the local compile HTMl file.
   const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
@@ -55,6 +57,24 @@ app.whenReady().then(() => {
       console.error(error);
       return [];
     }
+  });
+
+  ipcMain.handle('get-payees', async () => {
+    try {
+      return await LedgerService.getPayees();
+    } catch (error) {
+      console.error(error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('create-payee', async (event, name: string) => {
+    return await LedgerService.createPayee(name);
+  });
+
+  
+  ipcMain.handle('get-payee-balance', async (event, payeeId: string) => {
+    return await LedgerService.getPayeeBalance(payeeId);
   });
 
   ipcMain.handle(IPC_CHANNELS.LEDGER.SUBMIT_ENTRY, async (event, entryData) => {

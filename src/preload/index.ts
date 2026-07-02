@@ -1,13 +1,18 @@
+// src/preload/index.ts
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 
-// Define exactly what the Frontend is allowed to ask the Backend to do.
 export const api = {
   login: (username, password) => ipcRenderer.invoke(IPC_CHANNELS.AUTH.LOGIN, username, password),
 
   getAccounts: () => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.GET_ACCOUNTS),
   submitJournalEntry: (entryData) => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.SUBMIT_ENTRY, entryData),
   getAccountLedger: (accountId) => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.GET_LEDGER, accountId),
+
+  // Payee / Patient Functions
+  getPayees: () => ipcRenderer.invoke('get-payees'),
+  createPayee: (name) => ipcRenderer.invoke('create-payee', name),
+  getPayeeBalance: (payeeId) => ipcRenderer.invoke('get-payee-balance', payeeId), // <-- NEW
 
   getTrialBalance: () => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.TRIAL_BALANCE),
   getIncomeStatement: () => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.INCOME_STATEMENT),
@@ -24,5 +29,4 @@ export const api = {
   getAnalyticsMetrics: () => ipcRenderer.invoke(IPC_CHANNELS.ANALYTICS.GET_METRICS)
 };
 
-// Expose the API to the React window
 contextBridge.exposeInMainWorld('electronAPI', api);
