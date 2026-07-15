@@ -10,6 +10,8 @@ import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { LoginScreen } from "./components/LoginScreen";
 
+import UserManagementView from './components/UserManagementView';
+
 // DEFINE THE STRICT ROLE-BASED TABS 
 const ALL_TABS = [
   { id: 'dashboard', label: 'Analytics Dashboard', icon: '📊', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
@@ -20,6 +22,8 @@ const ALL_TABS = [
   { id: 'statements', label: 'Financial Statements', icon: '📄', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'bir', label: 'BIR Tax Reports', icon: '🏛️', allowedRoles: ['MANAGER'] },
   { id: 'backup', label: 'Database Backup', icon: '💾', allowedRoles: ['IT_PERSONNEL'] },
+  // ---> ADDED THE NEW USER MANAGEMENT TAB HERE:
+  { id: 'users', label: 'User Management', icon: '👥', allowedRoles: ['IT_PERSONNEL'] },
 ];
 
 function App(): React.ReactElement {
@@ -155,6 +159,11 @@ function App(): React.ReactElement {
 
               {activeTab === 'backup' && (
                 <DatabaseBackupView />
+              )}
+
+              {/* ---> ADDED THE RENDER LOGIC FOR THE NEW TAB: */}
+              {activeTab === 'users' && (
+                <UserManagementView />
               )}
             </>
           )}

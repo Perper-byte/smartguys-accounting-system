@@ -39,8 +39,7 @@ async function main() {
 
     console.log('✅ Standard Account Types seeded.');
 
-    // 2. Seed Standard Chart of Accounts (COA) based on proposal Table 4 (Page-58-59)
-   // 2. Seed Standard Chart of Accounts (COA)
+    // 2. Seed Standard Chart of Accounts (COA)
     const accounts = [
         // ==========================================
         // 1000s - ASSETS (What the clinic owns)
@@ -49,7 +48,7 @@ async function main() {
         { code: '1020', name: 'Petty Cash Fund', type_id: 'type-asset' },
         { code: '1200', name: 'Accounts Receivable', type_id: 'type-asset' },
         { code: '1300', name: 'Input VAT', type_id: 'type-asset' },
-         { code: '1310', name: 'Creditable Withholding Tax (CWT)', type_id: 'type-asset' },
+        { code: '1310', name: 'Creditable Withholding Tax (CWT)', type_id: 'type-asset' },
         { code: '1400', name: 'Prepaid Rent', type_id: 'type-asset' },
         { code: '1500', name: 'Medical Equipment', type_id: 'type-asset' },
         { code: '1501', name: 'Accumulated Depreciation', type_id: 'type-asset' },
@@ -98,7 +97,7 @@ async function main() {
         });
     }
 
-    // 3. Seed a Default Accountant User for testing
+    // 3. Seed Default Users for testing
     const dummyAccountantPassword = 'password123';
     // Standard SHA-256 hash matching our AuthService rules
     const crypto = require('crypto');
@@ -114,11 +113,14 @@ async function main() {
     for (const u of users) {
         await prisma.user.upsert({
             where: { username: u.username },
-            update: {},
+            update: {
+                is_active: true // Ensures they are re-activated if seed is run again
+            },
             create: {
                 username: u.username,
                 password_hash: passwordHash,
                 role: u.role as any,
+                is_active: true, // <--- ADDED THIS HERE
             },
         });
     }
