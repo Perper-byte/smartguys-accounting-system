@@ -9,11 +9,13 @@ import { JournalEntryForm } from './components/JournalEntryForm';
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { LoginScreen } from "./components/LoginScreen";
+import { POSBillingView } from './components/POSBillingView';
 
 import UserManagementView from './components/UserManagementView';
 
 // DEFINE THE STRICT ROLE-BASED TABS 
 const ALL_TABS = [
+  { id: 'billing', label: 'Patient Billing', icon: '💳', allowedRoles: ['CASHIER'] },
   { id: 'dashboard', label: 'Analytics Dashboard', icon: '📊', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'journal', label: 'Journal Entry', icon: '📝', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
   { id: 'adjusting', label: 'Adjusting Entries', icon: '🔧', allowedRoles: ['ACCOUNTANT'] },
@@ -159,6 +161,10 @@ function App(): React.ReactElement {
 
               {activeTab === 'backup' && (
                 <DatabaseBackupView />
+              )}
+
+               {activeTab === 'billing' && (
+                <POSBillingView userId={currentUser.id} />
               )}
 
               {/* ---> ADDED THE RENDER LOGIC FOR THE NEW TAB: */}

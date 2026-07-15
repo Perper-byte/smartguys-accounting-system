@@ -74,6 +74,8 @@ async function main() {
         // ==========================================
         { code: '4010', name: 'Consultation Fees', type_id: 'type-revenue' },
         { code: '4020', name: 'Laboratory / Diagnostic Income', type_id: 'type-revenue' },
+         { code: '4030', name: 'Medicine / Pharmacy Sales', type_id: 'type-revenue' },
+        { code: '4040', name: 'Medical Certificate Fees', type_id: 'type-revenue' },
 
         // ==========================================
         // 5000s - EXPENSES (Money spent to run the business)
