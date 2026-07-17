@@ -146,4 +146,55 @@ export class ReportsService {
             isEquationBalanced: totalAssets.toFixed(2) === totalLiabilitiesAndEquity.toFixed(2),
         };
     }
+
+    // ==========================================
+    // ---> NEW: SHIFT REPORT LOGIC ADDED HERE <---
+    // ==========================================
+    /**
+     * Generates an X-Reading / Shift Report for a specific cashier today.
+     */
+    static async getShiftReport(userId: string) {
+        // Get exact timestamps for the start and end of TODAY
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
+
+        // Fetch all entries created by THIS cashier, TODAY, from the POS
+        const entries = await prisma.journalEntry.findMany({
+            where: {
+                user_id: userId,
+                date: { gte: startOfDay, lte: endOfDay },
+                description: { startsWith: 'POS Billing' } // Filters out non-POS stuff
+            },
+            include: { lines: true }
+        });
+
+        let totalCash = 0;
+        let totalGCash = 0;
+        let totalHMO = 0;
+        let totalSales = 0;
+
+        // Loop through the lines to categorize the collections
+        entries.forEach(entry => {
+            entry.lines.forEach(line => {
+                const debit = Number(line.debit);
+                if (debit > 0) {
+                    if (line.account_id === '1020') totalCash += debit; // Petty Cash / Cash on Hand
+                    else if (line.account_id === '1010') totalGCash += debit; // Cash in Bank
+                    else if (line.account_id === '1200') totalHMO += debit; // Accounts Receivable
+                    
+                    totalSales += debit;
+                }
+            });
+        });
+
+        return {
+            transactionsCount: entries.length,
+            totalCash,
+            totalGCash,
+            totalHMO,
+            totalSales
+        };
+    }
 }

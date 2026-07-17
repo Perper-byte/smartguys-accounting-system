@@ -41,9 +41,7 @@ async function main() {
 
     // 2. Seed Standard Chart of Accounts (COA)
     const accounts = [
-        // ==========================================
-        // 1000s - ASSETS (What the clinic owns)
-        // ==========================================
+        // Assets
         { code: '1010', name: 'Cash in Bank', type_id: 'type-asset' },
         { code: '1020', name: 'Petty Cash Fund', type_id: 'type-asset' },
         { code: '1200', name: 'Accounts Receivable', type_id: 'type-asset' },
@@ -53,9 +51,7 @@ async function main() {
         { code: '1500', name: 'Medical Equipment', type_id: 'type-asset' },
         { code: '1501', name: 'Accumulated Depreciation', type_id: 'type-asset' },
 
-        // ==========================================
-        // 2000s - LIABILITIES (What the clinic owes)
-        // ==========================================
+        // Liabilities
         { code: '2010', name: 'Accounts Payable', type_id: 'type-liability' },
         { code: '2020', name: 'Output VAT', type_id: 'type-liability' },
         { code: '2030', name: 'VAT Payable', type_id: 'type-liability' },
@@ -63,23 +59,17 @@ async function main() {
         { code: '2050', name: 'Expanded Withholding Tax (EWT) Payable', type_id: 'type-liability' },
         { code: '2100', name: 'Bank Loans Payable', type_id: 'type-liability' },
 
-        // ==========================================
-        // 3000s - EQUITY (Owner's worth in  the business)
-        // ==========================================
+        // Equity
         { code: '3010', name: 'Owner\'s Capital', type_id: 'type-equity' },
         { code: '3020', name: 'Owner\'s Drawings', type_id: 'type-equity' },
 
-        // ==========================================
-        // 4000s - REVENUE (Money earned)
-        // ==========================================
+        // Revenue
         { code: '4010', name: 'Consultation Fees', type_id: 'type-revenue' },
         { code: '4020', name: 'Laboratory / Diagnostic Income', type_id: 'type-revenue' },
-         { code: '4030', name: 'Medicine / Pharmacy Sales', type_id: 'type-revenue' },
+        { code: '4030', name: 'Medicine / Pharmacy Sales', type_id: 'type-revenue' },
         { code: '4040', name: 'Medical Certificate Fees', type_id: 'type-revenue' },
 
-        // ==========================================
-        // 5000s - EXPENSES (Money spent to run the business)
-        // ==========================================
+        // Expenses
         { code: '5010', name: 'Medical Supplies Expense', type_id: 'type-expense' },
         { code: '5020', name: 'Utilities Expense', type_id: 'type-expense' },
         { code: '5040', name: 'Rent Expense', type_id: 'type-expense' },
@@ -101,7 +91,6 @@ async function main() {
 
     // 3. Seed Default Users for testing
     const dummyAccountantPassword = 'password123';
-    // Standard SHA-256 hash matching our AuthService rules
     const crypto = require('crypto');
     const passwordHash = crypto.createHash('sha256').update(dummyAccountantPassword).digest('hex');
 
@@ -115,23 +104,51 @@ async function main() {
     for (const u of users) {
         await prisma.user.upsert({
             where: { username: u.username },
-            update: {
-                is_active: true // Ensures they are re-activated if seed is run again
-            },
+            update: { is_active: true },
             create: {
                 username: u.username,
                 password_hash: passwordHash,
                 role: u.role as any,
-                is_active: true, // <--- ADDED THIS HERE
+                is_active: true,
             },
         });
     }
 
     console.log('✅ ALL Users seeded (Passwords are all: password123)');
-    console.log('   - cashier');
-    console.log('   - accountant');
-    console.log('   - manager');
-    console.log('   - it_admin');
+
+    // =================================================================
+    // 4. ---> NEW: SEED THE INITIAL PETTY CASH FLOAT (₱2,000) <---
+    // =================================================================
+    
+    // Check if the opening entry already exists so we don't duplicate it
+    const openingEntryExists = await prisma.journalEntry.findFirst({
+        where: { reference_no: 'OPENING-FLOAT' }
+    });
+
+    if (!openingEntryExists) {
+        // Find the accountant user we just created to assign as the creator of this entry
+        const accountant = await prisma.user.findUnique({ where: { username: 'accountant' }});
+
+        if (accountant) {
+            await prisma.journalEntry.create({
+                data: {
+                    date: new Date(),
+                    reference_no: 'OPENING-FLOAT',
+                    description: 'Initial System Float and Capital Funding',
+                    vat_type: 'EXEMPT',
+                    user_id: accountant.id,
+                    lines: {
+                        create: [
+                            { account_id: '1020', debit: 2000, credit: 0 }, // Asset increases by 2000
+                            { account_id: '3010', debit: 0, credit: 2000 }  // Equity increases by 2000
+                        ]
+                    }
+                }
+            });
+            console.log('✅ Opening Balance recorded: ₱2,000 injected into Petty Cash (1020).');
+        }
+    }
+
     console.log('🌱 Database seeding completed successfully!');
 }
 

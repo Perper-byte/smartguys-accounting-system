@@ -1,4 +1,3 @@
-// src/preload/index.ts
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 
@@ -12,7 +11,6 @@ export const api = {
   toggleUserStatus: (userId: string, isActive: boolean) => ipcRenderer.invoke('toggle-user-status', userId, isActive),
   resetUserPassword: (userId: string, newPassword: string) => ipcRenderer.invoke('reset-user-password', userId, newPassword),
 
-  // Payee / Patient Functions
   getPayees: () => ipcRenderer.invoke('get-payees'),
   createPayee: (name) => ipcRenderer.invoke('create-payee', name),
   getPayeeBalance: (payeeId) => ipcRenderer.invoke('get-payee-balance', payeeId),
@@ -20,6 +18,9 @@ export const api = {
   getTrialBalance: () => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.TRIAL_BALANCE),
   getIncomeStatement: () => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.INCOME_STATEMENT),
   getBalanceSheet: () => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.BALANCE_SHEET),
+
+  getShiftReport: (userId: string) => ipcRenderer.invoke('get-shift-report', userId),
+  getPettyCashBalance: () => ipcRenderer.invoke('get-petty-cash-balance'),
 
   exportTrialBalanceExcel: () => ipcRenderer.invoke(IPC_CHANNELS.EXPORT.TRIAL_BALANCE_EXCEL),
   exportPDF: (filename) => ipcRenderer.invoke(IPC_CHANNELS.EXPORT.PRINT_PDF, filename),
@@ -31,13 +32,9 @@ export const api = {
 
   getAnalyticsMetrics: () => ipcRenderer.invoke(IPC_CHANNELS.ANALYTICS.GET_METRICS),
 
-  // ==========================================
-  // ---> NEW USER MANAGEMENT BRIDGES HERE <---
-  // ==========================================
   getUsers: () => ipcRenderer.invoke('get-users'),
   createUser: (userData) => ipcRenderer.invoke('create-user', userData),
 };
 
-// We expose it as BOTH so it doesn't break your old code, but allows the new code to work!
 contextBridge.exposeInMainWorld('electronAPI', api);
 contextBridge.exposeInMainWorld('api', api);

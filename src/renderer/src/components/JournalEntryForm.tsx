@@ -1,7 +1,5 @@
-// src/renderer/src/components/JournalEntryForm.tsx
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
-import { AddPatientForm } from './AddPatientForm'; 
 
 export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean }> = ({ userId, isAdjusting = false }) => {
     const [accounts, setAccounts] = useState<any[]>([]);
@@ -12,10 +10,14 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     const [vatType, setVatType] = useState('VATABLE'); 
     const [payees, setPayees] = useState<any[]>([]);
     const [payeeId, setPayeeId] = useState(''); 
-    const [showAddPatient, setShowAddPatient] = useState(false);
     
     const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
     const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
+    
+    // ---> NEW: States for the inline Add Payee form
+    const [showAddPayee, setShowAddPayee] = useState(false);
+    const [newPayeeName, setNewPayeeName] = useState('');
+    const [isSubmittingPayee, setIsSubmittingPayee] = useState(false);
     
     const [payeeBalance, setPayeeBalance] = useState<{receivable: number, payable: number} | null>(null);
     const [lines, setLines] = useState([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
@@ -45,10 +47,9 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         fetchBalance();
     }, [payeeId]);
 
-    // NEW: Group the accounts by their Type (Asset, Liability, etc.)
+    // Group the accounts by their Type (Asset, Liability, etc.)
     const groupedAccounts = useMemo(() => {
         return accounts.reduce((groups: any, acc: any) => {
-            // Get the name of the category (e.g. 'Asset'), default to 'Other' if missing
             const categoryName = acc.account_type?.name || 'Other';
             if (!groups[categoryName]) {
                 groups[categoryName] = [];
@@ -58,10 +59,31 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         }, {});
     }, [accounts]);
 
-    const handlePatientAdded = () => {
-        setShowAddPatient(false); 
-        const api = (window as any).electronAPI;
-        if (api && api.getPayees) api.getPayees().then(setPayees).catch(() => setPayees([]));
+    // ---> NEW: Function to instantly save a new Vendor/Doctor to the database
+    const handleCreatePayee = async () => {
+        if (!newPayeeName.trim()) return;
+        setIsSubmittingPayee(true);
+        try {
+            const api = (window as any).electronAPI;
+            await api.createPayee(newPayeeName);
+            
+            // Refresh the list from the database
+            const updatedPayees = await api.getPayees();
+            setPayees(updatedPayees);
+            
+            // Auto-select the newly created record
+            const newRecord = updatedPayees.find((p: any) => p.name.toLowerCase() === newPayeeName.toLowerCase());
+            if (newRecord) setPayeeId(newRecord.id);
+
+            setShowAddPayee(false);
+            setNewPayeeName('');
+            setStatus({ type: 'success', msg: `Successfully added ${newPayeeName} to the database!` });
+        } catch (error) {
+            console.error(error);
+            setStatus({ type: 'error', msg: "Failed to create new record." });
+        } finally {
+            setIsSubmittingPayee(false);
+        }
     };
 
     const addLine = () => setLines([...lines, { accountId: '', debit: 0, credit: 0 }]);
@@ -120,7 +142,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     };
 
     const filteredPayees = payees.filter(p => p.name.toLowerCase().includes(payeeSearchQuery.toLowerCase()));
-    const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- No Patient Tagged --';
+    const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- No Sub-Account Tagged --';
 
     return (
         <div className="max-w-4xl mx-auto bg-[#202024] border border-[#29292e] rounded-lg p-8 shadow-lg">
@@ -142,7 +164,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Reference No.</label>
-                    <input type="text" value={refNo} onChange={e => setRefNo(e.target.value)} placeholder="e.g. OR-1001" className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition" />
+                    <input type="text" value={refNo} onChange={e => setRefNo(e.target.value)} placeholder="e.g. JV-1001" className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition" />
                 </div>
                 <div>
                     <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">VAT Type</label>
@@ -161,13 +183,35 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
 
             <div className="mb-6 relative">
                 <div className="flex justify-between items-end mb-2">
-                    <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider">Patient / Payee (For Accounts Receivable/Payable)</label>
-                    <button type="button" onClick={() => setShowAddPatient(!showAddPatient)} className="text-xs font-bold text-[#4f46e5] hover:text-[#5b54f6] transition hover:underline">
-                        {showAddPatient ? 'Cancel' : '+ Add New Patient'}
+                    <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider">Vendor / Doctor / HMO (Subsidiary Tag)</label>
+                    
+                    {/* ---> THE NEW ADD BUTTON <--- */}
+                    <button type="button" onClick={() => setShowAddPayee(!showAddPayee)} className="text-xs font-bold text-[#4f46e5] hover:text-[#5b54f6] transition hover:underline">
+                        {showAddPayee ? 'Cancel' : '+ Add New Record'}
                     </button>
                 </div>
 
-                {showAddPatient && <AddPatientForm onPatientAdded={handlePatientAdded} />}
+                {/* ---> THE INLINE ADD FORM <--- */}
+                {showAddPayee && (
+                    <div className="mb-3 p-3 bg-[#121214] border border-[#4f46e5]/50 rounded-md flex gap-3 shadow-inner">
+                        <input 
+                            type="text" 
+                            placeholder="Enter Name (e.g., Metro Drug, Dr. Smith)"
+                            value={newPayeeName}
+                            onChange={e => setNewPayeeName(e.target.value)}
+                            className="flex-1 bg-transparent text-sm text-white outline-none placeholder-[#3f3f46]"
+                            autoFocus
+                        />
+                        <button 
+                            type="button"
+                            onClick={handleCreatePayee}
+                            disabled={isSubmittingPayee || !newPayeeName.trim()}
+                            className="bg-[#4f46e5] hover:bg-[#5b54f6] text-white text-xs font-bold px-4 py-2 rounded transition disabled:opacity-50"
+                        >
+                            {isSubmittingPayee ? 'Saving...' : 'Save to DB'}
+                        </button>
+                    </div>
+                )}
 
                 <div className="relative mt-2">
                     <div 
@@ -186,7 +230,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                 <input 
                                     type="text" 
                                     autoFocus
-                                    placeholder="🔍 Search patient name..." 
+                                    placeholder="🔍 Search vendor, doctor, or HMO..." 
                                     value={payeeSearchQuery}
                                     onChange={(e) => setPayeeSearchQuery(e.target.value)}
                                     className="w-full bg-transparent p-2 text-sm text-white outline-none placeholder-[#3f3f46]"
@@ -198,7 +242,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                     onClick={() => { setPayeeId(''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }}
                                     className="p-3 text-sm text-[#8d8d99] hover:bg-[#4f46e5] hover:text-white cursor-pointer transition"
                                 >
-                                    -- No Patient Tagged --
+                                    -- No Sub-Account Tagged --
                                 </li>
                                 {filteredPayees.length > 0 ? (
                                     filteredPayees.map(p => (
@@ -211,8 +255,8 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                         </li>
                                     ))
                                 ) : (
-                                    <li className="p-3 text-sm text-[#f75a68] text-center border-t border-[#29292e]/50">
-                                        No patients found. Click "+ Add New Patient".
+                                    <li className="p-3 text-sm text-gray-500 text-center border-t border-[#29292e]/50">
+                                        No records found. Click "+ Add New Record" above.
                                     </li>
                                 )}
                             </ul>
@@ -224,7 +268,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                     <div className="mt-3 flex gap-3 text-xs">
                         {payeeBalance.receivable > 0 && (
                             <span className="text-[#f75a68] font-bold bg-[#f75a68]/10 px-3 py-1.5 rounded border border-[#f75a68]/20 flex items-center shadow-sm">
-                                ⚠️ Patient owes you: ₱{payeeBalance.receivable.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                                ⚠️ They owe you: ₱{payeeBalance.receivable.toLocaleString(undefined, {minimumFractionDigits: 2})}
                             </span>
                         )}
                         {payeeBalance.payable > 0 && (
@@ -264,7 +308,6 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                         <select value={line.accountId} onChange={e => updateLine(idx, 'accountId', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none cursor-pointer appearance-none pr-6">
                                             <option value="" className="bg-[#121214] text-[#8d8d99]">Select Account...</option>
                                             
-                                            {/* CHANGED: This dynamically creates the Asset, Liability, Equity groups! */}
                                             {Object.entries(groupedAccounts).map(([category, accs]: any) => (
                                                 <optgroup key={category} label={`━━━ ${category.toUpperCase()} ━━━`} className="text-[#8d8d99] font-bold bg-[#121214]">
                                                     {accs.map((acc: any) => (

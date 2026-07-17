@@ -26,6 +26,23 @@ export const UserService = {
     return userWithoutPassword;
   },
 
+    async getPettyCashBalance() {
+    // Sum up all debits and credits for Petty Cash (1020)
+    const lines = await prisma.journalLine.findMany({
+      where: { account_id: '1020' },
+      select: {
+        debit: true,
+        credit: true,
+      }
+    });
+
+    const totalDebits = lines.reduce((sum, line) => sum + Number(line.debit), 0);
+    const totalCredits = lines.reduce((sum, line) => sum + Number(line.credit), 0);
+
+    // Asset Formula: Debit - Credit
+    return totalDebits - totalCredits;
+  },
+
   async getAllUsers() {
     // 4. Fetch all users for the table
     const users = await prisma.user.findMany({

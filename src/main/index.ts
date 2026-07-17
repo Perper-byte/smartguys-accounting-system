@@ -1,4 +1,3 @@
-// src/main/index.ts
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import { AnalyticsService } from './services/analytics.service';
 import { TaxService } from './services/tax.service';
@@ -6,11 +5,13 @@ import { BackupService } from './services/backup.service';
 import { ReportsService } from './services/reports.service';
 import { LedgerService } from './services/ledger.service';
 import { AuthService } from './services/auth.service';
-// ---> ADD THE USER SERVICE IMPORT HERE:
 import { UserService } from './services/user.service'; 
 
 import path from 'path';
 import { app, BrowserWindow, ipcMain } from 'electron';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -18,12 +19,11 @@ function createWindow() {
     height: 800,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
-      contextIsolation: true, // MANDATORY FOR SECURITY
+      contextIsolation: true, 
       nodeIntegration: false,
     },
   });
 
-  // LOAD THE REACT FRONTEND!
   const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
   if (devServerUrl) {
     mainWindow.loadURL(devServerUrl);
@@ -35,11 +35,6 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
 
-  //------------------------------------------
-  // IPC HANDLERS: React asks, Node.js answers
-  //------------------------------------------
-  
-  // Auth
   ipcMain.handle(IPC_CHANNELS.AUTH.LOGIN, async (event, username, password) => {
     try {
       const user = await AuthService.login(username, password);
@@ -49,9 +44,6 @@ app.whenReady().then(() => {
     }
   });
 
-  // ==========================================
-  // ---> NEW USER MANAGEMENT HANDLERS HERE <---
-  // ==========================================
   ipcMain.handle('create-user', async (event, userData) => {
     try {
       const newUser = await UserService.createUser(userData);
@@ -87,9 +79,25 @@ app.whenReady().then(() => {
       return { success: false, error: error.message };
     }
   });
-  // ==========================================
 
-  // Ledger
+  ipcMain.handle('get-petty-cash-balance', async () => {
+    try {
+      return await UserService.getPettyCashBalance();
+    } catch (error: any) {
+      console.error("Error fetching petty cash balance:", error);
+      return 0;
+    }
+  });
+
+  ipcMain.handle('get-shift-report', async (event, userId) => {
+    try {
+      return await ReportsService.getShiftReport(userId);
+    } catch (error: any) {
+      console.error(error);
+      return { error: error.message };
+    }
+  });
+
   ipcMain.handle(IPC_CHANNELS.LEDGER.GET_ACCOUNTS, async () => {
     try {
       return await LedgerService.getAccounts();
@@ -132,7 +140,6 @@ app.whenReady().then(() => {
     }
   });
 
-  // Reports
   ipcMain.handle(IPC_CHANNELS.REPORTS.TRIAL_BALANCE, async () => {
     try {
       return await ReportsService.getTrialBalance();
@@ -157,12 +164,10 @@ app.whenReady().then(() => {
     }
   });
 
-  // Backup
   ipcMain.handle(IPC_CHANNELS.BACKUP.TRIGGER, async () => {
     return await BackupService.executeBackup();
   });
 
-  // Tax
   ipcMain.handle(IPC_CHANNELS.TAX.GENERATE_2550Q, async (event, year, quarter) => {
     try {
       return await TaxService.generate2550Q(year, quarter);
@@ -179,7 +184,6 @@ app.whenReady().then(() => {
     }
   });
 
-  // Analytics
   ipcMain.handle(IPC_CHANNELS.ANALYTICS.GET_METRICS, async () => {
     try {
       return await AnalyticsService.getDashboardMetrics();
@@ -189,7 +193,6 @@ app.whenReady().then(() => {
   });
 })
 
-// Quit when all windows are close, except on macOS
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();

@@ -13,6 +13,8 @@ import { POSBillingView } from './components/POSBillingView';
 
 import UserManagementView from './components/UserManagementView';
 
+import { ReceivePaymentView } from './components/ReceivePaymentView';
+
 // DEFINE THE STRICT ROLE-BASED TABS 
 const ALL_TABS = [
   { id: 'billing', label: 'Patient Billing', icon: '💳', allowedRoles: ['CASHIER'] },
@@ -24,6 +26,7 @@ const ALL_TABS = [
   { id: 'statements', label: 'Financial Statements', icon: '📄', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'bir', label: 'BIR Tax Reports', icon: '🏛️', allowedRoles: ['MANAGER'] },
   { id: 'backup', label: 'Database Backup', icon: '💾', allowedRoles: ['IT_PERSONNEL'] },
+  { id: 'collections', label: 'Receive Payments', icon: '💰', allowedRoles: ['CASHIER', 'ACCOUNTANT', 'MANAGER'] },
   // ---> ADDED THE NEW USER MANAGEMENT TAB HERE:
   { id: 'users', label: 'User Management', icon: '👥', allowedRoles: ['IT_PERSONNEL'] },
 ];
@@ -165,6 +168,10 @@ function App(): React.ReactElement {
 
                {activeTab === 'billing' && (
                 <POSBillingView userId={currentUser.id} />
+              )}
+
+              {activeTab === 'collections' && (
+                <ReceivePaymentView userId={currentUser.id} />
               )}
 
               {/* ---> ADDED THE RENDER LOGIC FOR THE NEW TAB: */}
