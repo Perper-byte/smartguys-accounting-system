@@ -24,6 +24,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@prisma/client": "^6.19.3",
+    "bcrypt": "^6.0.0",
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.6",
     "ts-node": "^10.9.2"

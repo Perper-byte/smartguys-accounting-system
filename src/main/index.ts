@@ -5,10 +5,12 @@ import { TaxService } from './services/tax.service';
 import { BackupService } from './services/backup.service';
 import { ReportsService } from './services/reports.service';
 import { LedgerService } from './services/ledger.service';
-import path from 'path';
-import { app, BrowserWindow, ipcMain } from 'electron'
 import { AuthService } from './services/auth.service';
-import { main } from 'ts-node/dist/bin';
+// ---> ADD THE USER SERVICE IMPORT HERE:
+import { UserService } from './services/user.service'; 
+
+import path from 'path';
+import { app, BrowserWindow, ipcMain } from 'electron';
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -21,10 +23,7 @@ function createWindow() {
     },
   });
 
-  
-
   // LOAD THE REACT FRONTEND!
-  // In development, load the Vite dev server URL. In production, load the local compile HTMl file.
   const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
   if (devServerUrl) {
     mainWindow.loadURL(devServerUrl);
@@ -39,6 +38,7 @@ app.whenReady().then(() => {
   //------------------------------------------
   // IPC HANDLERS: React asks, Node.js answers
   //------------------------------------------
+  
   // Auth
   ipcMain.handle(IPC_CHANNELS.AUTH.LOGIN, async (event, username, password) => {
     try {
@@ -48,6 +48,46 @@ app.whenReady().then(() => {
       return { success: false, error: error.message };
     }
   });
+
+  // ==========================================
+  // ---> NEW USER MANAGEMENT HANDLERS HERE <---
+  // ==========================================
+  ipcMain.handle('create-user', async (event, userData) => {
+    try {
+      const newUser = await UserService.createUser(userData);
+      return { success: true, data: newUser };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('get-users', async () => {
+    try {
+      return await UserService.getAllUsers();
+    } catch (error: any) {
+      console.error(error);
+      return [];
+    }
+  });
+
+  ipcMain.handle('toggle-user-status', async (event, userId, isActive) => {
+    try {
+      await UserService.toggleUserStatus(userId, isActive);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle('reset-user-password', async (event, userId, newPassword) => {
+    try {
+      await UserService.resetPassword(userId, newPassword);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+  // ==========================================
 
   // Ledger
   ipcMain.handle(IPC_CHANNELS.LEDGER.GET_ACCOUNTS, async () => {
@@ -72,7 +112,6 @@ app.whenReady().then(() => {
     return await LedgerService.createPayee(name);
   });
 
-  
   ipcMain.handle('get-payee-balance', async (event, payeeId: string) => {
     return await LedgerService.getPayeeBalance(payeeId);
   });
