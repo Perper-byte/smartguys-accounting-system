@@ -21,7 +21,7 @@ function createWindow() {
     },
   });
 
-  
+
 
   // LOAD THE REACT FRONTEND!
   // In development, load the Vite dev server URL. In production, load the local compile HTMl file.
@@ -72,7 +72,7 @@ app.whenReady().then(() => {
     return await LedgerService.createPayee(name);
   });
 
-  
+
   ipcMain.handle('get-payee-balance', async (event, payeeId: string) => {
     return await LedgerService.getPayeeBalance(payeeId);
   });
@@ -141,9 +141,9 @@ app.whenReady().then(() => {
   });
 
   // Analytics
-  ipcMain.handle(IPC_CHANNELS.ANALYTICS.GET_METRICS, async () => {
+  ipcMain.handle(IPC_CHANNELS.ANALYTICS.GET_METRICS, async (event, timeframe: string) => {
     try {
-      return await AnalyticsService.getDashboardMetrics();
+      return await AnalyticsService.getDashboardMetrics(timeframe as any);
     } catch (error: any) {
       return { error: error.message };
     }

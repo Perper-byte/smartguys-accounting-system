@@ -1,16 +1,16 @@
 // src/renderer/src/App.tsx
-import { DashboardView } from './components/DashboardView';
-import { BIRReportsView } from './components/BIRReportsView';
-import { DatabaseBackupView } from './components/DatabaseBackupView';
-import { FinancialStatementsView } from './components/FinancialStatementsView';
-import { GeneralLedgerView } from './components/GeneralLedgerView';
-import { CashDisbursementForm } from './components/CashDisbursementForm';
-import { JournalEntryForm } from './components/JournalEntryForm';
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { LoginScreen } from "./components/LoginScreen";
+import { LoginScreen } from './components/LoginScreen';
+import { JournalEntryForm } from './components/JournalEntryForm';
+import { CashDisbursementForm } from './components/CashDisbursementForm';
+import { GeneralLedgerView } from './components/GeneralLedgerView';
+import { FinancialStatementsView } from './components/FinancialStatementsView';
+import { BIRReportsView } from './components/BIRReportsView';
+import { DatabaseBackupView } from './components/DatabaseBackupView';
+import { DashboardView } from './components/DashboardView';
 
-// DEFINE THE STRICT ROLE-BASED TABS 
+// DEFINE THE STRICT ROLE-BASED TABS
 const ALL_TABS = [
   { id: 'dashboard', label: 'Analytics Dashboard', icon: '📊', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'journal', label: 'Journal Entry', icon: '📝', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
@@ -26,13 +26,10 @@ function App(): React.ReactElement {
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string; role: string } | null>(null);
   const [activeTab, setActiveTab] = useState<string>('');
 
-  // FILTER TABS DYNAMICALLY
-  // When a user logs in, filter the tabs they are allowed to see
   const permittedTabs = currentUser
     ? ALL_TABS.filter(tab => tab.allowedRoles.includes(currentUser.role))
     : [];
 
-  // Automatically set the first permitted tab as the active tab upon login
   useEffect(() => {
     if (currentUser && permittedTabs.length > 0 && !permittedTabs.find(t => t.id === activeTab)) {
       setActiveTab(permittedTabs[0].id);
@@ -45,22 +42,22 @@ function App(): React.ReactElement {
   };
 
   if (!currentUser) {
-    return <LoginScreen onLoginSuccess={(user) => setCurrentUser(user)} />
+    return <LoginScreen onLoginSuccess={(user) => setCurrentUser(user)} />;
   }
 
   return (
-    <div className="flex h-screen bg-[#121214] text-[#e1e1e6] overflow-hidden">
+    <div className="flex h-screen bg-[#FBF8F8] text-gray-800 overflow-hidden font-sans">
 
       {/* PERSISTENT LEFT SIDEBAR */}
-      <aside className="w-64 bg-[#202024] border-r border-[#29292e] flex flex-col justify-between">
+      <aside className="w-64 bg-white border-r border-[#B0DCDA] flex flex-col justify-between shadow-sm z-10">
         <div>
           {/* Logo & Title branding */}
-          <div className="p-6 border-b border-[#29292e]">
+          <div className="p-6 border-b border-[#B0DCDA]">
             <div className="flex items-center space-x-3">
-              <div className="h-8 w-8 rounded-full bg-[#4f46e5] flex items-center justify-center font-bold text-white">S</div>
-              <span className="font-bold tracking-wide text-white">SmartGuys Clinic</span>
+              <div className="h-8 w-8 rounded-lg bg-[#1B9387] flex items-center justify-center font-bold text-white shadow-sm">S</div>
+              <span className="font-extrabold tracking-wide text-gray-800">SmartGuys Clinic</span>
             </div>
-            <p className="text-[10px] text-[#7c7c8a] mt-1 font-medium tracking-wider uppercase">Accounting System</p>
+            <p className="text-[10px] text-gray-500 mt-1 font-bold tracking-wider uppercase">Accounting System</p>
           </div>
 
           {/* Navigation Links (FILTERED BY ROLE) */}
@@ -69,12 +66,12 @@ function App(): React.ReactElement {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-md text-sm font-medium transition ${activeTab === tab.id
-                  ? 'bg-[#4f46e5] text-white shadow-md'
-                  : 'text-[#8d8d99] hover:bg-[#29292e] hover:text-white'
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-md text-sm font-bold transition ${activeTab === tab.id
+                    ? 'bg-[#1B9387] text-white shadow-md'
+                    : 'text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387]'
                   }`}
               >
-                <span>{tab.icon}</span>
+                <span className={activeTab === tab.id ? 'opacity-100' : 'opacity-70'}>{tab.icon}</span>
                 <span>{tab.label}</span>
               </button>
             ))}
@@ -82,16 +79,15 @@ function App(): React.ReactElement {
         </div>
 
         {/* User profile footer */}
-        <div className="p-4 border-t border-[#29292e] bg-[#121214]/50 flex items-center justify-between">
+        <div className="p-4 border-t border-[#B0DCDA] bg-gray-50 flex items-center justify-between">
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-white truncate">{currentUser.username}</p>
-            {/* Added proper rendering of the role */}
-            <p className="text-[10px] text-[#8d8d99] uppercase font-bold tracking-wide">{currentUser.role}</p>
+            <p className="text-sm font-bold text-gray-800 truncate">{currentUser.username}</p>
+            <p className="text-[10px] text-[#28958B] uppercase font-extrabold tracking-widest">{currentUser.role}</p>
           </div>
           <button
             onClick={handleLogout}
             title="Log out of system"
-            className="p-2 text-red-400 hover:text-red-500 hover:bg-red-500/10 rounded transition"
+            className="p-2 text-red-400 hover:text-white hover:bg-red-500 rounded transition"
           >
             🚪
           </button>
@@ -99,68 +95,46 @@ function App(): React.ReactElement {
       </aside>
 
       {/* MAIN CONTAINER AREA */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-hidden relative">
 
         {/* TOP STATUS BAR */}
-        <header className="h-16 bg-[#202024] border-b border-[#29292e] flex items-center justify-between px-8">
-          <h2 className="text-lg font-bold text-white tracking-wide capitalize">
+        <header className="h-16 bg-white border-b border-[#B0DCDA] flex items-center justify-between px-8 shadow-sm z-0">
+          <h2 className="text-lg font-extrabold text-gray-800 tracking-wide capitalize">
             {permittedTabs.find(t => t.id === activeTab)?.label || 'Workspace'}
           </h2>
-          <div className="flex items-center space-x-4">
-            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            <span className="text-xs text-[#8d8d99] font-medium">Local Connection: Online</span>
+          <div className="flex items-center space-x-4 bg-[#E9FAFA] px-4 py-1.5 rounded-full border border-[#B0DCDA]">
+            <div className="h-2 w-2 rounded-full bg-[#1B9387] animate-pulse"></div>
+            <span className="text-xs text-[#1B9387] font-bold tracking-wide uppercase">Local Connection: Online</span>
           </div>
         </header>
 
         {/* WORKSPACE CONTENT PANELS */}
-        <main className="flex-1 p-8 overflow-y-auto bg-[#121214]">
+        <main className="flex-1 p-8 overflow-y-auto bg-[#FBF8F8]">
 
-          {/* Security Fallback: If user hacks UI state to force a tab they don't own */}
+          {/* Security Fallback */}
           {!permittedTabs.find(t => t.id === activeTab) ? (
-            <div className="p-6 bg-red-500/10 border border-red-500/30 rounded-lg text-center">
-              <h3 className="text-red-500 font-bold">⚠️ Access Denied</h3>
-              <p className="text-sm text-red-400 mt-1">
+            <div className="p-6 bg-red-50 border border-red-200 rounded-lg text-center shadow-sm">
+              <h3 className="text-red-600 font-bold text-lg">⚠️ Access Denied</h3>
+              <p className="text-sm text-red-500 mt-2 font-medium">
                 Your role ({currentUser.role}) does not have permission to view this module.
               </p>
             </div>
           ) : (
-            <>
-              { /* RENDER THE ACTIVE SCREEN */}
-              {activeTab === 'dashboard' && (
-                <DashboardView />
-              )}
-
-              {activeTab === 'journal' && (
-                <JournalEntryForm userId={currentUser.id} />
-              )}
-              {activeTab === 'adjusting' && (
-                <JournalEntryForm userId={currentUser.id} isAdjusting={true} />
-              )}
-
-              {activeTab === 'disbursement' && (
-                <CashDisbursementForm userId={currentUser.id} />
-              )}
-
-              {activeTab === 'ledger' && (
-                <GeneralLedgerView />
-              )}
-
-              {activeTab === 'statements' && (
-                <FinancialStatementsView />
-              )}
-
-              {activeTab === 'bir' && (
-                <BIRReportsView />
-              )}
-
-              {activeTab === 'backup' && (
-                <DatabaseBackupView />
-              )}
-            </>
+            <div className="animate-in fade-in duration-300">
+              {activeTab === 'dashboard' && <DashboardView />}
+              {activeTab === 'journal' && <JournalEntryForm userId={currentUser.id} />}
+              {activeTab === 'adjusting' && <JournalEntryForm userId={currentUser.id} isAdjusting={true} />}
+              {activeTab === 'disbursement' && <CashDisbursementForm userId={currentUser.id} />}
+              {activeTab === 'ledger' && <GeneralLedgerView />}
+              {activeTab === 'statements' && <FinancialStatementsView />}
+              {activeTab === 'bir' && <BIRReportsView />}
+              {activeTab === 'backup' && <DatabaseBackupView />}
+            </div>
           )}
         </main>
       </div>
     </div>
   );
 }
+
 export default App;

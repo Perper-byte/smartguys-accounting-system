@@ -26,7 +26,7 @@ export const api = {
   generate2550Q: (year, quarter) => ipcRenderer.invoke(IPC_CHANNELS.TAX.GENERATE_2550Q, year, quarter),
   generateRelief: (year, quarter) => ipcRenderer.invoke(IPC_CHANNELS.TAX.GENERATE_RELIEF, year, quarter),
 
-  getAnalyticsMetrics: () => ipcRenderer.invoke(IPC_CHANNELS.ANALYTICS.GET_METRICS)
+  getAnalyticsMetrics: (timeframe: string) => ipcRenderer.invoke(IPC_CHANNELS.ANALYTICS.GET_METRICS, timeframe),
 };
 
 contextBridge.exposeInMainWorld('electronAPI', api);
