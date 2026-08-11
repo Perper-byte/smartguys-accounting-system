@@ -1,23 +1,23 @@
 // src/renderer/src/components/JournalEntryForm.tsx
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
-import { AddPatientForm } from './AddPatientForm'; 
+import { AddPatientForm } from './AddPatientForm';
 
 export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean }> = ({ userId, isAdjusting = false }) => {
     const [accounts, setAccounts] = useState<any[]>([]);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [refNo, setRefNo] = useState(isAdjusting ? 'ADJ-' : '');
     const [description, setDescription] = useState(isAdjusting ? 'Adjusting Entry: ' : '');
-    
-    const [vatType, setVatType] = useState('VATABLE'); 
+
+    const [vatType, setVatType] = useState(isAdjusting ? 'EXEMPT' : 'VATABLE');
     const [payees, setPayees] = useState<any[]>([]);
-    const [payeeId, setPayeeId] = useState(''); 
+    const [payeeId, setPayeeId] = useState('');
     const [showAddPatient, setShowAddPatient] = useState(false);
-    
+
     const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
     const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
-    
-    const [payeeBalance, setPayeeBalance] = useState<{receivable: number, payable: number} | null>(null);
+
+    const [payeeBalance, setPayeeBalance] = useState<{ receivable: number, payable: number } | null>(null);
     const [lines, setLines] = useState([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
     const [status, setStatus] = useState<{ type: 'error' | 'success', msg: string } | null>(null);
     const [loading, setLoading] = useState(false);
@@ -45,10 +45,8 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         fetchBalance();
     }, [payeeId]);
 
-    // NEW: Group the accounts by their Type (Asset, Liability, etc.)
     const groupedAccounts = useMemo(() => {
         return accounts.reduce((groups: any, acc: any) => {
-            // Get the name of the category (e.g. 'Asset'), default to 'Other' if missing
             const categoryName = acc.account_type?.name || 'Other';
             if (!groups[categoryName]) {
                 groups[categoryName] = [];
@@ -59,7 +57,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     }, [accounts]);
 
     const handlePatientAdded = () => {
-        setShowAddPatient(false); 
+        setShowAddPatient(false);
         const api = (window as any).electronAPI;
         if (api && api.getPayees) api.getPayees().then(setPayees).catch(() => setPayees([]));
     };
@@ -75,7 +73,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     };
 
     const removeLine = (index: number) => {
-        if (lines.length <= 2) return; 
+        if (lines.length <= 2) return;
         const newLines = lines.filter((_, i) => i !== index);
         setLines(newLines);
     };
@@ -94,8 +92,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
             const result = await api.submitJournalEntry({
                 date: new Date(date),
                 referenceNo: refNo,
-                description,
-                vatType, 
+                description: isAdjusting ? description : `[${vatType}] ${description}`,
                 payeeId: payeeId === '' ? undefined : payeeId,
                 userId,
                 lines: validLines
@@ -103,11 +100,11 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
 
             if (result.success) {
                 setStatus({ type: 'success', msg: `Entry ${result.referenceNo} posted successfully!` });
-                setRefNo('');
-                setDescription('');
-                setVatType('VATABLE'); 
-                setPayeeId(''); 
-                setPayeeSearchQuery(''); 
+                setRefNo(isAdjusting ? 'ADJ-' : '');
+                setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
+                setVatType(isAdjusting ? 'EXEMPT' : 'VATABLE');
+                setPayeeId('');
+                setPayeeSearchQuery('');
                 setLines([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
             } else {
                 setStatus({ type: 'error', msg: result.error });
@@ -123,186 +120,258 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- No Patient Tagged --';
 
     return (
-        <div className="max-w-4xl mx-auto bg-[#202024] border border-[#29292e] rounded-lg p-8 shadow-lg">
-            <div className="flex justify-between items-center mb-6 border-b border-[#29292e] pb-4">
-                <h2 className="text-xl font-bold text-white tracking-wide">{isAdjusting ? 'Record Adjusting Entry' : 'New Journal Entry'}</h2>
-                <span className="bg-[#4f46e5]/20 text-[#4f46e5] text-xs px-3 py-1 rounded font-bold uppercase tracking-widest border border-[#4f46e5]/30">{isAdjusting ? 'Adjusting Journal' : 'General Journal'}</span>
+        <div className="max-w-5xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
+
+            {/* HEADER */}
+            <div className="flex justify-between items-center mb-6 border-b border-[#B0DCDA] pb-4">
+                <h2 className="text-xl font-extrabold text-gray-800 tracking-wide">
+                    {isAdjusting ? 'Record Adjusting Entry' : 'New Journal Entry'}
+                </h2>
+                <span className="bg-[#E9FAFA] text-[#1B9387] text-xs px-4 py-1.5 rounded-full font-bold uppercase tracking-widest border border-[#B0DCDA]">
+                    {isAdjusting ? 'Adjusting Journal' : 'General Journal'}
+                </span>
             </div>
 
+            {/* STATUS MESSAGE */}
             {status && (
-                <div className={`mb-6 p-4 rounded-md text-sm font-medium ${status.type === 'success' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}>
+                <div className={`mb-6 p-4 rounded-md text-sm font-bold ${status.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
                     {status.type === 'success' ? '✅ ' : '⚠️ '}{status.msg}
                 </div>
             )}
 
-            <div className="grid grid-cols-3 gap-6 mb-6">
+            {/* TOP ROW: Date, Ref, (VAT conditionally hidden) */}
+            <div className={`grid gap-6 mb-6 ${isAdjusting ? 'grid-cols-2' : 'grid-cols-3'}`}>
                 <div>
-                    <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Date</label>
-                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition" />
-                </div>
-                <div>
-                    <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Reference No.</label>
-                    <input type="text" value={refNo} onChange={e => setRefNo(e.target.value)} placeholder="e.g. OR-1001" className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition" />
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Date</label>
+                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
                 </div>
                 <div>
-                    <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">VAT Type</label>
-                    <div className="relative">
-                        <select value={vatType} onChange={e => setVatType(e.target.value)} className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 pr-10 text-sm text-white focus:border-[#4f46e5] outline-none transition appearance-none cursor-pointer">
-                            <option value="VATABLE">Vatable (12%)</option>
-                            <option value="EXEMPT">VAT-Exempt</option>
-                            <option value="ZERO_RATED">Zero-Rated (0%)</option>
-                        </select>
-                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-[#8d8d99]">
-                            <svg className="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div className="mb-6 relative">
-                <div className="flex justify-between items-end mb-2">
-                    <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider">Patient / Payee (For Accounts Receivable/Payable)</label>
-                    <button type="button" onClick={() => setShowAddPatient(!showAddPatient)} className="text-xs font-bold text-[#4f46e5] hover:text-[#5b54f6] transition hover:underline">
-                        {showAddPatient ? 'Cancel' : '+ Add New Patient'}
-                    </button>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Reference No.</label>
+                    <input type="text" value={refNo} onChange={e => setRefNo(e.target.value)} placeholder="e.g. OR-1001" className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-bold focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
                 </div>
 
-                {showAddPatient && <AddPatientForm onPatientAdded={handlePatientAdded} />}
-
-                <div className="relative mt-2">
-                    <div 
-                        onClick={() => setIsPayeeDropdownOpen(!isPayeeDropdownOpen)}
-                        className={`w-full bg-[#121214] border ${isPayeeDropdownOpen ? 'border-[#4f46e5]' : 'border-[#29292e]'} rounded-md p-3 text-sm text-white transition cursor-pointer flex justify-between items-center`}
-                    >
-                        <span className={payeeId ? 'text-white' : 'text-[#8d8d99]'}>{selectedPayeeName}</span>
-                        <svg className="w-4 h-4 text-[#8d8d99]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                        </svg>
-                    </div>
-
-                    {isPayeeDropdownOpen && (
-                        <div className="absolute z-20 w-full mt-1 bg-[#202024] border border-[#29292e] rounded-md shadow-2xl overflow-hidden">
-                            <div className="p-2 border-b border-[#29292e] bg-[#121214]">
-                                <input 
-                                    type="text" 
-                                    autoFocus
-                                    placeholder="🔍 Search patient name..." 
-                                    value={payeeSearchQuery}
-                                    onChange={(e) => setPayeeSearchQuery(e.target.value)}
-                                    className="w-full bg-transparent p-2 text-sm text-white outline-none placeholder-[#3f3f46]"
-                                />
+                {!isAdjusting && (
+                    <div>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">VAT Type</label>
+                        <div className="relative">
+                            <select value={vatType} onChange={e => setVatType(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 pr-10 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition appearance-none cursor-pointer">
+                                <option value="VATABLE">Vatable (12%)</option>
+                                <option value="EXEMPT">VAT-Exempt</option>
+                                <option value="ZERO_RATED">Zero-Rated (0%)</option>
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                                <svg className="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
                             </div>
-
-                            <ul className="max-h-48 overflow-y-auto">
-                                <li 
-                                    onClick={() => { setPayeeId(''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }}
-                                    className="p-3 text-sm text-[#8d8d99] hover:bg-[#4f46e5] hover:text-white cursor-pointer transition"
-                                >
-                                    -- No Patient Tagged --
-                                </li>
-                                {filteredPayees.length > 0 ? (
-                                    filteredPayees.map(p => (
-                                        <li 
-                                            key={p.id}
-                                            onClick={() => { setPayeeId(p.id); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }}
-                                            className="p-3 text-sm text-white hover:bg-[#4f46e5] cursor-pointer transition border-t border-[#29292e]/50"
-                                        >
-                                            {p.name}
-                                        </li>
-                                    ))
-                                ) : (
-                                    <li className="p-3 text-sm text-[#f75a68] text-center border-t border-[#29292e]/50">
-                                        No patients found. Click "+ Add New Patient".
-                                    </li>
-                                )}
-                            </ul>
                         </div>
-                    )}
-                </div>
-
-                {payeeBalance && (
-                    <div className="mt-3 flex gap-3 text-xs">
-                        {payeeBalance.receivable > 0 && (
-                            <span className="text-[#f75a68] font-bold bg-[#f75a68]/10 px-3 py-1.5 rounded border border-[#f75a68]/20 flex items-center shadow-sm">
-                                ⚠️ Patient owes you: ₱{payeeBalance.receivable.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                            </span>
-                        )}
-                        {payeeBalance.payable > 0 && (
-                            <span className="text-orange-400 font-bold bg-orange-400/10 px-3 py-1.5 rounded border border-orange-400/20 flex items-center shadow-sm">
-                                ⚠️ You owe supplier: ₱{payeeBalance.payable.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                            </span>
-                        )}
-                        {payeeBalance.receivable <= 0 && payeeBalance.payable <= 0 && (
-                            <span className="text-emerald-500 font-bold bg-emerald-500/10 px-3 py-1.5 rounded border border-emerald-500/20 flex items-center shadow-sm">
-                                ✅ Cleared / No outstanding balance
-                            </span>
-                        )}
                     </div>
                 )}
             </div>
 
-            <div className="mb-6">
-                <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Description / Memo</label>
-                <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Type transaction details here..." className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white h-20 resize-none focus:border-[#4f46e5] outline-none transition" />
+            {/* PAYEE & DESCRIPTION */}
+            <div className="mb-6 border-b border-[#B0DCDA] pb-6 relative">
+                {!isAdjusting && (
+                    <div className="mb-6">
+                        <div className="flex justify-between items-end mb-2">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Patient / Payee (For AR/AP)</label>
+                            <button type="button" onClick={() => setShowAddPatient(!showAddPatient)} className="text-xs font-bold text-[#1B9387] hover:text-[#28958B] transition hover:underline">
+                                {showAddPatient ? 'Cancel' : '+ Add New Patient'}
+                            </button>
+                        </div>
+
+                        {showAddPatient && <AddPatientForm onPatientAdded={handlePatientAdded} />}
+
+                        <div className="relative mt-2">
+                            <div
+                                onClick={() => setIsPayeeDropdownOpen(!isPayeeDropdownOpen)}
+                                className={`w-full bg-[#FBF8F8] border ${isPayeeDropdownOpen ? 'border-[#1B9387] ring-2 ring-[#E9FAFA]' : 'border-[#B0DCDA]'} rounded-md p-3 text-sm text-gray-800 transition cursor-pointer flex justify-between items-center`}
+                            >
+                                <span className={payeeId ? 'text-gray-800 font-medium' : 'text-gray-400'}>{selectedPayeeName}</span>
+                                <svg className="w-4 h-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                            </div>
+
+                            {isPayeeDropdownOpen && (
+                                <div className="absolute z-20 w-full mt-1 bg-white border border-[#B0DCDA] rounded-md shadow-xl overflow-hidden">
+                                    <div className="p-2 border-b border-[#B0DCDA] bg-gray-50">
+                                        <input
+                                            type="text"
+                                            autoFocus
+                                            placeholder="🔍 Search patient name..."
+                                            value={payeeSearchQuery}
+                                            onChange={(e) => setPayeeSearchQuery(e.target.value)}
+                                            className="w-full bg-transparent p-2 text-sm text-gray-800 outline-none placeholder-gray-400"
+                                        />
+                                    </div>
+
+                                    <ul className="max-h-48 overflow-y-auto">
+                                        <li
+                                            onClick={() => { setPayeeId(''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }}
+                                            className="p-3 text-sm text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition font-medium"
+                                        >
+                                            -- No Patient Tagged --
+                                        </li>
+                                        {filteredPayees.length > 0 ? (
+                                            filteredPayees.map(p => (
+                                                <li
+                                                    key={p.id}
+                                                    onClick={() => { setPayeeId(p.id); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }}
+                                                    className="p-3 text-sm text-gray-800 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-t border-gray-100 font-medium"
+                                                >
+                                                    {p.name}
+                                                </li>
+                                            ))
+                                        ) : (
+                                            <li className="p-3 text-sm text-red-500 text-center border-t border-gray-100">
+                                                No patients found. Click "+ Add New Patient".
+                                            </li>
+                                        )}
+                                    </ul>
+                                </div>
+                            )}
+                        </div>
+
+                        {payeeBalance && (
+                            <div className="mt-3 flex gap-3 text-xs">
+                                {payeeBalance.receivable > 0 && (
+                                    <span className="text-red-600 font-bold bg-red-50 px-3 py-1.5 rounded border border-red-200 flex items-center shadow-sm">
+                                        ⚠️ Patient owes you: ₱{payeeBalance.receivable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </span>
+                                )}
+                                {payeeBalance.payable > 0 && (
+                                    <span className="text-amber-600 font-bold bg-amber-50 px-3 py-1.5 rounded border border-amber-200 flex items-center shadow-sm">
+                                        ⚠️ You owe supplier: ₱{payeeBalance.payable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    </span>
+                                )}
+                                {payeeBalance.receivable <= 0 && payeeBalance.payable <= 0 && (
+                                    <span className="text-[#1B9387] font-bold bg-[#E9FAFA] px-3 py-1.5 rounded border border-[#B0DCDA] flex items-center shadow-sm">
+                                        ✅ Cleared / No outstanding balance
+                                    </span>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                <div>
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Description / Memo</label>
+                    <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Type transaction details here..." className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 h-20 resize-none font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
+                </div>
             </div>
 
-            <div className="border border-[#29292e] rounded-md bg-[#121214] overflow-hidden mb-4">
+            {/* TRANSACTION LINES TABLE (Updated Column Dividers & Focus States!) */}
+            <div className="border border-[#B0DCDA] rounded-md bg-white overflow-hidden mb-6 shadow-sm">
                 <table className="w-full">
-                    <thead className="bg-[#202024] border-b border-[#29292e]">
-                        <tr className="text-left text-[#8d8d99] text-xs uppercase tracking-wider">
-                            <th className="p-3 w-1/2">Account</th>
-                            <th className="p-3 w-1/4 text-right">Debit</th>
-                            <th className="p-3 w-1/4 text-right">Credit</th>
-                            <th className="p-3 w-10"></th>
+                    <thead className="bg-gray-50 border-b border-[#B0DCDA]">
+                        <tr className="text-left text-gray-500 text-xs uppercase tracking-wider">
+                            {/* UPDATED: Darkened vertical column divider border-r border-[#B0DCDA] */}
+                            <th className="p-3 pl-4 w-1/2 font-extrabold border-r border-[#B0DCDA]">Account</th>
+                            <th className="p-3 w-1/4 text-right font-extrabold border-r border-[#B0DCDA]">Debit</th>
+                            <th className="p-3 w-1/4 text-right font-extrabold border-r border-[#B0DCDA]">Credit</th>
+                            <th className="p-3 w-12"></th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody className="divide-y divide-gray-100">
                         {lines.map((line, idx) => (
-                            <tr key={idx} className="border-b border-[#29292e]/50 last:border-0 hover:bg-[#202024]/50 transition">
-                                <td className="p-2 border-r border-[#29292e]/50">
+                            <tr key={idx} className="even:bg-gray-50 odd:bg-white hover:bg-[#E9FAFA]/50 transition">
+                                {/* ACCOUNT COLUMN WITH STRONGER DIVIDER */}
+                                <td className="p-2 pl-4 border-r border-[#B0DCDA]">
                                     <div className="relative">
-                                        <select value={line.accountId} onChange={e => updateLine(idx, 'accountId', e.target.value)} className="w-full bg-transparent text-sm text-white outline-none cursor-pointer appearance-none pr-6">
-                                            <option value="" className="bg-[#121214] text-[#8d8d99]">Select Account...</option>
-                                            
-                                            {/* CHANGED: This dynamically creates the Asset, Liability, Equity groups! */}
+                                        <select
+                                            value={line.accountId}
+                                            onChange={e => updateLine(idx, 'accountId', e.target.value)}
+                                            className="w-full bg-transparent text-sm text-gray-800 outline-none cursor-pointer appearance-none pr-6 font-medium focus:ring-2 focus:ring-[#1B9387]/30 focus:border-[#1B9387] rounded py-1 transition-all"
+                                        >
+                                            <option value="" className="text-gray-400">Select Account...</option>
+
                                             {Object.entries(groupedAccounts).map(([category, accs]: any) => (
-                                                <optgroup key={category} label={`━━━ ${category.toUpperCase()} ━━━`} className="text-[#8d8d99] font-bold bg-[#121214]">
+                                                <optgroup key={category} label={`━━━ ${category.toUpperCase()} ━━━`} className="text-gray-400 font-bold bg-white">
                                                     {accs.map((acc: any) => (
-                                                        <option key={acc.code} value={acc.code} className="bg-[#202024] text-white font-normal">
+                                                        <option key={acc.code} value={acc.code} className="bg-white text-gray-800 font-normal">
                                                             {acc.code} - {acc.name}
                                                         </option>
                                                     ))}
                                                 </optgroup>
                                             ))}
-
                                         </select>
-                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-[#8d8d99]">
+                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400">
                                             <svg className="w-3 h-3 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
                                         </div>
                                     </div>
                                 </td>
-                                <td className="p-2 border-r border-[#29292e]/50"><input type="number" min="0" step="0.01" value={line.debit === 0 ? '' : line.debit} placeholder="0.00" onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-sm text-right text-white outline-none placeholder-[#3f3f46]" /></td>
-                                <td className="p-2 border-r border-[#29292e]/50"><input type="number" min="0" step="0.01" value={line.credit === 0 ? '' : line.credit} placeholder="0.00" onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-sm text-right text-white outline-none placeholder-[#3f3f46]" /></td>
-                                <td className="p-2 text-center"><button onClick={() => removeLine(idx)} disabled={lines.length <= 2} className="text-[#f75a68] hover:text-red-400 disabled:opacity-20 transition" title="Remove Line">✕</button></td>
+
+                                {/* DEBIT INPUT WITH TEAL FOCUS RING & DARKER PLACEHOLDER */}
+                                <td className="p-2 border-r border-[#B0DCDA]">
+                                    <div className="relative flex items-center">
+                                        <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={line.debit === 0 ? '' : line.debit}
+                                            placeholder="0.00"
+                                            onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)}
+                                            className="w-full bg-transparent pl-8 pr-2 py-1.5 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-400 focus:ring-2 focus:ring-[#1B9387]/30 focus:border-[#1B9387] focus:bg-white rounded transition-all"
+                                        />
+                                    </div>
+                                </td>
+
+                                {/* CREDIT INPUT WITH TEAL FOCUS RING & DARKER PLACEHOLDER */}
+                                <td className="p-2 border-r border-[#B0DCDA]">
+                                    <div className="relative flex items-center">
+                                        <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
+                                        <input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={line.credit === 0 ? '' : line.credit}
+                                            placeholder="0.00"
+                                            onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)}
+                                            className="w-full bg-transparent pl-8 pr-2 py-1.5 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-400 focus:ring-2 focus:ring-[#1B9387]/30 focus:border-[#1B9387] focus:bg-white rounded transition-all"
+                                        />
+                                    </div>
+                                </td>
+
+                                <td className="p-2 text-center">
+                                    <button onClick={() => removeLine(idx)} disabled={lines.length <= 2} className="text-red-400 hover:text-red-600 disabled:opacity-20 transition" title="Remove Line">✕</button>
+                                </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
             </div>
 
+            {/* FOOTER & MATH VALIDATION */}
             <div className="flex justify-between items-end mt-6">
-                <button onClick={addLine} className="text-[#4f46e5] text-sm font-bold hover:underline bg-[#4f46e5]/10 px-4 py-2 rounded transition">+ Add Line</button>
-                <div className="text-right bg-[#121214] p-4 rounded-md border border-[#29292e] min-w-[250px]">
-                    <div className="flex justify-between text-sm mb-1"><span className="text-[#8d8d99] font-medium">Total Debits:</span><span className="text-white font-mono">₱ {totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                    <div className="flex justify-between text-sm"><span className="text-[#8d8d99] font-medium">Total Credits:</span><span className="text-white font-mono">₱ {totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
-                    <div className="mt-3 pt-2 border-t border-[#29292e]">
-                        {isBalanced ? <span className="text-emerald-500 text-xs font-bold uppercase tracking-widest flex items-center justify-end">✓ Balanced</span> : <span className="text-[#f75a68] text-xs font-bold uppercase tracking-widest flex items-center justify-end">Out of Balance</span>}
+                <button onClick={addLine} className="text-[#1B9387] text-sm font-bold hover:bg-[#E9FAFA] px-5 py-2.5 rounded-md transition border border-transparent hover:border-[#B0DCDA] shadow-sm">
+                    + Add Line
+                </button>
+
+                <div className="text-right bg-[#E9FAFA] p-5 rounded-md border border-[#B0DCDA] min-w-[300px] shadow-sm">
+                    <div className="flex justify-between text-sm mb-2">
+                        <span className="text-gray-500 font-extrabold uppercase tracking-wider">Total Debits:</span>
+                        <span className="text-gray-800 font-mono font-bold">₱ {totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                        <span className="text-gray-500 font-extrabold uppercase tracking-wider">Total Credits:</span>
+                        <span className="text-gray-800 font-mono font-bold">₱ {totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    </div>
+                    <div className="mt-4 pt-3 border-t border-[#B0DCDA]">
+                        {isBalanced ? (
+                            <span className="text-[#1B9387] text-sm font-extrabold uppercase tracking-widest flex items-center justify-end">✓ Balanced</span>
+                        ) : (
+                            <span className="text-red-500 text-sm font-extrabold uppercase tracking-widest flex items-center justify-end">Out of Balance</span>
+                        )}
                     </div>
                 </div>
             </div>
 
-            <button disabled={!isBalanced || !refNo || loading} onClick={handleSubmit} className="w-full mt-8 bg-[#4f46e5] disabled:bg-[#29292e] disabled:text-[#8d8d99] text-white font-bold py-4 rounded-md transition hover:bg-[#5b54f6] uppercase tracking-widest shadow-lg">
-                {loading ? 'Processing...' : 'Post Journal Entry'}
+            <button
+                disabled={!isBalanced || !refNo || loading}
+                onClick={handleSubmit}
+                className="w-full mt-8 bg-[#1B9387] disabled:bg-gray-200 disabled:text-gray-500 disabled:shadow-none text-white font-bold py-4 rounded-md transition hover:bg-[#28958B] uppercase tracking-widest shadow-md flex justify-center items-center"
+            >
+                {loading ? 'Processing...' : (isAdjusting ? 'Post Adjusting Entry' : 'Post Journal Entry')}
             </button>
         </div>
     );

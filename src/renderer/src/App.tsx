@@ -9,6 +9,7 @@ import { FinancialStatementsView } from './components/FinancialStatementsView';
 import { BIRReportsView } from './components/BIRReportsView';
 import { DatabaseBackupView } from './components/DatabaseBackupView';
 import { DashboardView } from './components/DashboardView';
+import logoImage from './assets/smartguys_logo.jpg';
 
 // DEFINE THE STRICT ROLE-BASED TABS
 const ALL_TABS = [
@@ -54,10 +55,13 @@ function App(): React.ReactElement {
           {/* Logo & Title branding */}
           <div className="p-6 border-b border-[#B0DCDA]">
             <div className="flex items-center space-x-3">
-              <div className="h-8 w-8 rounded-lg bg-[#1B9387] flex items-center justify-center font-bold text-white shadow-sm">S</div>
-              <span className="font-extrabold tracking-wide text-gray-800">SmartGuys Clinic</span>
+              {/* Actual Clinic Logo */}
+              <img src={logoImage} alt="Clinic Logo" className="h-10 w-10 object-contain drop-shadow-sm" />
+
+              {/* Clinic Name */}
+              <span className="font-extrabold tracking-wide text-gray-800 text-lg">SmartGuys Clinic</span>
             </div>
-            <p className="text-[10px] text-gray-500 mt-1 font-bold tracking-wider uppercase">Accounting System</p>
+            {/* The "Accounting System" text has been removed! */}
           </div>
 
           {/* Navigation Links (FILTERED BY ROLE) */}
@@ -67,8 +71,8 @@ function App(): React.ReactElement {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={`w-full flex items-center space-x-3 px-4 py-3 rounded-md text-sm font-bold transition ${activeTab === tab.id
-                    ? 'bg-[#1B9387] text-white shadow-md'
-                    : 'text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387]'
+                  ? 'bg-[#1B9387] text-white shadow-md'
+                  : 'text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387]'
                   }`}
               >
                 <span className={activeTab === tab.id ? 'opacity-100' : 'opacity-70'}>{tab.icon}</span>
