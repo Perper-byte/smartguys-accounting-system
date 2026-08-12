@@ -5,10 +5,11 @@ import { TaxService } from './services/tax.service';
 import { BackupService } from './services/backup.service';
 import { ReportsService } from './services/reports.service';
 import { LedgerService } from './services/ledger.service';
+import { ExportService } from './services/export.service'; // <-- ADDED EXPORT SERVICE
 import path from 'path';
-import { app, BrowserWindow, ipcMain } from 'electron'
 import { AuthService } from './services/auth.service';
-import { main } from 'ts-node/dist/bin';
+import * as fs from 'fs';
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -18,13 +19,11 @@ function createWindow() {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true, // MANDATORY FOR SECURITY
       nodeIntegration: false,
+      sandbox: false
     },
   });
 
-
-
   // LOAD THE REACT FRONTEND!
-  // In development, load the Vite dev server URL. In production, load the local compile HTMl file.
   const devServerUrl = process.env['ELECTRON_RENDERER_URL'];
   if (devServerUrl) {
     mainWindow.loadURL(devServerUrl);
@@ -72,7 +71,6 @@ app.whenReady().then(() => {
     return await LedgerService.createPayee(name);
   });
 
-
   ipcMain.handle('get-payee-balance', async (event, payeeId: string) => {
     return await LedgerService.getPayeeBalance(payeeId);
   });
@@ -118,6 +116,42 @@ app.whenReady().then(() => {
     }
   });
 
+  // 🚀 EXPORTERS (PDF & EXCEL) - ADDED THIS ENTIRE SECTION!
+  ipcMain.handle(IPC_CHANNELS.EXPORT.TRIAL_BALANCE_EXCEL, async () => {
+    try {
+      return await ExportService.exportTrialBalanceToExcel();
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.EXPORT.PRINT_PDF, async (event, filename: string) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return { success: false, error: 'Window not found' };
+
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Save PDF Report',
+      defaultPath: filename,
+      filters: [{ name: 'PDF Documents', extensions: ['pdf'] }]
+    });
+
+    if (!filePath) return { success: false, error: 'Export cancelled' };
+
+    try {
+      const data = await win.webContents.printToPDF({
+        margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 }, // Margins in inches
+        printBackground: true,
+        pageSize: 'A4',
+        landscape: false
+      });
+
+      fs.writeFileSync(filePath, data);
+      return { success: true, filePath };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  });
+
   // Backup
   ipcMain.handle(IPC_CHANNELS.BACKUP.TRIGGER, async () => {
     return await BackupService.executeBackup();
@@ -148,9 +182,9 @@ app.whenReady().then(() => {
       return { error: error.message };
     }
   });
-})
+});
 
-// Quit when all windows are close, except on macOS
+// Quit when all windows are closed, except on macOS
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();

@@ -1,32 +1,66 @@
 // src/preload/index.ts
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS } from '../shared/ipc-channels';
 
-export const api = {
-  login: (username, password) => ipcRenderer.invoke(IPC_CHANNELS.AUTH.LOGIN, username, password),
+const api = {
+  // Authentication
+  login: (username: string, password: string) =>
+    ipcRenderer.invoke('auth:login', username, password),
 
-  getAccounts: () => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.GET_ACCOUNTS),
-  submitJournalEntry: (entryData) => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.SUBMIT_ENTRY, entryData),
-  getAccountLedger: (accountId) => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.GET_LEDGER, accountId),
+  // Ledger & Accounts
+  getAccounts: () =>
+    ipcRenderer.invoke('ledger:getAccounts'),
 
-  // Payee / Patient Functions
-  getPayees: () => ipcRenderer.invoke('get-payees'),
-  createPayee: (name) => ipcRenderer.invoke('create-payee', name),
-  getPayeeBalance: (payeeId) => ipcRenderer.invoke('get-payee-balance', payeeId), // <-- NEW
+  submitJournalEntry: (entryData: any) =>
+    ipcRenderer.invoke('ledger:submitEntry', entryData),
 
-  getTrialBalance: () => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.TRIAL_BALANCE),
-  getIncomeStatement: () => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.INCOME_STATEMENT),
-  getBalanceSheet: () => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.BALANCE_SHEET),
+  getAccountLedger: (accountId: string) =>
+    ipcRenderer.invoke('ledger:getAccountLedger', accountId),
 
-  exportTrialBalanceExcel: () => ipcRenderer.invoke(IPC_CHANNELS.EXPORT.TRIAL_BALANCE_EXCEL),
-  exportPDF: (filename) => ipcRenderer.invoke(IPC_CHANNELS.EXPORT.PRINT_PDF, filename),
+  getPayees: () =>
+    ipcRenderer.invoke('get-payees'),
 
-  triggerBackup: () => ipcRenderer.invoke(IPC_CHANNELS.BACKUP.TRIGGER),
+  createPayee: (name: string) =>
+    ipcRenderer.invoke('create-payee', name),
 
-  generate2550Q: (year, quarter) => ipcRenderer.invoke(IPC_CHANNELS.TAX.GENERATE_2550Q, year, quarter),
-  generateRelief: (year, quarter) => ipcRenderer.invoke(IPC_CHANNELS.TAX.GENERATE_RELIEF, year, quarter),
+  getPayeeBalance: (payeeId: string) =>
+    ipcRenderer.invoke('get-payee-balance', payeeId),
 
-  getAnalyticsMetrics: (timeframe: string) => ipcRenderer.invoke(IPC_CHANNELS.ANALYTICS.GET_METRICS, timeframe),
+  // Financial Reports
+  getTrialBalance: () =>
+    ipcRenderer.invoke('reports:getTrialBalance'),
+
+  getIncomeStatement: () =>
+    ipcRenderer.invoke('reports:getIncomeStatement'),
+
+  getBalanceSheet: () =>
+    ipcRenderer.invoke('reports:getBalanceSheet'),
+
+  // Exporters
+  exportTrialBalanceExcel: () =>
+    ipcRenderer.invoke('export:trialBalanceExcel'),
+
+  exportPDF: (filename: string) =>
+    ipcRenderer.invoke('export:printToPDF', filename),
+
+  // Backups
+  triggerBackup: () =>
+    ipcRenderer.invoke('backup:triggerBackup'),
+
+  // Tax Compliance
+  generate2550Q: (year: number, quarter: number) =>
+    ipcRenderer.invoke('tax:generate2550Q', year, quarter),
+
+  generateRelief: (year: number, quarter: number) =>
+    ipcRenderer.invoke('tax:generateRelief', year, quarter),
+
+  // Analytics
+  getAnalyticsMetrics: (timeframe: string) =>
+    ipcRenderer.invoke('analytics:getMetrics', timeframe),
 };
 
-contextBridge.exposeInMainWorld('electronAPI', api);
+// Expose the API safely to React window object
+try {
+  contextBridge.exposeInMainWorld('electronAPI', api);
+} catch (error) {
+  console.error('Failed to expose electronAPI in preload:', error);
+}

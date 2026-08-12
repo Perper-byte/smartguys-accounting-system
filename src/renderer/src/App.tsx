@@ -47,10 +47,10 @@ function App(): React.ReactElement {
   }
 
   return (
-    <div className="flex h-screen bg-[#FBF8F8] text-gray-800 overflow-hidden font-sans">
+    <div className="flex h-screen bg-[#FBF8F8] text-gray-800 overflow-hidden font-sans print:block print:h-auto print:bg-white">
 
       {/* PERSISTENT LEFT SIDEBAR */}
-      <aside className="w-64 bg-white border-r border-[#B0DCDA] flex flex-col justify-between shadow-sm z-10">
+      <aside className="no-print w-64 bg-white border-r border-[#B0DCDA] flex flex-col justify-between shadow-sm z-10">
         <div>
           {/* Logo & Title branding */}
           <div className="p-6 border-b border-[#B0DCDA]">
@@ -99,10 +99,10 @@ function App(): React.ReactElement {
       </aside>
 
       {/* MAIN CONTAINER AREA */}
-      <div className="flex-1 flex flex-col overflow-hidden relative">
+      <div className="flex-1 flex flex-col overflow-hidden relative print:block print:overflow-visible">
 
         {/* TOP STATUS BAR */}
-        <header className="h-16 bg-white border-b border-[#B0DCDA] flex items-center justify-between px-8 shadow-sm z-0">
+        <header className="no-print h-16 bg-white border-b border-[#B0DCDA] flex items-center justify-between px-8 shadow-sm z-0">
           <h2 className="text-lg font-extrabold text-gray-800 tracking-wide capitalize">
             {permittedTabs.find(t => t.id === activeTab)?.label || 'Workspace'}
           </h2>
@@ -113,7 +113,7 @@ function App(): React.ReactElement {
         </header>
 
         {/* WORKSPACE CONTENT PANELS */}
-        <main className="flex-1 p-8 overflow-y-auto bg-[#FBF8F8]">
+        <main className="flex-1 p-8 overflow-y-auto bg-[#FBF8F8] print:p-0 print:bg-white print:block print:overflow-visible">
 
           {/* Security Fallback */}
           {!permittedTabs.find(t => t.id === activeTab) ? (

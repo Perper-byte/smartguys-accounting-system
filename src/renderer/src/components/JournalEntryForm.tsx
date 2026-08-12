@@ -120,7 +120,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- No Patient Tagged --';
 
     return (
-        <div className="max-w-5xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
+        <div className="w-full bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
 
             {/* HEADER */}
             <div className="flex justify-between items-center mb-6 border-b border-[#B0DCDA] pb-4">

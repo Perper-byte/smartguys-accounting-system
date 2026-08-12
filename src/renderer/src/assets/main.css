@@ -1,8 +1,64 @@
+/* src/renderer/src/assets/main.css */
 @import "tailwindcss";
 
 body {
   margin: 0;
-  background-color: #121214; /* Dark theme default background */
-  color: #e1e1e6;
+  background-color: #FBF8F8;
+  /* Light theme Snow White background */
+  color: #1f2937;
   font-family: system-ui, -apple-system, sans-serif;
+}
+
+/* PRINT STYLES FOR PDF GENERATION */
+@media print {
+
+  /* 1. THE BULLETPROOF HIDE CLASS */
+  .no-print {
+    display: none !important;
+  }
+
+  /* 2. Force exact background colors to print (Fixes the missing mint green boxes) */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* 3. Reset Electron full-screen layout wrappers so content flows onto paper */
+  #app,
+  div.flex.h-screen,
+  div.flex-1.flex.flex-col.overflow-hidden,
+  main {
+    height: auto !important;
+    min-height: auto !important;
+    overflow: visible !important;
+    display: block !important;
+    position: static !important;
+    background-color: #ffffff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* 4. Force body to clean white for ink-friendly printing */
+  html,
+  body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* 5. Stretch the report container full width and remove shadows */
+  .w-full,
+  .max-w-5xl {
+    max-width: 100% !important;
+    width: 100% !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* 6. Prevent flexbox containers from breaking onto new pages */
+  .flex {
+    display: flex !important;
+    page-break-inside: avoid !important;
+  }
 }
