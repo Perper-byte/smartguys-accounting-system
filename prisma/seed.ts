@@ -72,6 +72,7 @@ async function main() {
         // Expenses
         { code: '5010', name: 'Medical Supplies Expense', type_id: 'type-expense' },
         { code: '5020', name: 'Utilities Expense', type_id: 'type-expense' },
+        { code: '5030', name: 'Professional Fees Expense', type_id: 'type-expense' },
         { code: '5040', name: 'Rent Expense', type_id: 'type-expense' },
         { code: '5050', name: 'Depreciation Expense', type_id: 'type-expense' },
         { code: '5100', name: 'Salaries and Wages', type_id: 'type-expense' },

@@ -4,36 +4,81 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export class ReportsService {
-    /**
-     * Generates a Trial Balance: Lists all accounts with their net Debit or Credit balance.
-     */
-    static async getTrialBalance() {
+    
+    static async getTrialBalance(startDateStr?: string, endDateStr?: string) {
         const accounts = await prisma.account.findMany({
             include: { account_type: true },
         });
 
-        const trialBalanceLines = [];
+        const startDate = startDateStr ? new Date(startDateStr) : new Date(0);
+        if (startDateStr) startDate.setHours(0, 0, 0, 0);
+
+        const endDate = endDateStr ? new Date(endDateStr) : new Date();
+        if (endDateStr) endDate.setHours(23, 59, 59, 999);
+
+        const lines = await prisma.journalLine.findMany({
+            where: { entry: { date: { lte: endDate } } },
+            include: { entry: true }
+        });
+
+        let priorRevenue = 0;
+        let priorExpense = 0;
+
+        const tbMap: any = {};
+        for (const acc of accounts) {
+            tbMap[acc.code] = { ...acc, sumDebits: 0, sumCredits: 0 };
+        }
+
+        for (const line of lines) {
+            const acc = tbMap[line.account_id];
+            if (!acc) continue;
+            
+            const txDate = new Date(line.entry.date);
+            const isPrior = txDate < startDate;
+            const isRevenue = acc.account_type.name === 'Revenue';
+            const isExpense = acc.account_type.name === 'Expense';
+            
+            const debit = Number(line.debit);
+            const credit = Number(line.credit);
+
+            if (isPrior) {
+                if (isRevenue) priorRevenue += (credit - debit);
+                if (isExpense) priorExpense += (debit - credit);
+                if (!isRevenue && !isExpense) {
+                    acc.sumDebits += debit;
+                    acc.sumCredits += credit;
+                }
+            } else {
+                acc.sumDebits += debit;
+                acc.sumCredits += credit;
+            }
+        }
+
+        const priorNetIncome = priorRevenue - priorExpense;
+        if (priorNetIncome !== 0) {
+            const equityAccCode = accounts.find(a => a.account_type.name === 'Equity')?.code;
+            if (equityAccCode && tbMap[equityAccCode]) {
+                if (priorNetIncome > 0) tbMap[equityAccCode].sumCredits += priorNetIncome;
+                else tbMap[equityAccCode].sumDebits += Math.abs(priorNetIncome);
+            }
+        }
+
+        const trialBalanceLines: any[] = [];
         let totalDebits = 0;
         let totalCredits = 0;
 
-        for (const acc of accounts) {
-            const lines = await prisma.journalLine.findMany({
-                where: { account_id: acc.code },
-            });
-
-            const sumDebits = lines.reduce((sum, ln) => sum + Number(ln.debit), 0);
-            const sumCredits = lines.reduce((sum, ln) => sum + Number(ln.credit), 0);
-
+        for (const code in tbMap) {
+            const acc = tbMap[code];
             const normalBalance = acc.account_type.normal_balance;
             let netDebit = 0;
             let netCredit = 0;
 
             if (normalBalance === 'DEBIT') {
-                const net = sumDebits - sumCredits;
+                const net = acc.sumDebits - acc.sumCredits;
                 if (net > 0) netDebit = net;
                 else if (net < 0) netCredit = Math.abs(net);
             } else {
-                const net = sumCredits - sumDebits;
+                const net = acc.sumCredits - acc.sumDebits;
                 if (net > 0) netCredit = net;
                 else if (net < 0) netDebit = Math.abs(net);
             }
@@ -46,11 +91,12 @@ export class ReportsService {
                     debit: netDebit,
                     credit: netCredit,
                 });
-
                 totalDebits += netDebit;
                 totalCredits += netCredit;
             }
         }
+        
+        trialBalanceLines.sort((a,b) => a.accountCode.localeCompare(b.accountCode));
 
         return {
             lines: trialBalanceLines,
@@ -60,12 +106,8 @@ export class ReportsService {
         };
     }
 
-    /**
-     * Generates an Income Statement (Profit & Loss): Revenue - Expenses
-     */
-    static async getIncomeStatement() {
-        const trialBalance = await this.getTrialBalance();
-
+    static async getIncomeStatement(startDateStr?: string, endDateStr?: string) {
+        const trialBalance = await this.getTrialBalance(startDateStr, endDateStr);
         const revenueLines: any[] = [];
         const expenseLines: any[] = [];
         let totalRevenue = 0;
@@ -73,64 +115,50 @@ export class ReportsService {
 
         for (const line of trialBalance.lines) {
             if (line.accountType === 'Revenue') {
-                // Revenue has a credit balance
                 const amount = line.credit - line.debit;
                 revenueLines.push({ name: line.accountName, amount });
                 totalRevenue += amount;
             } else if (line.accountType === 'Expense') {
-                // Expenses have a debit balance
                 const amount = line.debit - line.credit;
                 expenseLines.push({ name: line.accountName, amount });
                 totalExpenses += amount;
             }
         }
 
-        const netIncome = totalRevenue - totalExpenses;
-
         return {
             revenue: revenueLines,
             expenses: expenseLines,
             totalRevenue: Number(totalRevenue.toFixed(2)),
             totalExpenses: Number(totalExpenses.toFixed(2)),
-            netIncome: Number(netIncome.toFixed(2)),
+            netIncome: Number((totalRevenue - totalExpenses).toFixed(2)),
         };
     }
 
-    /**
-     * Generates a Balance Sheet: Assets, Liabilities, and Equity
-     */
-    static async getBalanceSheet() {
-        const trialBalance = await this.getTrialBalance();
-        const incomeStatement = await this.getIncomeStatement();
+    static async getBalanceSheet(startDateStr?: string, endDateStr?: string) {
+        const trialBalance = await this.getTrialBalance(startDateStr, endDateStr);
+        const incomeStatement = await this.getIncomeStatement(startDateStr, endDateStr);
 
         const assetLines: any[] = [];
         const liabilityLines: any[] = [];
         const equityLines: any[] = [];
-
-        let totalAssets = 0;
-        let totalLiabilities = 0;
-        let totalEquity = 0;
+        let totalAssets = 0, totalLiabilities = 0, totalEquity = 0;
 
         for (const line of trialBalance.lines) {
             if (line.accountType === 'Asset') {
-                // Assets are normally debits. If an asset has a credit balance (like overdrawn cash), it is negative.
                 const amount = line.debit - line.credit;
                 assetLines.push({ name: line.accountName, amount });
                 totalAssets += amount;
             } else if (line.accountType === 'Liability') {
-                // Liabilities are normally credits.
                 const amount = line.credit - line.debit;
                 liabilityLines.push({ name: line.accountName, amount });
                 totalLiabilities += amount;
             } else if (line.accountType === 'Equity') {
-                // Equity is normally credits.
                 const amount = line.credit - line.debit;
                 equityLines.push({ name: line.accountName, amount });
                 totalEquity += amount;
             }
         }
 
-        // Retained Earnings (Equity) is increased by Net Income
         const netIncome = incomeStatement.netIncome;
         const totalLiabilitiesAndEquity = totalLiabilities + totalEquity + netIncome;
 
@@ -147,54 +175,78 @@ export class ReportsService {
         };
     }
 
-    // ==========================================
-    // ---> NEW: SHIFT REPORT LOGIC ADDED HERE <---
-    // ==========================================
-    /**
-     * Generates an X-Reading / Shift Report for a specific cashier today.
-     */
     static async getShiftReport(userId: string) {
-        // Get exact timestamps for the start and end of TODAY
-        const startOfDay = new Date();
-        startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date();
-        endOfDay.setHours(23, 59, 59, 999);
-
-        // Fetch all entries created by THIS cashier, TODAY, from the POS
+        const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
         const entries = await prisma.journalEntry.findMany({
-            where: {
-                user_id: userId,
-                date: { gte: startOfDay, lte: endOfDay },
-                description: { startsWith: 'POS Billing' } // Filters out non-POS stuff
-            },
+            where: { user_id: userId, created_at: { gte: startOfDay, lte: endOfDay }, description: { startsWith: 'POS Billing' } },
             include: { lines: true }
         });
 
-        let totalCash = 0;
-        let totalGCash = 0;
-        let totalHMO = 0;
-        let totalSales = 0;
-
-        // Loop through the lines to categorize the collections
+        let totalCash = 0, totalGCash = 0, totalHMO = 0, totalSales = 0;
         entries.forEach(entry => {
             entry.lines.forEach(line => {
                 const debit = Number(line.debit);
                 if (debit > 0) {
-                    if (line.account_id === '1020') totalCash += debit; // Petty Cash / Cash on Hand
-                    else if (line.account_id === '1010') totalGCash += debit; // Cash in Bank
-                    else if (line.account_id === '1200') totalHMO += debit; // Accounts Receivable
-                    
+                    if (line.account_id === '1020') totalCash += debit;
+                    else if (line.account_id === '1010') totalGCash += debit;
+                    else if (line.account_id === '1200') totalHMO += debit;
                     totalSales += debit;
                 }
             });
         });
+        return { transactionsCount: entries.length, totalCash, totalGCash, totalHMO, totalSales };
+    }
 
-        return {
-            transactionsCount: entries.length,
-            totalCash,
-            totalGCash,
-            totalHMO,
-            totalSales
-        };
+    // ==========================================
+    // ---> 5 BOOKS OF ACCOUNTS LOGIC <---
+    // ==========================================
+    static async getBooksOfAccounts(bookType: string, startDateStr: string, endDateStr: string) {
+        const startDate = new Date(startDateStr);
+        startDate.setHours(0, 0, 0, 0);
+        const endDate = new Date(endDateStr);
+        endDate.setHours(23, 59, 59, 999);
+
+        let whereClause: any = { date: { gte: startDate, lte: endDate } };
+
+        // Route transactions based on their assigned Reference No. prefixes
+        if (bookType === 'SJ') whereClause.reference_no = { startsWith: 'INV-' };      // Sales Journal
+        else if (bookType === 'CRJ') whereClause.reference_no = { startsWith: 'OR-' }; // Cash Receipts
+        else if (bookType === 'CDJ') whereClause.reference_no = { startsWith: 'CV-' }; // Cash Disbursements
+        else if (bookType === 'PJ') whereClause.reference_no = { startsWith: 'PJ-' };  // Purchase Journal
+        else if (bookType === 'GJ') {                                                  // General Journal
+            whereClause.OR = [
+                { reference_no: { startsWith: 'JV-' } },
+                { reference_no: { startsWith: 'ADJ-' } },
+                { reference_no: { startsWith: 'OPENING-' } }
+            ];
+        }
+
+        const entries = await prisma.journalEntry.findMany({
+            where: whereClause,
+            include: { 
+                lines: { include: { account: true } }, 
+                payee: true 
+            },
+            orderBy: { date: 'asc' }
+        });
+
+        // Flatten data for the tabular journal view
+        const formattedData: any[] = [];
+        for (const entry of entries) {
+            for (const line of entry.lines) {
+                formattedData.push({
+                    date: entry.date,
+                    referenceNo: entry.reference_no,
+                    description: entry.description,
+                    payeeName: entry.payee?.name || '',
+                    accountCode: line.account_id,
+                    accountName: line.account.name,
+                    debit: Number(line.debit),
+                    credit: Number(line.credit)
+                });
+            }
+        }
+        return formattedData;
     }
 }

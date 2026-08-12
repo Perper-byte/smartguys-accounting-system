@@ -1,3 +1,4 @@
+// src/main/index.ts
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import { AnalyticsService } from './services/analytics.service';
 import { TaxService } from './services/tax.service';
@@ -124,6 +125,16 @@ app.whenReady().then(() => {
     return await LedgerService.getPayeeBalance(payeeId);
   });
 
+  ipcMain.handle('update-payee-tin', async (event, payeeId: string, tin: string) => {
+    try {
+      await prisma.payee.update({ where: { id: parseInt(payeeId, 10) }, data: { tin: tin } });
+      return { success: true };
+    } catch (error: any) {
+      console.error(error);
+      return { success: false, error: error.message };
+    }
+  });
+
   ipcMain.handle(IPC_CHANNELS.LEDGER.SUBMIT_ENTRY, async (event, entryData) => {
     try {
       return await LedgerService.createJournalEntry(entryData);
@@ -140,28 +151,38 @@ app.whenReady().then(() => {
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.REPORTS.TRIAL_BALANCE, async () => {
+  // ---> NEW: HANDLER FOR NEXT SEQUENCE <---
+  ipcMain.handle('get-next-sequence', async (event, prefix: string) => {
     try {
-      return await ReportsService.getTrialBalance();
+      return await LedgerService.getNextReferenceSequence(prefix);
+    } catch (error) {
+      console.error(error);
+      return '001';
+    }
+  });
+
+  ipcMain.handle('get-books-of-accounts', async (event, bookType, startDate, endDate) => {
+    try {
+      return await ReportsService.getBooksOfAccounts(bookType, startDate, endDate);
     } catch (error: any) {
+      console.error(error);
       return { error: error.message };
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.REPORTS.INCOME_STATEMENT, async () => {
-    try {
-      return await ReportsService.getIncomeStatement();
-    } catch (error: any) {
-      return { error: error.message };
-    }
+  ipcMain.handle(IPC_CHANNELS.REPORTS.TRIAL_BALANCE, async (event, start, end) => {
+    try { return await ReportsService.getTrialBalance(start, end); } 
+    catch (error: any) { return { error: error.message }; }
   });
 
-  ipcMain.handle(IPC_CHANNELS.REPORTS.BALANCE_SHEET, async () => {
-    try {
-      return await ReportsService.getBalanceSheet();
-    } catch (error: any) {
-      return { error: error.message };
-    }
+  ipcMain.handle(IPC_CHANNELS.REPORTS.INCOME_STATEMENT, async (event, start, end) => {
+    try { return await ReportsService.getIncomeStatement(start, end); } 
+    catch (error: any) { return { error: error.message }; }
+  });
+
+  ipcMain.handle(IPC_CHANNELS.REPORTS.BALANCE_SHEET, async (event, start, end) => {
+    try { return await ReportsService.getBalanceSheet(start, end); } 
+    catch (error: any) { return { error: error.message }; }
   });
 
   ipcMain.handle(IPC_CHANNELS.BACKUP.TRIGGER, async () => {
@@ -169,29 +190,30 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle(IPC_CHANNELS.TAX.GENERATE_2550Q, async (event, year, quarter) => {
-    try {
-      return await TaxService.generate2550Q(year, quarter);
-    } catch (error: any) {
-      return { error: error.message };
-    }
+    try { return await TaxService.generate2550Q(year, quarter); } 
+    catch (error: any) { return { error: error.message }; }
   });
 
   ipcMain.handle(IPC_CHANNELS.TAX.GENERATE_RELIEF, async (event, year, quarter) => {
-    try {
-      return await TaxService.generateReliefAnnexes(year, quarter);
-    } catch (error: any) {
-      return { error: error.message };
-    }
+    try { return await TaxService.generateReliefAnnexes(year, quarter); } 
+    catch (error: any) { return { error: error.message }; }
   });
 
   ipcMain.handle(IPC_CHANNELS.ANALYTICS.GET_METRICS, async () => {
-    try {
-      return await AnalyticsService.getDashboardMetrics();
-    } catch (error: any) {
-      return { error: error.message };
-    }
+    try { return await AnalyticsService.getDashboardMetrics(); } 
+    catch (error: any) { return { error: error.message }; }
   });
 })
+
+// Inside src/main/index.ts
+  ipcMain.handle('get-payout-history', async () => {
+    try {
+      return await LedgerService.getPayoutHistory();
+    } catch (error) {
+      console.error(error);
+      return [];
+    }
+  });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

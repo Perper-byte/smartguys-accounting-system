@@ -9,7 +9,11 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   const [outstandingBalance, setOutstandingBalance] = useState(0);
   const [amountReceived, setAmountReceived] = useState<number | ''>('');
   const [paymentMethod, setPaymentMethod] = useState('CASH');
-  const [referenceNo, setReferenceNo] = useState('');
+  
+  // ---> NEW: Auto-Sequencing States <---
+  const [refPrefix] = useState('OR-'); // Locked to OR- for Collections
+  const [refSequence, setRefSequence] = useState('');
+
   const [cwtAmount, setCwtAmount] = useState<number | ''>(''); // For HMOs that withhold tax
 
   const [loading, setLoading] = useState(false);
@@ -26,9 +30,21 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
       }
     };
     fetchPayees();
-    // Auto-generate a generic OR number
-    setReferenceNo(`OR-${Date.now()}`);
   }, []);
+
+  // ---> NEW: Fetch Next Sequence Number <---
+  useEffect(() => {
+      const fetchNextSeq = async () => {
+          try {
+              const api = (window as any).api || (window as any).electronAPI;
+              const nextSeq = await api.getNextSequence(refPrefix);
+              setRefSequence(nextSeq);
+          } catch (error) {
+              console.error("Failed to fetch next sequence", error);
+          }
+      };
+      fetchNextSeq();
+  }, [refPrefix, status]); // Re-runs when status changes (after successful collection!)
 
   // Fetch specific Payee's A/R Balance when selected
   useEffect(() => {
@@ -60,6 +76,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
 
     if (!userId) return setStatus({ type: 'error', msg: "Developer Error: userId missing." });
     if (!payeeId) return setStatus({ type: 'error', msg: "Please select a Patient or HMO." });
+    if (!refSequence.trim()) return setStatus({ type: 'error', msg: "OR Sequence Number is required." });
     if (totalCredit <= 0) return setStatus({ type: 'error', msg: "Amount received must be greater than zero." });
     if (totalCredit > outstandingBalance) return setStatus({ type: 'error', msg: "Cannot collect more than the outstanding balance!" });
 
@@ -93,10 +110,11 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
       });
 
       const selectedName = payees.find(p => p.id === payeeId)?.name;
+      const fullReferenceNo = `${refPrefix}${refSequence.padStart(3, '0')}`;
 
       const entryData = {
         date: new Date().toISOString(),
-        referenceNo: referenceNo,
+        referenceNo: fullReferenceNo,
         description: `Collection of A/R from ${selectedName} via ${paymentMethod}`,
         vatType: 'EXEMPT', // Collections themselves don't trigger new VAT
         userId: userId,
@@ -111,16 +129,17 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
         return;
       }
 
-      setStatus({ type: 'success', msg: `Payment of ₱${received.toFixed(2)} recorded successfully! Collection Receipt: ${referenceNo}` });
+      setStatus({ type: 'success', msg: `Payment of ₱${received.toFixed(2)} recorded successfully! Collection Receipt: ${fullReferenceNo}` });
       
       // Reset Form & Refetch Balance
-      setReferenceNo(`OR-${Date.now()}`);
       setAmountReceived('');
       setCwtAmount('');
       
       // Refetch their new balance
       const newBal = await (window as any).api.getPayeeBalance(payeeId);
       setOutstandingBalance(newBal?.receivable || 0);
+      
+      // Note: We don't reset refSequence here, the useEffect does it automatically!
 
     } catch (error) {
       console.error(error);
@@ -195,10 +214,25 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
         {/* ROW 2: Payment Details */}
         <div className="bg-[#121214] p-6 border border-[#29292e] rounded-lg space-y-6">
           <div className="grid grid-cols-2 gap-6">
+            
+            {/* ---> UPDATED: AUTO-SEQUENCING INPUT <--- */}
             <div>
               <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Collection Receipt (OR No.)</label>
-              <input type="text" required value={referenceNo} onChange={e => setReferenceNo(e.target.value)} className="w-full bg-[#202024] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition" />
+              <div className="flex">
+                  <span className="bg-[#2a2a2f] border border-[#29292e] border-r-0 rounded-l-md px-4 py-3 text-sm font-bold text-gray-400 select-none">
+                      {refPrefix}
+                  </span>
+                  <input 
+                      type="text" 
+                      required 
+                      value={refSequence} 
+                      onChange={e => setRefSequence(e.target.value)} 
+                      placeholder="001" 
+                      className="w-full bg-[#121214] border border-[#29292e] rounded-r-md p-3 text-sm font-mono text-white focus:border-[#4f46e5] outline-none transition" 
+                  />
+              </div>
             </div>
+
             <div>
               <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Payment Method</label>
               <div className="grid grid-cols-3 gap-2">

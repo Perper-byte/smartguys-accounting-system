@@ -1,10 +1,15 @@
+// src/renderer/src/components/JournalEntryForm.tsx
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
 
 export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean }> = ({ userId, isAdjusting = false }) => {
     const [accounts, setAccounts] = useState<any[]>([]);
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [refNo, setRefNo] = useState(isAdjusting ? 'ADJ-' : '');
+    
+    // Prefix and Sequence States
+    const [refPrefix, setRefPrefix] = useState(isAdjusting ? 'ADJ-' : 'JV-');
+    const [refSequence, setRefSequence] = useState('');
+    
     const [description, setDescription] = useState(isAdjusting ? 'Adjusting Entry: ' : '');
     
     const [vatType, setVatType] = useState('VATABLE'); 
@@ -14,7 +19,6 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
     const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
     
-    // ---> NEW: States for the inline Add Payee form
     const [showAddPayee, setShowAddPayee] = useState(false);
     const [newPayeeName, setNewPayeeName] = useState('');
     const [isSubmittingPayee, setIsSubmittingPayee] = useState(false);
@@ -25,12 +29,26 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        const api = (window as any).electronAPI;
+        const api = (window as any).electronAPI || (window as any).api;
         if (api) {
             if (api.getAccounts) api.getAccounts().then(setAccounts).catch(() => setAccounts([]));
             if (api.getPayees) api.getPayees().then(setPayees).catch(() => setPayees([]));
         }
     }, []);
+
+    // ---> NEW: Auto-Fetch the next Sequence Number <---
+    useEffect(() => {
+        const fetchNextSeq = async () => {
+            try {
+                const api = (window as any).api || (window as any).electronAPI;
+                const nextSeq = await api.getNextSequence(refPrefix);
+                setRefSequence(nextSeq);
+            } catch (error) {
+                console.error("Failed to fetch next sequence", error);
+            }
+        };
+        fetchNextSeq();
+    }, [refPrefix, status]); // Re-runs when Prefix changes, or after a successful submit!
 
     useEffect(() => {
         if (!payeeId) {
@@ -38,7 +56,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
             return;
         }
         const fetchBalance = async () => {
-            const api = (window as any).electronAPI;
+            const api = (window as any).electronAPI || (window as any).api;
             if (api && api.getPayeeBalance) {
                 const bal = await api.getPayeeBalance(payeeId);
                 setPayeeBalance(bal);
@@ -47,7 +65,6 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         fetchBalance();
     }, [payeeId]);
 
-    // Group the accounts by their Type (Asset, Liability, etc.)
     const groupedAccounts = useMemo(() => {
         return accounts.reduce((groups: any, acc: any) => {
             const categoryName = acc.account_type?.name || 'Other';
@@ -59,19 +76,16 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         }, {});
     }, [accounts]);
 
-    // ---> NEW: Function to instantly save a new Vendor/Doctor to the database
     const handleCreatePayee = async () => {
         if (!newPayeeName.trim()) return;
         setIsSubmittingPayee(true);
         try {
-            const api = (window as any).electronAPI;
+            const api = (window as any).electronAPI || (window as any).api;
             await api.createPayee(newPayeeName);
             
-            // Refresh the list from the database
             const updatedPayees = await api.getPayees();
             setPayees(updatedPayees);
             
-            // Auto-select the newly created record
             const newRecord = updatedPayees.find((p: any) => p.name.toLowerCase() === newPayeeName.toLowerCase());
             if (newRecord) setPayeeId(newRecord.id);
 
@@ -111,11 +125,18 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         setLoading(true);
 
         try {
+            if (!refSequence.trim()) throw new Error("Please enter a Sequence Number for the Reference.");
+            
             const validLines = lines.filter(l => l.accountId !== '' && (l.debit > 0 || l.credit > 0));
-            const api = (window as any).electronAPI;
+            const api = (window as any).electronAPI || (window as any).api;
+            
+            // Format sequence to always be padded (e.g. typing '5' turns into '005')
+            const paddedSequence = refSequence.padStart(3, '0');
+            const fullReferenceNo = `${refPrefix}${paddedSequence}`;
+
             const result = await api.submitJournalEntry({
                 date: new Date(date),
-                referenceNo: refNo,
+                referenceNo: fullReferenceNo,
                 description,
                 vatType, 
                 payeeId: payeeId === '' ? undefined : payeeId,
@@ -125,17 +146,17 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
 
             if (result.success) {
                 setStatus({ type: 'success', msg: `Entry ${result.referenceNo} posted successfully!` });
-                setRefNo('');
-                setDescription('');
+                setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                 setVatType('VATABLE'); 
                 setPayeeId(''); 
                 setPayeeSearchQuery(''); 
                 setLines([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
+                // NOTE: We don't need to setRefSequence here, the useEffect automatically fetches the next one!
             } else {
                 setStatus({ type: 'error', msg: result.error });
             }
         } catch (err: any) {
-            setStatus({ type: 'error', msg: "Connection Error: Failed to submit to database." });
+            setStatus({ type: 'error', msg: err.message || "Failed to submit to database." });
         } finally {
             setLoading(false);
         }
@@ -145,10 +166,12 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- No Sub-Account Tagged --';
 
     return (
-        <div className="max-w-4xl mx-auto bg-[#202024] border border-[#29292e] rounded-lg p-8 shadow-lg">
+        <div className="max-w-4xl mx-auto bg-[#202024] border border-[#29292e] rounded-lg p-8 shadow-lg font-sans text-gray-200">
             <div className="flex justify-between items-center mb-6 border-b border-[#29292e] pb-4">
                 <h2 className="text-xl font-bold text-white tracking-wide">{isAdjusting ? 'Record Adjusting Entry' : 'New Journal Entry'}</h2>
-                <span className="bg-[#4f46e5]/20 text-[#4f46e5] text-xs px-3 py-1 rounded font-bold uppercase tracking-widest border border-[#4f46e5]/30">{isAdjusting ? 'Adjusting Journal' : 'General Journal'}</span>
+                <span className="bg-[#4f46e5]/20 text-[#4f46e5] text-xs px-3 py-1 rounded font-bold uppercase tracking-widest border border-[#4f46e5]/30">
+                    {isAdjusting ? 'Adjusting Journal' : 'General Journal'}
+                </span>
             </div>
 
             {status && (
@@ -157,15 +180,40 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 </div>
             )}
 
-            <div className="grid grid-cols-3 gap-6 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                 <div>
                     <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Date</label>
-                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition" />
+                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition cursor-pointer" />
                 </div>
+                
                 <div>
                     <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Reference No.</label>
-                    <input type="text" value={refNo} onChange={e => setRefNo(e.target.value)} placeholder="e.g. JV-1001" className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition" />
+                    <div className="flex">
+                        <select 
+                            value={refPrefix} 
+                            onChange={e => setRefPrefix(e.target.value)}
+                            disabled={isAdjusting} 
+                            className="bg-[#2a2a2f] border border-[#29292e] border-r-0 rounded-l-md px-2 py-3 text-xs font-bold text-white focus:border-[#4f46e5] outline-none cursor-pointer disabled:opacity-80"
+                        >
+                            {isAdjusting ? (
+                                <option value="ADJ-">ADJ- (Adjusting)</option>
+                            ) : (
+                                <>
+                                    <option value="JV-">JV- (General)</option>
+                                    <option value="PJ-">PJ- (Purchases)</option>
+                                </>
+                            )}
+                        </select>
+                        <input 
+                            type="text" 
+                            value={refSequence} 
+                            onChange={e => setRefSequence(e.target.value)} 
+                            placeholder="001" 
+                            className="w-full bg-[#121214] border border-[#29292e] rounded-r-md p-3 text-sm font-mono text-white focus:border-[#4f46e5] outline-none transition" 
+                        />
+                    </div>
                 </div>
+
                 <div>
                     <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">VAT Type</label>
                     <div className="relative">
@@ -184,14 +232,11 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
             <div className="mb-6 relative">
                 <div className="flex justify-between items-end mb-2">
                     <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider">Vendor / Doctor / HMO (Subsidiary Tag)</label>
-                    
-                    {/* ---> THE NEW ADD BUTTON <--- */}
                     <button type="button" onClick={() => setShowAddPayee(!showAddPayee)} className="text-xs font-bold text-[#4f46e5] hover:text-[#5b54f6] transition hover:underline">
                         {showAddPayee ? 'Cancel' : '+ Add New Record'}
                     </button>
                 </div>
 
-                {/* ---> THE INLINE ADD FORM <--- */}
                 {showAddPayee && (
                     <div className="mb-3 p-3 bg-[#121214] border border-[#4f46e5]/50 rounded-md flex gap-3 shadow-inner">
                         <input 
@@ -326,7 +371,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                 </td>
                                 <td className="p-2 border-r border-[#29292e]/50"><input type="number" min="0" step="0.01" value={line.debit === 0 ? '' : line.debit} placeholder="0.00" onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-sm text-right text-white outline-none placeholder-[#3f3f46]" /></td>
                                 <td className="p-2 border-r border-[#29292e]/50"><input type="number" min="0" step="0.01" value={line.credit === 0 ? '' : line.credit} placeholder="0.00" onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} className="w-full bg-transparent text-sm text-right text-white outline-none placeholder-[#3f3f46]" /></td>
-                                <td className="p-2 text-center"><button onClick={() => removeLine(idx)} disabled={lines.length <= 2} className="text-[#f75a68] hover:text-red-400 disabled:opacity-20 transition" title="Remove Line">✕</button></td>
+                                <td className="p-2 text-center"><button onClick={() => removeLine(idx)} disabled={lines.length <= 2} className="text-[#f75a68] hover:text-red-400 disabled:opacity-20 transition cursor-pointer" title="Remove Line">✕</button></td>
                             </tr>
                         ))}
                     </tbody>
@@ -334,7 +379,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
             </div>
 
             <div className="flex justify-between items-end mt-6">
-                <button onClick={addLine} className="text-[#4f46e5] text-sm font-bold hover:underline bg-[#4f46e5]/10 px-4 py-2 rounded transition">+ Add Line</button>
+                <button onClick={addLine} className="text-[#4f46e5] text-sm font-bold hover:underline bg-[#4f46e5]/10 px-4 py-2 rounded transition cursor-pointer">+ Add Line</button>
                 <div className="text-right bg-[#121214] p-4 rounded-md border border-[#29292e] min-w-[250px]">
                     <div className="flex justify-between text-sm mb-1"><span className="text-[#8d8d99] font-medium">Total Debits:</span><span className="text-white font-mono">₱ {totalDebit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
                     <div className="flex justify-between text-sm"><span className="text-[#8d8d99] font-medium">Total Credits:</span><span className="text-white font-mono">₱ {totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span></div>
@@ -344,7 +389,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 </div>
             </div>
 
-            <button disabled={!isBalanced || !refNo || loading} onClick={handleSubmit} className="w-full mt-8 bg-[#4f46e5] disabled:bg-[#29292e] disabled:text-[#8d8d99] text-white font-bold py-4 rounded-md transition hover:bg-[#5b54f6] uppercase tracking-widest shadow-lg">
+            <button disabled={!isBalanced || !refSequence || loading} onClick={handleSubmit} className="w-full mt-8 bg-[#4f46e5] disabled:bg-[#29292e] disabled:text-[#8d8d99] text-white font-bold py-4 rounded-md transition hover:bg-[#5b54f6] uppercase tracking-widest shadow-lg cursor-pointer">
                 {loading ? 'Processing...' : 'Post Journal Entry'}
             </button>
         </div>

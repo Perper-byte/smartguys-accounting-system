@@ -1,3 +1,4 @@
+// src/preload/index.ts
 import { contextBridge, ipcRenderer } from 'electron';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 
@@ -14,10 +15,19 @@ export const api = {
   getPayees: () => ipcRenderer.invoke('get-payees'),
   createPayee: (name) => ipcRenderer.invoke('create-payee', name),
   getPayeeBalance: (payeeId) => ipcRenderer.invoke('get-payee-balance', payeeId),
+  updatePayeeTin: (payeeId: string, tin: string) => ipcRenderer.invoke('update-payee-tin', payeeId, tin),
 
-  getTrialBalance: () => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.TRIAL_BALANCE),
-  getIncomeStatement: () => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.INCOME_STATEMENT),
-  getBalanceSheet: () => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.BALANCE_SHEET),
+  // ---> NEW: SEQUENCE GENERATOR BRIDGE <---
+  getNextSequence: (prefix: string) => ipcRenderer.invoke('get-next-sequence', prefix),
+
+  // Inside src/preload/index.ts
+  getPayoutHistory: () => ipcRenderer.invoke('get-payout-history'),
+
+  getBooksOfAccounts: (bookType: string, startDate: string, endDate: string) => ipcRenderer.invoke('get-books-of-accounts', bookType, startDate, endDate),
+
+  getTrialBalance: (start?: string, end?: string) => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.TRIAL_BALANCE, start, end),
+  getIncomeStatement: (start?: string, end?: string) => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.INCOME_STATEMENT, start, end),
+  getBalanceSheet: (start?: string, end?: string) => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.BALANCE_SHEET, start, end),
 
   getShiftReport: (userId: string) => ipcRenderer.invoke('get-shift-report', userId),
   getPettyCashBalance: () => ipcRenderer.invoke('get-petty-cash-balance'),
