@@ -1,4 +1,6 @@
-// src/main/index.ts
+import { app, BrowserWindow, ipcMain } from 'electron';
+import path from 'path';
+
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import { AnalyticsService } from './services/analytics.service';
 import { TaxService } from './services/tax.service';
@@ -8,16 +10,11 @@ import { LedgerService } from './services/ledger.service';
 import { AuthService } from './services/auth.service';
 import { UserService } from './services/user.service'; 
 
-import path from 'path';
-import { app, BrowserWindow, ipcMain } from 'electron';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    show: false, // Wait until ready to show
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true, 
@@ -31,11 +28,18 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
+
+  // Force the window to show as soon as it's ready to prevent ghosting
+  mainWindow.once('ready-to-show', () => {
+    mainWindow.show();
+  });
 }
 
+// Boot up sequence
 app.whenReady().then(() => {
   createWindow();
 
+  // --- Auth Handlers ---
   ipcMain.handle(IPC_CHANNELS.AUTH.LOGIN, async (event, username, password) => {
     try {
       const user = await AuthService.login(username, password);
@@ -45,6 +49,7 @@ app.whenReady().then(() => {
     }
   });
 
+  // --- User Handlers ---
   ipcMain.handle('create-user', async (event, userData) => {
     try {
       const newUser = await UserService.createUser(userData);
@@ -55,66 +60,33 @@ app.whenReady().then(() => {
   });
 
   ipcMain.handle('get-users', async () => {
-    try {
-      return await UserService.getAllUsers();
-    } catch (error: any) {
-      console.error(error);
-      return [];
-    }
+    try { return await UserService.getAllUsers(); } 
+    catch (error) { console.error(error); return []; }
   });
 
   ipcMain.handle('toggle-user-status', async (event, userId, isActive) => {
     try {
       await UserService.toggleUserStatus(userId, isActive);
       return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
-    }
+    } catch (error: any) { return { success: false, error: error.message }; }
   });
 
   ipcMain.handle('reset-user-password', async (event, userId, newPassword) => {
     try {
       await UserService.resetPassword(userId, newPassword);
       return { success: true };
-    } catch (error: any) {
-      return { success: false, error: error.message };
-    }
+    } catch (error: any) { return { success: false, error: error.message }; }
   });
 
   ipcMain.handle('get-petty-cash-balance', async () => {
-    try {
-      return await UserService.getPettyCashBalance();
-    } catch (error: any) {
-      console.error("Error fetching petty cash balance:", error);
-      return 0;
-    }
+    try { return await UserService.getPettyCashBalance(); } 
+    catch (error) { console.error(error); return 0; }
   });
 
-  ipcMain.handle('get-shift-report', async (event, userId) => {
-    try {
-      return await ReportsService.getShiftReport(userId);
-    } catch (error: any) {
-      console.error(error);
-      return { error: error.message };
-    }
-  });
-
-  ipcMain.handle(IPC_CHANNELS.LEDGER.GET_ACCOUNTS, async () => {
-    try {
-      return await LedgerService.getAccounts();
-    } catch (error) {
-      console.error(error);
-      return [];
-    }
-  });
-
+  // --- Ledger & Payee Handlers ---
   ipcMain.handle('get-payees', async () => {
-    try {
-      return await LedgerService.getPayees();
-    } catch (error) {
-      console.error(error);
-      return [];
-    }
+    try { return await LedgerService.getPayees(); } 
+    catch (error) { console.error(error); return []; }
   });
 
   ipcMain.handle('create-payee', async (event, name: string) => {
@@ -127,7 +99,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle('update-payee-tin', async (event, payeeId: string, tin: string) => {
     try {
-      await prisma.payee.update({ where: { id: parseInt(payeeId, 10) }, data: { tin: tin } });
+      // @ts-ignore
+      await LedgerService.updatePayeeTin(payeeId, tin);
       return { success: true };
     } catch (error: any) {
       console.error(error);
@@ -135,37 +108,52 @@ app.whenReady().then(() => {
     }
   });
 
+  ipcMain.handle(IPC_CHANNELS.LEDGER.GET_ACCOUNTS, async () => {
+    try { return await LedgerService.getAccounts(); } 
+    catch (error) { console.error(error); return []; }
+  });
+
   ipcMain.handle(IPC_CHANNELS.LEDGER.SUBMIT_ENTRY, async (event, entryData) => {
-    try {
-      return await LedgerService.createJournalEntry(entryData);
-    } catch (error: any) {
-      return { success: false, error: error.message };
-    }
+    try { return await LedgerService.createJournalEntry(entryData); } 
+    catch (error: any) { return { success: false, error: error.message }; }
   });
 
   ipcMain.handle(IPC_CHANNELS.LEDGER.GET_LEDGER, async (event, accountId) => {
-    try {
-      return await LedgerService.getAccountLedger(accountId);
-    } catch (error: any) {
-      return { error: error.message };
-    }
+    try { return await LedgerService.getAccountLedger(accountId); } 
+    catch (error: any) { return { error: error.message }; }
   });
 
-  // ---> NEW: HANDLER FOR NEXT SEQUENCE <---
   ipcMain.handle('get-next-sequence', async (event, prefix: string) => {
+    try { return await LedgerService.getNextReferenceSequence(prefix); } 
+    catch (error) { console.error(error); return '001'; }
+  });
+
+  ipcMain.handle('get-payout-history', async () => {
     try {
-      return await LedgerService.getNextReferenceSequence(prefix);
+      // @ts-ignore
+      return await LedgerService.getPayoutHistory();
     } catch (error) {
       console.error(error);
-      return '001';
+      return [];
     }
   });
 
+  ipcMain.handle('get-all-recent-transactions', async () => {
+    try {
+      // @ts-ignore
+      return await LedgerService.getAllRecentTransactions();
+    } catch (error) {
+      console.error(error);
+      return [];
+    }
+  });
+
+  // --- Reports Handlers ---
   ipcMain.handle('get-books-of-accounts', async (event, bookType, startDate, endDate) => {
     try {
+      // @ts-ignore
       return await ReportsService.getBooksOfAccounts(bookType, startDate, endDate);
     } catch (error: any) {
-      console.error(error);
       return { error: error.message };
     }
   });
@@ -185,10 +173,16 @@ app.whenReady().then(() => {
     catch (error: any) { return { error: error.message }; }
   });
 
-  ipcMain.handle(IPC_CHANNELS.BACKUP.TRIGGER, async () => {
-    return await BackupService.executeBackup();
+  ipcMain.handle('get-shift-report', async (event, userId) => {
+    try {
+      // @ts-ignore
+      return await ReportsService.getShiftReport(userId);
+    } catch (error: any) {
+      return { error: error.message };
+    }
   });
 
+  // --- Tax & Analytics Handlers ---
   ipcMain.handle(IPC_CHANNELS.TAX.GENERATE_2550Q, async (event, year, quarter) => {
     try { return await TaxService.generate2550Q(year, quarter); } 
     catch (error: any) { return { error: error.message }; }
@@ -203,17 +197,11 @@ app.whenReady().then(() => {
     try { return await AnalyticsService.getDashboardMetrics(); } 
     catch (error: any) { return { error: error.message }; }
   });
-})
 
-// Inside src/main/index.ts
-  ipcMain.handle('get-payout-history', async () => {
-    try {
-      return await LedgerService.getPayoutHistory();
-    } catch (error) {
-      console.error(error);
-      return [];
-    }
+  ipcMain.handle(IPC_CHANNELS.BACKUP.TRIGGER, async () => {
+    return await BackupService.executeBackup();
   });
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

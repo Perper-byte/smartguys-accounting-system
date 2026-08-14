@@ -7,21 +7,25 @@ export const GeneralLedgerView: React.FC = () => {
     const [ledgerData, setLedgerData] = useState<any | null>(null);
     const [loading, setLoading] = useState(false);
 
-    // ---> NEW UI STATES: Search, Dates, and Drill-Down Modal <---
+    // UI States
     const [searchQuery, setSearchQuery] = useState('');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
-    const [selectedTx, setSelectedTx] = useState<any | null>(null); // For the Drill-down modal
+    const [selectedTx, setSelectedTx] = useState<any | null>(null); 
+    
+    // ---> NEW: State for the Global Feed <---
+    const [recentGlobalTxs, setRecentGlobalTxs] = useState<any[]>([]);
 
-    // Fetch the Chart of Accounts for the dropdown on load
+    // Fetch Accounts & Recent Transactions on load
     useEffect(() => {
         const api = (window as any).electronAPI || (window as any).api;
-        if (api && api.getAccounts) {
-            api.getAccounts().then(setAccounts).catch(() => setAccounts([]));
+        if (api) {
+            if (api.getAccounts) api.getAccounts().then(setAccounts).catch(() => setAccounts([]));
+            if (api.getAllRecentTransactions) api.getAllRecentTransactions().then(setRecentGlobalTxs).catch(() => setRecentGlobalTxs([]));
         }
     }, []);
 
-    // Fetch the specific ledger history when an account is selected
+    // Fetch specific ledger history when an account is selected
     useEffect(() => {
         if (!selectedAccountId) {
             setLedgerData(null);
@@ -48,7 +52,6 @@ export const GeneralLedgerView: React.FC = () => {
         fetchLedger();
     }, [selectedAccountId]);
 
-    // Group the accounts by their Type (Asset, Liability, etc.)
     const groupedAccounts = useMemo(() => {
         return accounts.reduce((groups: any, acc: any) => {
             const categoryName = acc.account_type?.name || 'Other';
@@ -60,15 +63,12 @@ export const GeneralLedgerView: React.FC = () => {
         }, {});
     }, [accounts]);
 
-    // ---> FEATURE 1 & 2: Date Filters & Search Logic <---
     const filteredTransactions = useMemo(() => {
         if (!ledgerData?.transactions) return [];
         return ledgerData.transactions.filter((tx: any) => {
-            // 1. Search Filter
             const matchesSearch = tx.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
                                   tx.referenceNo.toLowerCase().includes(searchQuery.toLowerCase());
             
-            // 2. Date Filter
             const txDate = new Date(tx.date);
             txDate.setHours(0, 0, 0, 0);
 
@@ -90,16 +90,13 @@ export const GeneralLedgerView: React.FC = () => {
         });
     }, [ledgerData, searchQuery, startDate, endDate]);
 
-    // ---> FEATURE 3: Filtered Totals <---
     const totalFilteredDebit = filteredTransactions.reduce((sum, tx) => sum + (Number(tx.debit) || 0), 0);
     const totalFilteredCredit = filteredTransactions.reduce((sum, tx) => sum + (Number(tx.credit) || 0), 0);
 
     const formatCurrency = (amount: number, isBalanceColumn: boolean = false) => {
         if (amount === 0) return '-';
         const absAmount = Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        if (isBalanceColumn && amount < 0) {
-            return `(₱ ${absAmount})`;
-        }
+        if (isBalanceColumn && amount < 0) return `(₱ ${absAmount})`;
         return `₱ ${absAmount}`;
     };
 
@@ -131,7 +128,6 @@ export const GeneralLedgerView: React.FC = () => {
         document.body.removeChild(link);
     };
 
-    // Quick clear filters button handler
     const clearFilters = () => {
         setSearchQuery('');
         setStartDate('');
@@ -141,7 +137,6 @@ export const GeneralLedgerView: React.FC = () => {
     return (
         <div className="max-w-6xl mx-auto h-full flex flex-col font-sans text-gray-200">
             
-            {/* Header & Account Selector */}
             <div className="flex justify-between items-end mb-6">
                 <div>
                     <h2 className="text-2xl font-bold text-white tracking-wide">General Ledger</h2>
@@ -155,11 +150,11 @@ export const GeneralLedgerView: React.FC = () => {
                             value={selectedAccountId}
                             onChange={(e) => {
                                 setSelectedAccountId(e.target.value);
-                                clearFilters(); // Reset filters when switching accounts
+                                clearFilters(); 
                             }}
                             className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 pr-10 text-sm text-white focus:border-[#4f46e5] outline-none transition appearance-none cursor-pointer shadow-lg"
                         >
-                            <option value="">-- Choose Account --</option>
+                            <option value="">-- View Global Recent Feed --</option>
                             {Object.entries(groupedAccounts).map(([category, accs]: any) => (
                                 <optgroup key={category} label={`━━━ ${category.toUpperCase()} ━━━`} className="text-[#8d8d99] font-bold bg-[#121214]">
                                     {accs.map((acc: any) => (
@@ -177,13 +172,54 @@ export const GeneralLedgerView: React.FC = () => {
                 </div>
             </div>
 
-            {/* Ledger Content Area */}
             <div className="bg-[#202024] border border-[#29292e] rounded-lg shadow-xl flex-1 flex flex-col overflow-hidden relative">
                 
+                {/* ======================================================== */}
+                {/* ---> NEW: GLOBAL RECENT FEED (Replaces Empty State) <--- */}
+                {/* ======================================================== */}
                 {!selectedAccountId ? (
-                    <div className="flex-1 flex flex-col items-center justify-center text-gray-500 opacity-50 p-12">
-                        <span className="text-6xl mb-4">📖</span>
-                        <p>Select an account above to view its ledger.</p>
+                    <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in duration-300">
+                        <div className="bg-[#1a1a1e] p-6 border-b border-[#29292e]">
+                            <h3 className="text-xl font-bold text-white mb-1">Recent Global Transactions</h3>
+                            <p className="text-xs text-gray-400">Showing the latest 50 line entries across all accounts in the clinic.</p>
+                        </div>
+                        <div className="flex-1 overflow-auto">
+                            <table className="w-full text-left text-sm relative">
+                                <thead className="bg-[#121214] sticky top-0 z-10 shadow-md">
+                                    <tr className="text-[#8d8d99] uppercase tracking-wider text-xs border-b border-[#29292e]">
+                                        <th className="p-4 font-bold">Date</th>
+                                        <th className="p-4 font-bold">Reference</th>
+                                        <th className="p-4 font-bold">Account</th>
+                                        <th className="p-4 font-bold">Description</th>
+                                        <th className="p-4 font-bold text-right">Debit</th>
+                                        <th className="p-4 font-bold text-right">Credit</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-[#29292e]/50">
+                                    {recentGlobalTxs.length === 0 ? (
+                                        <tr><td colSpan={6} className="p-8 text-center text-gray-500 italic">No transactions found.</td></tr>
+                                    ) : (
+                                        recentGlobalTxs.map((tx, idx) => (
+                                            <tr key={idx} className="hover:bg-[#2a2a2f] transition-colors">
+                                                <td className="p-4 text-gray-400 whitespace-nowrap">{formatDate(tx.date)}</td>
+                                                <td className="p-4 font-mono">
+                                                    <button onClick={() => setSelectedTx(tx)} className="text-[#4f46e5] hover:text-[#5b54f6] hover:underline font-bold transition cursor-pointer">
+                                                        {tx.referenceNo}
+                                                    </button>
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className="font-mono text-gray-300">{tx.accountCode}</span>
+                                                    <span className="text-gray-500 ml-2">{tx.accountName}</span>
+                                                </td>
+                                                <td className="p-4 text-white max-w-sm truncate" title={tx.description}>{tx.description}</td>
+                                                <td className="p-4 text-right font-mono text-emerald-400">{tx.debit > 0 ? formatCurrency(tx.debit) : '-'}</td>
+                                                <td className="p-4 text-right font-mono text-[#f75a68]">{tx.credit > 0 ? formatCurrency(tx.credit) : '-'}</td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 ) : loading ? (
                     <div className="flex-1 flex items-center justify-center text-[#4f46e5] font-bold animate-pulse p-12">
@@ -191,7 +227,6 @@ export const GeneralLedgerView: React.FC = () => {
                     </div>
                 ) : ledgerData ? (
                     <>
-                        {/* Selected Account Header Status Bar */}
                         <div className="bg-[#1a1a1e] p-6 border-b border-[#29292e] flex justify-between items-center">
                             <div>
                                 <h3 className="text-xl font-bold text-white mb-1">
@@ -210,8 +245,7 @@ export const GeneralLedgerView: React.FC = () => {
                             </div>
                         </div>
 
-                        {/* ---> UPGRADED TOOLBAR: Search & Date Filters <--- */}
-                        <div className="p-4 border-b border-[#29292e] flex justify-between items-center bg-[#121214]/50">
+                        <div className="p-4 border-l border-r border-[#29292e] flex justify-between items-center bg-[#121214]/50">
                             <div className="flex space-x-4">
                                 <input 
                                     type="text" 
@@ -223,19 +257,9 @@ export const GeneralLedgerView: React.FC = () => {
                                 
                                 <div className="flex items-center space-x-2 bg-[#121214] border border-[#29292e] rounded-md px-3">
                                     <span className="text-xs text-gray-500 uppercase font-bold">From:</span>
-                                    <input 
-                                        type="date" 
-                                        value={startDate}
-                                        onChange={(e) => setStartDate(e.target.value)}
-                                        className="bg-transparent text-sm text-gray-300 outline-none p-1 cursor-pointer"
-                                    />
+                                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-transparent text-sm text-gray-300 outline-none p-1 cursor-pointer" />
                                     <span className="text-xs text-gray-500 uppercase font-bold pl-2 border-l border-[#29292e]">To:</span>
-                                    <input 
-                                        type="date" 
-                                        value={endDate}
-                                        onChange={(e) => setEndDate(e.target.value)}
-                                        className="bg-transparent text-sm text-gray-300 outline-none p-1 cursor-pointer"
-                                    />
+                                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-transparent text-sm text-gray-300 outline-none p-1 cursor-pointer" />
                                 </div>
 
                                 {(searchQuery || startDate || endDate) && (
@@ -247,19 +271,18 @@ export const GeneralLedgerView: React.FC = () => {
                             
                             <button 
                                 onClick={exportToCSV}
-                                className="flex items-center space-x-2 bg-[#29292e] hover:bg-[#323238] text-white px-4 py-2 rounded-md text-sm font-medium transition-colors border border-[#323238] cursor-pointer"
+                                className="flex items-center space-x-2 bg-[#29292e] hover:bg-[#323238] text-gray-300 hover:text-white px-4 py-2 rounded-md text-sm font-bold transition-colors border border-[#323238] cursor-pointer"
                             >
                                 <span>📥</span>
                                 <span>Export to CSV</span>
                             </button>
                         </div>
 
-                        {/* Transactions Table Container */}
-                        <div className="flex-1 overflow-hidden flex flex-col">
+                        <div className="border border-[#29292e] rounded-b-md bg-[#121214] flex-1 overflow-hidden flex flex-col max-h-[500px]">
                             <div className="overflow-auto flex-1">
                                 <table className="w-full text-left text-sm relative">
-                                    <thead className="bg-[#121214] sticky top-0 z-10 shadow-md">
-                                        <tr className="text-[#8d8d99] uppercase tracking-wider text-xs border-b border-[#29292e]">
+                                    <thead className="bg-[#202024] sticky top-0 z-10 shadow-sm border-b border-[#29292e]">
+                                        <tr className="text-[#8d8d99] uppercase tracking-wider text-xs">
                                             <th className="p-4 font-bold w-[12%]">Date</th>
                                             <th className="p-4 font-bold w-[15%]">Reference</th>
                                             <th className="p-4 font-bold w-[35%]">Description</th>
@@ -270,40 +293,22 @@ export const GeneralLedgerView: React.FC = () => {
                                     </thead>
                                     <tbody className="divide-y divide-[#29292e]/50">
                                         {filteredTransactions.length === 0 ? (
-                                            <tr>
-                                                <td colSpan={6} className="p-8 text-center text-gray-500 italic">No transactions found matching your criteria.</td>
-                                            </tr>
+                                            <tr><td colSpan={6} className="p-8 text-center text-[#8d8d99] italic">No transactions match your search.</td></tr>
                                         ) : (
                                             filteredTransactions.map((tx: any, idx: number) => {
                                                 const isAbnormal = tx.balance < 0;
                                                 return (
                                                     <tr key={idx} className="hover:bg-[#2a2a2f] transition-colors">
-                                                        <td className="p-4 whitespace-nowrap text-gray-400">
-                                                            {formatDate(tx.date)}
-                                                        </td>
-                                                        {/* ---> DRILL-DOWN UPGRADE: Clickable Reference No <--- */}
+                                                        <td className="p-4 text-gray-400 whitespace-nowrap">{formatDate(tx.date)}</td>
                                                         <td className="p-4 font-mono">
-                                                            <button 
-                                                                onClick={() => setSelectedTx(tx)}
-                                                                className="text-[#4f46e5] hover:text-[#5b54f6] hover:underline font-bold transition cursor-pointer"
-                                                            >
+                                                            <button onClick={() => setSelectedTx(tx)} className="text-[#4f46e5] hover:text-[#5b54f6] hover:underline font-bold transition cursor-pointer">
                                                                 {tx.referenceNo}
                                                             </button>
                                                         </td>
-                                                        <td className="p-4 text-white max-w-md truncate" title={tx.description}>{tx.description}</td>
-                                                        
-                                                        {/* DEBIT COLUMN */}
-                                                        <td className="p-4 text-right font-mono text-gray-300">
-                                                            {tx.debit > 0 ? `₱ ${tx.debit.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : <span className="text-gray-600">-</span>}
-                                                        </td>
-                                                        
-                                                        {/* CREDIT COLUMN */}
-                                                        <td className="p-4 text-right font-mono text-gray-300">
-                                                            {tx.credit > 0 ? `₱ ${tx.credit.toLocaleString('en-US', { minimumFractionDigits: 2 })}` : <span className="text-gray-600">-</span>}
-                                                        </td>
-                                                        
-                                                        {/* RUNNING BALANCE COLUMN */}
-                                                        <td className={`p-4 text-right font-mono font-bold ${isAbnormal ? 'text-[#f75a68]' : 'text-emerald-400'}`}>
+                                                        <td className="p-4 text-white max-w-xs truncate" title={tx.description}>{tx.description}</td>
+                                                        <td className="p-4 text-right font-mono text-emerald-400">{tx.debit > 0 ? formatCurrency(tx.debit) : '-'}</td>
+                                                        <td className="p-4 text-right font-mono text-[#f75a68]">{tx.credit > 0 ? formatCurrency(tx.credit) : '-'}</td>
+                                                        <td className={`p-4 text-right font-bold font-mono ${isAbnormal ? 'text-[#f75a68]' : 'text-emerald-400'}`}>
                                                             {formatCurrency(tx.balance, true)}
                                                         </td>
                                                     </tr>
@@ -314,7 +319,6 @@ export const GeneralLedgerView: React.FC = () => {
                                 </table>
                             </div>
 
-                            {/* ---> FILTERED TOTALS (FOOTER) <--- */}
                             <div className="bg-[#1a1a1e] border-t border-[#29292e] p-4 flex justify-end shadow-inner">
                                 <div className="grid grid-cols-2 gap-x-12 text-sm">
                                     <div className="flex justify-between items-center space-x-8">
@@ -337,9 +341,7 @@ export const GeneralLedgerView: React.FC = () => {
                 )}
             </div>
 
-            {/* ========================================== */}
-            {/* ---> DRILL-DOWN MODAL (Transaction Details) <--- */}
-            {/* ========================================== */}
+            {/* ---> DRILL-DOWN MODAL <--- */}
             {selectedTx && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
                     <div className="bg-[#202024] border border-[#29292e] rounded-lg shadow-2xl p-6 w-[500px]">
@@ -366,14 +368,14 @@ export const GeneralLedgerView: React.FC = () => {
                             </div>
 
                             <div className="bg-[#121214] p-4 rounded border border-[#29292e]">
-                                <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-3">Line Impact (This Account Only)</p>
+                                <p className="text-[10px] text-gray-500 uppercase font-bold tracking-widest mb-3">Line Impact</p>
                                 <div className="flex justify-between border-b border-[#29292e] pb-2 mb-2">
                                     <span className="text-sm font-bold text-gray-400">Debit:</span>
-                                    <span className="text-sm font-mono text-white">{formatCurrency(selectedTx.debit)}</span>
+                                    <span className="text-sm font-mono text-emerald-400">{formatCurrency(selectedTx.debit)}</span>
                                 </div>
                                 <div className="flex justify-between">
                                     <span className="text-sm font-bold text-gray-400">Credit:</span>
-                                    <span className="text-sm font-mono text-white">{formatCurrency(selectedTx.credit)}</span>
+                                    <span className="text-sm font-mono text-[#f75a68]">{formatCurrency(selectedTx.credit)}</span>
                                 </div>
                             </div>
                         </div>

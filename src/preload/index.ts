@@ -20,6 +20,9 @@ export const api = {
   // ---> NEW: SEQUENCE GENERATOR BRIDGE <---
   getNextSequence: (prefix: string) => ipcRenderer.invoke('get-next-sequence', prefix),
 
+ 
+  getAllRecentTransactions: () => ipcRenderer.invoke('get-all-recent-transactions'),
+
   // Inside src/preload/index.ts
   getPayoutHistory: () => ipcRenderer.invoke('get-payout-history'),
 

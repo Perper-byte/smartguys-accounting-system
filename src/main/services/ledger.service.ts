@@ -25,11 +25,10 @@ export const LedgerService = {
   },
 
   async getPayeeBalance(payeeId: string) {
-    const idAsInt = parseInt(payeeId, 10);
     const lines = await prisma.journalLine.findMany({
         where: { 
-            entry: { payee_id: idAsInt }, 
-            account_id: { in: ['1200', '2010'] } // 1200 A/R, 2010 A/P
+            entry: { payee_id: payeeId }, 
+            account_id: { in: ['1200', '2010'] } 
         }
     });
 
@@ -50,8 +49,8 @@ export const LedgerService = {
           reference_no: data.referenceNo,
           description: data.description,
           vat_type: data.vatType || 'EXEMPT',
-          user_id: parseInt(data.userId, 10),
-          payee_id: data.payeeId ? parseInt(data.payeeId, 10) : null,
+          user_id: data.userId, 
+          payee_id: data.payeeId || null, 
           lines: {
               create: data.lines.map((l: any) => ({
                   account_id: l.accountId,
@@ -108,35 +107,24 @@ export const LedgerService = {
     };
   },
 
-  // ==========================================
-  // ---> NEW: AUTO-SEQUENCE GENERATOR <---
-  // ==========================================
   async getNextReferenceSequence(prefix: string) {
-    // 1. Find the newest entry with this exact prefix
     const lastEntry = await prisma.journalEntry.findFirst({
         where: { reference_no: { startsWith: prefix } },
-        orderBy: { date: 'desc' } // Uses 'date' to prevent the created_at error!
+        orderBy: { date: 'desc' } 
     });
 
-    // 2. If no entries exist yet, start at 001
     if (!lastEntry) return '001';
 
-    // 3. Extract the number: "JV-005" -> "005"
     const lastSeqString = lastEntry.reference_no.replace(prefix, '');
     const lastSeqNum = parseInt(lastSeqString, 10);
 
-    if (isNaN(lastSeqNum)) return '001'; // Fallback
+    if (isNaN(lastSeqNum) || lastSeqNum > 999999) return '001'; 
 
-    // 4. Add 1 and pad with zeros -> "006"
     const nextSeq = (lastSeqNum + 1).toString().padStart(3, '0');
     return nextSeq;
-  }, // <---- THIS COMMA IS CRITICAL!
+  },
 
-  // ==========================================
-  // ---> NEW: PAYOUT HISTORY QUERY <---
-  // ==========================================
   async getPayoutHistory() {
-    // 1. Fetch all Check Vouchers with a Payee
     const entries = await prisma.journalEntry.findMany({
         where: {
             reference_no: { startsWith: 'CV-' },
@@ -146,7 +134,6 @@ export const LedgerService = {
         orderBy: { date: 'desc' }
     });
 
-    // 2. Filter and map only the ones that are actual A/P Settlements
     const history: any[] = [];
 
     entries.forEach(entry => {
@@ -160,7 +147,6 @@ export const LedgerService = {
             if (line.account_id === '1010' && Number(line.credit) > 0) net += Number(line.credit);
         });
 
-        // If it paid off A/P, it's a Doctor/Vendor payout!
         if (gross > 0) {
             history.push({
                 id: entry.id,
@@ -176,5 +162,43 @@ export const LedgerService = {
     });
 
     return history;
+  },
+
+  // ==========================================
+  // ---> NEW: BULLETPROOF RECENT FEED <---
+  // ==========================================
+  async getAllRecentTransactions() {
+    try {
+        // Fetch the newest 50 complete journal entries first (safest Prisma query)
+        const entries = await prisma.journalEntry.findMany({
+            take: 50,
+            orderBy: { date: 'desc' },
+            include: { lines: { include: { account: true } } }
+        });
+
+        const recentLines: any[] = [];
+        
+        // Unpack the lines using standard JavaScript
+        entries.forEach(entry => {
+            entry.lines.forEach(line => {
+                recentLines.push({
+                    id: line.id,
+                    date: entry.date,
+                    referenceNo: entry.reference_no,
+                    accountCode: line.account.code,
+                    accountName: line.account.name,
+                    description: entry.description,
+                    debit: Number(line.debit),
+                    credit: Number(line.credit)
+                });
+            });
+        });
+
+        // Return just the top 50 lines
+        return recentLines.slice(0, 50);
+    } catch (err) {
+        console.error("Error fetching recent transactions:", err);
+        return [];
+    }
   }
 };
