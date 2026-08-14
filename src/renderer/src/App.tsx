@@ -11,7 +11,6 @@ import { DatabaseBackupView } from './components/DatabaseBackupView';
 import { DashboardView } from './components/DashboardView';
 import logoImage from './assets/smartguys_logo.jpg';
 
-// DEFINE THE STRICT ROLE-BASED TABS
 const ALL_TABS = [
   { id: 'dashboard', label: 'Analytics Dashboard', icon: '📊', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'journal', label: 'Journal Entry', icon: '📝', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
@@ -27,9 +26,7 @@ function App(): React.ReactElement {
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string; role: string } | null>(null);
   const [activeTab, setActiveTab] = useState<string>('');
 
-  const permittedTabs = currentUser
-    ? ALL_TABS.filter(tab => tab.allowedRoles.includes(currentUser.role))
-    : [];
+  const permittedTabs = currentUser ? ALL_TABS.filter(tab => tab.allowedRoles.includes(currentUser.role)) : [];
 
   useEffect(() => {
     if (currentUser && permittedTabs.length > 0 && !permittedTabs.find(t => t.id === activeTab)) {
@@ -47,33 +44,23 @@ function App(): React.ReactElement {
   }
 
   return (
-    <div className="flex h-screen bg-[#FBF8F8] text-gray-800 overflow-hidden font-sans print:block print:h-auto print:bg-white">
+    <div className="flex h-screen bg-[#FBF8F8] text-gray-800 overflow-hidden font-sans">
 
       {/* PERSISTENT LEFT SIDEBAR */}
-      <aside className="no-print w-64 bg-white border-r border-[#B0DCDA] flex flex-col justify-between shadow-sm z-10">
+      <aside className="w-64 bg-white border-r border-[#B0DCDA] flex flex-col justify-between shadow-sm z-10 flex-shrink-0">
         <div>
-          {/* Logo & Title branding */}
           <div className="p-6 border-b border-[#B0DCDA]">
             <div className="flex items-center space-x-3">
-              {/* Actual Clinic Logo */}
               <img src={logoImage} alt="Clinic Logo" className="h-10 w-10 object-contain drop-shadow-sm" />
-
-              {/* Clinic Name */}
               <span className="font-extrabold tracking-wide text-gray-800 text-lg">SmartGuys Clinic</span>
             </div>
-            {/* The "Accounting System" text has been removed! */}
           </div>
-
-          {/* Navigation Links (FILTERED BY ROLE) */}
           <nav className="p-4 space-y-1">
             {permittedTabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-md text-sm font-bold transition ${activeTab === tab.id
-                  ? 'bg-[#1B9387] text-white shadow-md'
-                  : 'text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387]'
-                  }`}
+                className={`w-full flex items-center space-x-3 px-4 py-3 rounded-md text-sm font-bold transition ${activeTab === tab.id ? 'bg-[#1B9387] text-white shadow-md' : 'text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387]'}`}
               >
                 <span className={activeTab === tab.id ? 'opacity-100' : 'opacity-70'}>{tab.icon}</span>
                 <span>{tab.label}</span>
@@ -81,28 +68,19 @@ function App(): React.ReactElement {
             ))}
           </nav>
         </div>
-
-        {/* User profile footer */}
         <div className="p-4 border-t border-[#B0DCDA] bg-gray-50 flex items-center justify-between">
           <div className="min-w-0">
             <p className="text-sm font-bold text-gray-800 truncate">{currentUser.username}</p>
             <p className="text-[10px] text-[#28958B] uppercase font-extrabold tracking-widest">{currentUser.role}</p>
           </div>
-          <button
-            onClick={handleLogout}
-            title="Log out of system"
-            className="p-2 text-red-400 hover:text-white hover:bg-red-500 rounded transition"
-          >
-            🚪
-          </button>
+          <button onClick={handleLogout} title="Log out of system" className="p-2 text-red-400 hover:text-white hover:bg-red-500 rounded transition">🚪</button>
         </div>
       </aside>
 
       {/* MAIN CONTAINER AREA */}
-      <div className="flex-1 flex flex-col overflow-hidden relative print:block print:overflow-visible">
-
+      <div className="flex-1 flex flex-col relative overflow-hidden">
         {/* TOP STATUS BAR */}
-        <header className="no-print h-16 bg-white border-b border-[#B0DCDA] flex items-center justify-between px-8 shadow-sm z-0">
+        <header className="h-16 bg-white border-b border-[#B0DCDA] flex items-center justify-between px-8 shadow-sm z-0 flex-shrink-0">
           <h2 className="text-lg font-extrabold text-gray-800 tracking-wide capitalize">
             {permittedTabs.find(t => t.id === activeTab)?.label || 'Workspace'}
           </h2>
@@ -113,15 +91,11 @@ function App(): React.ReactElement {
         </header>
 
         {/* WORKSPACE CONTENT PANELS */}
-        <main className="flex-1 p-8 overflow-y-auto bg-[#FBF8F8] print:p-0 print:bg-white print:block print:overflow-visible">
-
-          {/* Security Fallback */}
+        <main className="flex-1 bg-[#FBF8F8] p-8 overflow-y-auto">
           {!permittedTabs.find(t => t.id === activeTab) ? (
             <div className="p-6 bg-red-50 border border-red-200 rounded-lg text-center shadow-sm">
               <h3 className="text-red-600 font-bold text-lg">⚠️ Access Denied</h3>
-              <p className="text-sm text-red-500 mt-2 font-medium">
-                Your role ({currentUser.role}) does not have permission to view this module.
-              </p>
+              <p className="text-sm text-red-500 mt-2 font-medium">Your role does not have permission to view this module.</p>
             </div>
           ) : (
             <div className="animate-in fade-in duration-300">

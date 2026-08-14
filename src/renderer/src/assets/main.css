@@ -4,27 +4,30 @@
 body {
   margin: 0;
   background-color: #FBF8F8;
-  /* Light theme Snow White background */
   color: #1f2937;
   font-family: system-ui, -apple-system, sans-serif;
 }
 
-/* PRINT STYLES FOR PDF GENERATION */
+/* --- PRINT STYLES FOR PDF GENERATION --- */
 @media print {
 
-  /* 1. THE BULLETPROOF HIDE CLASS */
-  .no-print {
+  /* 1. BULLETPROOF HIDING USING IDs */
+  #top-header,
+  #ledger-controls,
+  #export-pdf-btn,
+  aside {
     display: none !important;
   }
 
-  /* 2. Force exact background colors to print (Fixes the missing mint green boxes) */
+  /* 2. Force exact background colors to print */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* 3. Reset Electron full-screen layout wrappers so content flows onto paper */
+  /* 3. Reset layout wrappers so content flows naturally onto A4 paper */
   #app,
+  #root,
   div.flex.h-screen,
   div.flex-1.flex.flex-col.overflow-hidden,
   main {
@@ -38,14 +41,14 @@ body {
     margin: 0 !important;
   }
 
-  /* 4. Force body to clean white for ink-friendly printing */
+  /* 4. Force paper background to pure white */
   html,
   body {
     background-color: #ffffff !important;
     color: #000000 !important;
   }
 
-  /* 5. Stretch the report container full width and remove shadows */
+  /* 5. Stretch the report container full width and remove UI shadows */
   .w-full,
   .max-w-5xl {
     max-width: 100% !important;
@@ -56,9 +59,46 @@ body {
     margin: 0 !important;
   }
 
-  /* 6. Prevent flexbox containers from breaking onto new pages */
+  /* 6. Prevent flexbox containers from cutting in half between pages */
   .flex {
     display: flex !important;
     page-break-inside: avoid !important;
   }
+}
+
+/* 🔥 THE BULLETPROOF PRINT OVERRIDE */
+body.is-printing aside,
+body.is-printing header,
+body.is-printing button,
+body.is-printing select,
+body.is-printing input[type="date"],
+body.is-printing #ledger-controls {
+  display: none !important;
+}
+
+body.is-printing,
+body.is-printing #app,
+body.is-printing #root,
+body.is-printing div.flex.h-screen,
+body.is-printing div.flex-1.flex.flex-col.overflow-hidden,
+body.is-printing main {
+  height: auto !important;
+  min-height: auto !important;
+  overflow: visible !important;
+  display: block !important;
+  position: static !important;
+  background-color: #ffffff !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  color: #000000 !important;
+}
+
+body.is-printing .max-w-5xl,
+body.is-printing .w-full {
+  max-width: 100% !important;
+  width: 100% !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
 }

@@ -138,6 +138,18 @@ app.whenReady().then(() => {
     if (!filePath) return { success: false, error: 'Export cancelled' };
 
     try {
+      // 🔥 THE FIX: Forcefully inject CSS to murder the sidebar, header, and buttons right before printing
+      await win.webContents.insertCSS(`
+        @media print {
+          aside, header, button, .no-print { display: none !important; }
+          #app, div.flex.h-screen, main { height: auto !important; overflow: visible !important; }
+          html, body { background-color: white !important; }
+        }
+      `);
+
+      // Give the DOM a tiny fraction of a second to apply the CSS
+      await new Promise(resolve => setTimeout(resolve, 100));
+
       const data = await win.webContents.printToPDF({
         margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 }, // Margins in inches
         printBackground: true,

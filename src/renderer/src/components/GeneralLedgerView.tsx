@@ -8,7 +8,6 @@ export const GeneralLedgerView: React.FC = () => {
     const [ledgerData, setLedgerData] = useState<any | null>(null);
     const [loading, setLoading] = useState(false);
 
-    // DATE RANGE FILTER STATES
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
 
@@ -87,6 +86,7 @@ export const GeneralLedgerView: React.FC = () => {
         return d.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
     };
 
+    // 🔥 THE BULLETPROOF VANILLA JS PDF EXPORT
     const handleExportPDF = async () => {
         if (!ledgerData) {
             alert("No ledger data available to export.");
@@ -94,12 +94,14 @@ export const GeneralLedgerView: React.FC = () => {
         }
 
         try {
-            const api = (window as any).electronAPI;
-            if (!api || !api.exportPDF) {
-                alert("System Error: PDF Export bridge function is not connected.");
-                return;
-            }
+            // 1. Add global printing class to instantly hide UI sidebars/headers
+            document.body.classList.add('is-printing');
 
+            // 2. Wait 150ms for the browser to visually apply the CSS
+            await new Promise(resolve => setTimeout(resolve, 150));
+
+            // 3. Tell Electron to snap the PDF
+            const api = (window as any).electronAPI;
             const cleanAccountName = ledgerData.accountName.replace(/[^a-zA-Z0-9]/g, '_');
             const filename = `General_Ledger_${ledgerData.accountCode}_${cleanAccountName}.pdf`;
 
@@ -113,11 +115,14 @@ export const GeneralLedgerView: React.FC = () => {
         } catch (err: any) {
             console.error("PDF Export Error:", err);
             alert(`Export Error: ${err.message || "Failed to generate PDF."}`);
+        } finally {
+            // 4. Instantly restore everything back to normal!
+            document.body.classList.remove('is-printing');
         }
     };
 
     return (
-        <div className="w-full bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm min-h-[550px] print:border-none print:shadow-none print:p-0 print:m-0">
+        <div id="ledger-card" className="w-full bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm min-h-[550px]">
 
             {/* HEADER & FILTERS BAR */}
             <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 mb-6 border-b border-[#B0DCDA] pb-6">
@@ -126,8 +131,8 @@ export const GeneralLedgerView: React.FC = () => {
                     <p className="text-sm text-gray-500 mt-1 font-medium">View chronological transaction history and running balances.</p>
                 </div>
 
-                {/* CONTROLS GROUP */}
-                <div className="no-print flex flex-wrap items-end gap-3 w-full lg:w-auto">
+                {/* CONTROLS GROUP (Given an ID for hiding) */}
+                <div id="ledger-controls" className="flex flex-wrap items-end gap-3 w-full lg:w-auto">
                     <div className="w-64">
                         <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">Select Account</label>
                         <select
@@ -204,6 +209,7 @@ export const GeneralLedgerView: React.FC = () => {
 
             {!loading && ledgerData && (
                 <div className="animate-in fade-in duration-300">
+
                     <div className="flex items-center justify-between bg-[#E9FAFA] border border-[#B0DCDA] rounded-t-xl p-5 shadow-sm">
                         <div className="flex items-center space-x-3">
                             <div>
@@ -220,9 +226,11 @@ export const GeneralLedgerView: React.FC = () => {
                         </div>
 
                         <div className="flex items-center space-x-6">
+                            {/* EXPORT BUTTON (Given an ID for hiding) */}
                             <button
+                                id="export-pdf-btn"
                                 onClick={handleExportPDF}
-                                className="no-print px-3 py-1.5 bg-white hover:bg-gray-50 border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-1.5"
+                                className="px-3 py-1.5 bg-white hover:bg-gray-50 border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-1.5"
                             >
                                 <span>📄</span> <span>Export Ledger PDF</span>
                             </button>
