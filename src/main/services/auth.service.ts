@@ -21,6 +21,13 @@ export class AuthService {
       throw new Error("Invalid Credentials: User not found");
     }
 
+    // ==========================================
+    // ---> ADDED THIS SECURITY CHECK HERE <---
+    // ==========================================
+    if (user.is_active === false) {
+      throw new Error("Access Denied: This account has been disabled. Please contact the IT Admin.");
+    }
+
     if (user.password_hash !== hashedPassword) {
       throw new Error("Invalid Credentials: Password incorrect");
     }
