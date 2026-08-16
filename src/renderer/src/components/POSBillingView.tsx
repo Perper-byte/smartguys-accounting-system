@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+// src/renderer/src/components/POSBillingView.tsx
+import React, { useState } from 'react';
 
 // Master list of Categories (Maps to your Chart of Accounts and sets VAT rules)
 const CATEGORIES = {
@@ -30,9 +31,6 @@ export function POSBillingView({ userId }: { userId: string }) {
   const [isSCPWD, setIsSCPWD] = useState(false);
   const [scPwdId, setScPwdId] = useState('');
 
-  // Live Drawer Cash State
-  const [drawerCash, setDrawerCash] = useState(0);
-
   // Line items for the bill
   const [items, setItems] = useState([
     { id: 1, accountCode: '4010', description: '', quantity: 1, price: 0, isVatable: false }
@@ -45,24 +43,18 @@ export function POSBillingView({ userId }: { userId: string }) {
   // State to trigger the Confirmation Modal
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
 
-  // Shift Report State
-  const [shiftReport, setShiftReport] = useState<any>(null);
-
-  // 1. Fetch live Cash on Hand & Entities from database
+  // Fetch Entities from database on load
   const loadInitialData = async () => {
     try {
-      const api = (window as any).api;
-      const balance = await api.getPettyCashBalance();
-      setDrawerCash(balance);
-      
+      const api = (window as any).api || (window as any).electronAPI;
       const payeeData = await api.getPayees();
       setPayees(payeeData);
     } catch (error) {
-      console.error("Failed to load initial data:", error);
+        console.error("Failed to load initial data:", error);
     }
   };
 
-  useEffect(() => {
+  React.useEffect(() => {
     loadInitialData();
   }, []);
 
@@ -71,7 +63,7 @@ export function POSBillingView({ userId }: { userId: string }) {
     if (!newPayeeName.trim()) return;
     setIsSubmittingPayee(true);
     try {
-        const api = (window as any).api;
+        const api = (window as any).api || (window as any).electronAPI;
         await api.createPayee(newPayeeName);
         
         // Refresh the list from the database
@@ -90,17 +82,6 @@ export function POSBillingView({ userId }: { userId: string }) {
         setStatus({ type: 'error', msg: "Failed to create new record." });
     } finally {
         setIsSubmittingPayee(false);
-    }
-  };
-
-  // Generate Shift Report Function
-  const generateShiftReport = async () => {
-    try {
-      const report = await (window as any).api.getShiftReport(userId);
-      setShiftReport(report);
-    } catch (error) {
-      console.error(error);
-      alert("Failed to load shift report.");
     }
   };
 
@@ -162,7 +143,6 @@ export function POSBillingView({ userId }: { userId: string }) {
 
   const change = amountTendered - grandTotal;
 
-  // Selected Payee Name for display
   const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- Select Patient or Entity --';
   const filteredPayees = payees.filter(p => p.name.toLowerCase().includes(payeeSearchQuery.toLowerCase()));
 
@@ -220,7 +200,7 @@ export function POSBillingView({ userId }: { userId: string }) {
       if (paymentMethod === 'HMO' || paymentMethod === 'CHARGE') {
         debitAccount = '1200'; // Accounts Receivable (No cash received yet)
       } else if (paymentMethod === 'CASH') {
-        debitAccount = '1020'; // Petty Cash / Cash on Hand (In Hand!)
+        debitAccount = '1020'; // Petty Cash / Cash on Hand
       }
 
       lines.push({
@@ -288,9 +268,6 @@ export function POSBillingView({ userId }: { userId: string }) {
       setIsConfirmOpen(false);
       setPaymentMethod('CASH');
 
-      // Refresh live Cash
-      loadInitialData();
-
     } catch (error: any) {
       console.error(error);
       setStatus({ type: 'error', msg: "System Error: Could not connect to the database." });
@@ -303,28 +280,10 @@ export function POSBillingView({ userId }: { userId: string }) {
   return (
     <div className="h-full flex flex-col bg-[#121214] text-gray-200 font-sans relative">
       
-      {/* Header Badge */}
       <div className="mb-6 flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-white">Patient Billing & POS</h1>
           <p className="text-sm text-gray-400">Generate BIR EOPT-Compliant invoices and process payments.</p>
-        </div>
-        
-        <div className="flex space-x-4 items-center">
-          <button 
-            type="button"
-            onClick={generateShiftReport}
-            className="cursor-pointer px-4 py-2 bg-[#29292e] hover:bg-[#323238] text-gray-300 font-bold text-xs uppercase tracking-wider rounded-lg border border-[#323238] transition-colors"
-          >
-            📋 View Shift Report
-          </button>
-
-          <div className="bg-emerald-950/30 text-emerald-400 border border-emerald-800 rounded-lg px-4 py-2 text-right">
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Drawer Cash (In Hand)</p>
-            <p className="text-lg font-mono font-bold">
-              ₱ {drawerCash.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </p>
-          </div>
         </div>
       </div>
 
@@ -727,69 +686,6 @@ export function POSBillingView({ userId }: { userId: string }) {
           </div>
         </div>
       )}
-
-      {/* ========================================== */}
-      {/* ---> SHIFT REPORT MODAL (X-READING) <--- */}
-      {/* ========================================== */}
-      {shiftReport && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="bg-[#202024] border border-[#29292e] rounded-lg shadow-2xl p-8 w-[400px]">
-            <div className="text-center mb-6">
-                <h3 className="text-xl font-bold text-white tracking-wide uppercase">X-Reading Report</h3>
-                <p className="text-xs text-gray-400 mt-1">End of Shift Summary</p>
-                <p className="text-xs text-[#4f46e5] font-mono mt-1">{new Date().toLocaleDateString()}</p>
-            </div>
-
-            <div className="space-y-4 text-sm bg-[#121214] p-4 rounded border border-[#29292e]">
-                <div className="flex justify-between text-gray-400">
-                    <span>Total Transactions:</span>
-                    <span className="text-white font-mono">{shiftReport.transactionsCount}</span>
-                </div>
-                <div className="flex justify-between text-gray-400">
-                    <span>Gross Daily Sales:</span>
-                    <span className="text-white font-mono">₱ {shiftReport.totalSales.toFixed(2)}</span>
-                </div>
-                
-                <div className="border-t border-[#29292e] my-2 pt-2"></div>
-                
-                <div className="flex justify-between text-gray-400">
-                    <span>GCash Transfers (1010):</span>
-                    <span className="text-blue-400 font-mono">₱ {shiftReport.totalGCash.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-gray-400">
-                    <span>A/R Pending (HMO/Charge):</span>
-                    <span className="text-yellow-400 font-mono">₱ {shiftReport.totalHMO.toFixed(2)}</span>
-                </div>
-
-                <div className="border-t border-[#29292e] my-2 pt-2"></div>
-
-                <div className="flex justify-between text-emerald-400 font-bold text-base">
-                    <span>Cash Collected (1020):</span>
-                    <span>₱ {shiftReport.totalCash.toFixed(2)}</span>
-                </div>
-            </div>
-
-            {/* ---> STRICT CASH REMITTANCE INSTRUCTION <--- */}
-            <div className="bg-red-900/20 border border-red-900/50 rounded p-4 mt-6 text-center">
-                <p className="text-xs text-red-400 font-bold uppercase tracking-wider mb-2">Action Required</p>
-                <p className="text-sm text-gray-300">
-                    Leave <strong className="text-white">₱2,000.00</strong> in the drawer. Remit exactly
-                    <strong className="text-white text-xl block my-2">₱ {shiftReport.totalCash.toFixed(2)}</strong>
-                    to the Manager.
-                </p>
-            </div>
-
-            <button 
-              type="button"
-              onClick={() => setShiftReport(null)}
-              className="mt-6 w-full px-4 py-3 bg-[#29292e] hover:bg-[#323238] text-white rounded text-sm font-bold transition-colors cursor-pointer border border-[#323238]"
-            >
-              Close Report
-            </button>
-          </div>
-        </div>
-      )}
-
     </div>
   );
 }

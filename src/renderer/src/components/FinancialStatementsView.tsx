@@ -1,17 +1,21 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 
+const getLocalDateString = (date: Date) => {
+    return new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+};
+
+
 export const FinancialStatementsView: React.FC = () => {
     const [statementType, setStatementType] = useState<'trial' | 'income' | 'balance'>('trial');
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
 
     // Date Filter States
-    const today = new Date();
+   const today = new Date();
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
-    const [startDate, setStartDate] = useState(firstDay.toISOString().split('T')[0]);
-    const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
-
+    const [startDate, setStartDate] = useState(getLocalDateString(firstDay));
+    const [endDate, setEndDate] = useState(getLocalDateString(today));
     const fetchReport = async () => {
         setLoading(true);
         setData(null);

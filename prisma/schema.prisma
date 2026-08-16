@@ -7,22 +7,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ----------------
-// 1. SYSTEM ACCESS
-// ----------------
+// ------------------------------------------
+// 1. SYSTEM ACCESS & SECURITY
+// ------------------------------------------
 model User {
-  id            String  @id @default(uuid()) @db.VarChar(50)
-  username      String  @unique @db.VarChar(100)
-  password_hash String  @db.VarChar(255)
-  role          Role    @default(CASHIER) 
-  is_active     Boolean @default(true)
+  id            String   @id @default(uuid()) @db.VarChar(50)
+  username      String   @unique @db.VarChar(100)
+  password_hash String   @db.VarChar(255)
+  role          Role     @default(CASHIER) 
+  is_active     Boolean  @default(true) 
 
-  // Relations
   journal_entries JournalEntry[]
+  audit_logs      AuditLog[]
 
   @@map("users")
 }
-
 
 enum Role {
   CASHIER
@@ -31,42 +30,52 @@ enum Role {
   IT_PERSONNEL
 }
 
-//-----------------------------------
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  timestamp  DateTime @default(now())
+  user_id    String   @db.VarChar(50)
+  action     String   @db.VarChar(100)
+  details    String   @db.Text
+
+  user       User     @relation(fields: [user_id], references: [id])
+
+  @@index([timestamp])
+  @@map("audit_logs")
+}
+
+// ------------------------------------------
 // 2. CHART OF ACCOUNTS (Master Data)
-//-----------------------------------
+// ------------------------------------------
 model AccountType {
   id             String @id @default(uuid()) @db.VarChar(50)
-  name           String @db.VarChar(100) // e.g., Asset, Liability, Equity, Revenue, Expense
-  normal_balance String @db.VarChar(10) // DEBIT or CREDIT
+  name           String @db.VarChar(100) 
+  normal_balance String @db.VarChar(10) 
 
-  // Relations
   accounts Account[]
 
   @@map("account_types")
 }
 
 model Account {
-  code         String  @id @db.VarChar(50) // PK: e.g., "1010" for Cash in Bank
+  code         String  @id @db.VarChar(50) 
   name         String  @db.VarChar(150)
-  tax_category String? @db.VarChar(50) // e.g., Vatable, Non-Vatable
-  type_id      String  @db.VarChar(50) // FK
+  tax_category String? @db.VarChar(50) 
+  type_id      String  @db.VarChar(50) 
 
-  // Relations
   account_type  AccountType   @relation(fields: [type_id], references: [id])
   journal_lines JournalLine[]
 
   @@map("accounts")
 }
 
-//--------------------------------------------
+// ------------------------------------------
 // 3. TRANSACTIONS & BOOKKEEPING (Core Engine)
-//--------------------------------------------
+// ------------------------------------------
 model Payee {
   id   String  @id @default(uuid()) @db.VarChar(50)
   name String  @db.VarChar(150)
   tin  String? @db.VarChar(50)
 
-  // Relations
   journal_entries JournalEntry[]
 
   @@map("payees")
@@ -75,20 +84,25 @@ model Payee {
 model JournalEntry {
   id           String   @id @default(uuid()) @db.VarChar(50)
   date         DateTime @db.DateTime
-  reference_no String   @db.VarChar(100) // OR No., Invoice., Voucher No.
-  vat_type     String   @default("VATABLE") @db.VarChar(20) // "VATABLE", "EXEMPT", or "ZERO_RATED"
+  reference_no String   @db.VarChar(100) 
+  vat_type     String   @default("VATABLE") @db.VarChar(20) 
   description  String   @db.Text
-  payee_id     String?  @db.VarChar(50) // FK (Nullable for non-cash transaction)
-  user_id      String   @db.VarChar(50) // FK (The Cashier/Accountant who entered it)
+  payee_id     String?  @db.VarChar(50) 
+  user_id      String   @db.VarChar(50) 
+  created_at   DateTime @default(now())
 
-  // Relations
+  // VOID SYSTEM STATUS
+  status       String   @default("ACTIVE") @db.VarChar(20)
+  void_reason  String?  @db.Text
+
   payee Payee?        @relation(fields: [payee_id], references: [id])
   user  User          @relation(fields: [user_id], references: [id])
   lines JournalLine[]
 
-  @@index([date]) // Makes generating BIR Tax Reports and Financial Statements lightning-fast
-  @@index([reference_no]) // Speeds up searching for a specific voucher or OR number
-  @@index([payee_id]) // Speeds up generating the Relief Annexes (Supplier/Customer queries)
+  @@index([date]) 
+  @@index([reference_no]) 
+  @@index([payee_id]) 
+  @@index([created_at])
   @@map("journal_entries")
 }
 
@@ -96,14 +110,13 @@ model JournalLine {
   id         String  @id @default(uuid()) @db.VarChar(50)
   debit      Decimal @default(0.00) @db.Decimal(15, 2)
   credit     Decimal @default(0.00) @db.Decimal(15, 2)
-  entry_id   String  @db.VarChar(50) // FK
-  account_id String  @db.VarChar(50) // FK
+  entry_id   String  @db.VarChar(50) 
+  account_id String  @db.VarChar(50) 
 
-  // Relations
   entry   JournalEntry @relation(fields: [entry_id], references: [id], onDelete: Cascade)
   account Account      @relation(fields: [account_id], references: [code])
 
-  @@index([account_id]) // Makes generating the General Ledger Running Balance instant
-  @@index([entry_id]) // Speeds up joining lines to their parent entry
+  @@index([account_id]) 
+  @@index([entry_id]) 
   @@map("journal_lines")
 }

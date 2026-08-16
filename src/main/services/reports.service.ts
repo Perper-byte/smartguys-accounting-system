@@ -175,11 +175,17 @@ export class ReportsService {
         };
     }
 
-    static async getShiftReport(userId: string) {
+static async getShiftReport(userId: string) {
         const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
+        
         const entries = await prisma.journalEntry.findMany({
-            where: { user_id: userId, created_at: { gte: startOfDay, lte: endOfDay }, description: { startsWith: 'POS Billing' } },
+            where: { 
+                user_id: userId, 
+                // ---> FIX: Changed 'created_at' to 'date' here! <---
+                date: { gte: startOfDay, lte: endOfDay }, 
+                description: { startsWith: 'POS Billing' } 
+            },
             include: { lines: true }
         });
 
@@ -198,9 +204,6 @@ export class ReportsService {
         return { transactionsCount: entries.length, totalCash, totalGCash, totalHMO, totalSales };
     }
 
-    // ==========================================
-    // ---> 5 BOOKS OF ACCOUNTS LOGIC <---
-    // ==========================================
     static async getBooksOfAccounts(bookType: string, startDateStr: string, endDateStr: string) {
         const startDate = new Date(startDateStr);
         startDate.setHours(0, 0, 0, 0);
@@ -209,12 +212,11 @@ export class ReportsService {
 
         let whereClause: any = { date: { gte: startDate, lte: endDate } };
 
-        // Route transactions based on their assigned Reference No. prefixes
-        if (bookType === 'SJ') whereClause.reference_no = { startsWith: 'INV-' };      // Sales Journal
-        else if (bookType === 'CRJ') whereClause.reference_no = { startsWith: 'OR-' }; // Cash Receipts
-        else if (bookType === 'CDJ') whereClause.reference_no = { startsWith: 'CV-' }; // Cash Disbursements
-        else if (bookType === 'PJ') whereClause.reference_no = { startsWith: 'PJ-' };  // Purchase Journal
-        else if (bookType === 'GJ') {                                                  // General Journal
+        if (bookType === 'SJ') whereClause.reference_no = { startsWith: 'INV-' };      
+        else if (bookType === 'CRJ') whereClause.reference_no = { startsWith: 'OR-' }; 
+        else if (bookType === 'CDJ') whereClause.reference_no = { startsWith: 'CV-' }; 
+        else if (bookType === 'PJ') whereClause.reference_no = { startsWith: 'PJ-' };  
+        else if (bookType === 'GJ') {                                                  
             whereClause.OR = [
                 { reference_no: { startsWith: 'JV-' } },
                 { reference_no: { startsWith: 'ADJ-' } },
@@ -224,14 +226,10 @@ export class ReportsService {
 
         const entries = await prisma.journalEntry.findMany({
             where: whereClause,
-            include: { 
-                lines: { include: { account: true } }, 
-                payee: true 
-            },
+            include: { lines: { include: { account: true } }, payee: true },
             orderBy: { date: 'asc' }
         });
 
-        // Flatten data for the tabular journal view
         const formattedData: any[] = [];
         for (const entry of entries) {
             for (const line of entry.lines) {
@@ -248,5 +246,62 @@ export class ReportsService {
             }
         }
         return formattedData;
+    }
+
+    // ==========================================
+    // ---> NEW: AGED RECEIVABLES (HMO TRACKER) <---
+    // ==========================================
+    static async getAgedReceivables() {
+        const lines = await prisma.journalLine.findMany({
+            where: { account_id: '1200', entry: { payee_id: { not: null } } },
+            include: { entry: { include: { payee: true } } },
+            orderBy: { entry: { date: 'asc' } } // Sort oldest to newest for FIFO
+        });
+
+        const payeeMap: Record<string, { name: string, invoices: any[], totalPayments: number }> = {};
+
+        for (const line of lines) {
+            const payeeId = line.entry.payee_id!.toString();
+            if (!payeeMap[payeeId]) {
+                payeeMap[payeeId] = { name: line.entry.payee!.name, invoices: [], totalPayments: 0 };
+            }
+            if (Number(line.debit) > 0) payeeMap[payeeId].invoices.push({ date: line.entry.date, amount: Number(line.debit) });
+            if (Number(line.credit) > 0) payeeMap[payeeId].totalPayments += Number(line.credit);
+        }
+
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const report: any[] = [];
+
+        for (const payeeId in payeeMap) {
+            const p = payeeMap[payeeId];
+            let remainingPayments = p.totalPayments;
+            let current = 0; let days30 = 0; let days60 = 0; let days90 = 0;
+
+            for (const inv of p.invoices) {
+                if (remainingPayments >= inv.amount) {
+                    remainingPayments -= inv.amount;
+                    continue; 
+                }
+                
+                const unpaidAmount = inv.amount - remainingPayments;
+                remainingPayments = 0; 
+                
+                const invDate = new Date(inv.date);
+                invDate.setHours(0,0,0,0);
+                const diffTime = today.getTime() - invDate.getTime();
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                if (diffDays <= 30) current += unpaidAmount;
+                else if (diffDays <= 60) days30 += unpaidAmount;
+                else if (diffDays <= 90) days60 += unpaidAmount;
+                else days90 += unpaidAmount;
+            }
+
+            const total = current + days30 + days60 + days90;
+            if (total > 0) report.push({ payeeName: p.name, current, days30, days60, days90, total });
+        }
+
+        return report.sort((a, b) => b.total - a.total);
     }
 }

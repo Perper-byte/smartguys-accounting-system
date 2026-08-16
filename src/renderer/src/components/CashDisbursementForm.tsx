@@ -1,9 +1,11 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 
+ const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
 export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) => {
     const [expenseAccounts, setExpenseAccounts] = useState<any[]>([]);
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+     const [date, setDate] = useState(getLocalDateString());
     const [amount, setAmount] = useState<number | ''>('');
     const [expenseAccount, setExpenseAccount] = useState('');
     const [remarks, setRemarks] = useState('');

@@ -1,5 +1,9 @@
 import * as React from 'react';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+
+const getLocalDateString = (date: Date) => {
+    return new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+};
 
 export const GeneralLedgerView: React.FC = () => {
     const [accounts, setAccounts] = useState<any[]>([]);
@@ -9,48 +13,63 @@ export const GeneralLedgerView: React.FC = () => {
 
     // UI States
     const [searchQuery, setSearchQuery] = useState('');
-    const [startDate, setStartDate] = useState('');
-    const [endDate, setEndDate] = useState('');
-    const [selectedTx, setSelectedTx] = useState<any | null>(null); 
     
-    // ---> NEW: State for the Global Feed <---
+       const today = new Date();
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    const [startDate, setStartDate] = useState(getLocalDateString(firstDay));
+    const [endDate, setEndDate] = useState(getLocalDateString(today));
+    // Drill-Down & Global Feed States
+    const [selectedTx, setSelectedTx] = useState<any | null>(null); 
     const [recentGlobalTxs, setRecentGlobalTxs] = useState<any[]>([]);
 
-    // Fetch Accounts & Recent Transactions on load
-    useEffect(() => {
-        const api = (window as any).electronAPI || (window as any).api;
-        if (api) {
-            if (api.getAccounts) api.getAccounts().then(setAccounts).catch(() => setAccounts([]));
-            if (api.getAllRecentTransactions) api.getAllRecentTransactions().then(setRecentGlobalTxs).catch(() => setRecentGlobalTxs([]));
+    const [showVoidInput, setShowVoidInput] = useState(false);
+    const [voidReason, setVoidReason] = useState('');
+
+    // ---> NEW: React Status Banner State <---
+    const [status, setStatus] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
+
+    const fetchGlobalFeed = useCallback(async () => {
+        try {
+            const api = (window as any).api || (window as any).electronAPI;
+            if (api.getAllRecentTransactions) {
+                const data = await api.getAllRecentTransactions();
+                setRecentGlobalTxs(data || []);
+            }
+        } catch (error) {
+            console.error("Failed to fetch global feed", error);
         }
     }, []);
 
-    // Fetch specific ledger history when an account is selected
+    const fetchLedger = useCallback(async (accountId: string) => {
+        setLoading(true);
+        try {
+            const api = (window as any).api || (window as any).electronAPI;
+            const data = await api.getAccountLedger(accountId);
+            if (!data.error) setLedgerData(data);
+            else setLedgerData(null);
+        } catch (err) {
+            console.error("Failed to fetch ledger", err);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        const api = (window as any).api || (window as any).electronAPI;
+        if (api && api.getAccounts) {
+            api.getAccounts().then(setAccounts).catch(() => setAccounts([]));
+        }
+        fetchGlobalFeed();
+    }, [fetchGlobalFeed]);
+
     useEffect(() => {
         if (!selectedAccountId) {
             setLedgerData(null);
+            fetchGlobalFeed();
             return;
         }
-
-        const fetchLedger = async () => {
-            setLoading(true);
-            try {
-                const api = (window as any).electronAPI || (window as any).api;
-                const data = await api.getAccountLedger(selectedAccountId);
-                if (!data.error) {
-                    setLedgerData(data);
-                } else {
-                    setLedgerData(null);
-                }
-            } catch (err) {
-                console.error("Failed to fetch ledger", err);
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchLedger();
-    }, [selectedAccountId]);
+        fetchLedger(selectedAccountId);
+    }, [selectedAccountId, fetchLedger, fetchGlobalFeed]);
 
     const groupedAccounts = useMemo(() => {
         return accounts.reduce((groups: any, acc: any) => {
@@ -66,8 +85,8 @@ export const GeneralLedgerView: React.FC = () => {
     const filteredTransactions = useMemo(() => {
         if (!ledgerData?.transactions) return [];
         return ledgerData.transactions.filter((tx: any) => {
-            const matchesSearch = tx.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                  tx.referenceNo.toLowerCase().includes(searchQuery.toLowerCase());
+            const matchesSearch = tx.description?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                                  tx.referenceNo?.toLowerCase().includes(searchQuery.toLowerCase());
             
             const txDate = new Date(tx.date);
             txDate.setHours(0, 0, 0, 0);
@@ -94,7 +113,7 @@ export const GeneralLedgerView: React.FC = () => {
     const totalFilteredCredit = filteredTransactions.reduce((sum, tx) => sum + (Number(tx.credit) || 0), 0);
 
     const formatCurrency = (amount: number, isBalanceColumn: boolean = false) => {
-        if (amount === 0) return '-';
+        if (!amount || amount === 0) return '-';
         const absAmount = Math.abs(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         if (isBalanceColumn && amount < 0) return `(₱ ${absAmount})`;
         return `₱ ${absAmount}`;
@@ -105,16 +124,23 @@ export const GeneralLedgerView: React.FC = () => {
         return d.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
     };
 
+    const clearFilters = () => {
+        setSearchQuery('');
+        setStartDate('');
+        setEndDate('');
+    };
+
     const exportToCSV = () => {
         if (!ledgerData || filteredTransactions.length === 0) return;
-        const headers = ['Date', 'Reference', 'Description', 'Debit', 'Credit', 'Balance'];
+        const headers = ['Date', 'Reference', 'Description', 'Debit', 'Credit', 'Balance', 'Status'];
         const csvRows = filteredTransactions.map((tx: any) => {
             const date = formatDate(tx.date);
             const desc = `"${tx.description.replace(/"/g, '""')}"`;
             const debit = tx.debit > 0 ? tx.debit : '';
             const credit = tx.credit > 0 ? tx.credit : '';
             const balance = tx.balance;
-            return `${date},${tx.referenceNo},${desc},${debit},${credit},${balance}`;
+            const status = tx.status || 'ACTIVE';
+            return `${date},${tx.referenceNo},${desc},${debit},${credit},${balance},${status}`;
         });
 
         const csvContent = [headers.join(','), ...csvRows].join('\n');
@@ -128,10 +154,48 @@ export const GeneralLedgerView: React.FC = () => {
         document.body.removeChild(link);
     };
 
-    const clearFilters = () => {
-        setSearchQuery('');
-        setStartDate('');
-        setEndDate('');
+    // ---> UPDATED: No more alert() boxes! <---
+    const submitVoidRequest = async () => {
+        setStatus(null);
+
+        if (!voidReason || !voidReason.trim()) {
+            setStatus({ type: 'error', msg: "Please enter a reason for voiding this transaction." });
+            return;
+        }
+
+        try {
+            const api = (window as any).api || (window as any).electronAPI;
+            const targetId = selectedTx.entryId || selectedTx.id; 
+            
+            const response = await api.requestVoid(targetId, voidReason);
+            if (response.success || !response.error) {
+                setStatus({ type: 'success', msg: `Void requested for ${selectedTx.referenceNo}! The manager must approve it.` });
+                closeModal();
+                if (selectedAccountId) fetchLedger(selectedAccountId);
+                else fetchGlobalFeed();
+            } else {
+                setStatus({ type: 'error', msg: "Failed to request void: " + response.error });
+            }
+        } catch (error) {
+            console.error(error);
+            setStatus({ type: 'error', msg: "System Error: Could not request void." });
+        }
+    };
+
+    const closeModal = () => {
+        setSelectedTx(null);
+        setShowVoidInput(false);
+        setVoidReason('');
+    };
+
+    const renderStatusBadge = (status: string) => {
+        if (status === 'PENDING_VOID') {
+            return <span className="ml-2 text-[9px] bg-yellow-500/20 text-yellow-500 border border-yellow-500/50 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Pending Void</span>;
+        }
+        if (status === 'VOIDED') {
+            return <span className="ml-2 text-[9px] bg-red-500/20 text-red-400 border border-red-500/50 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Voided</span>;
+        }
+        return null;
     };
 
     return (
@@ -172,11 +236,20 @@ export const GeneralLedgerView: React.FC = () => {
                 </div>
             </div>
 
+            {/* ---> NEW: React Status Banner <--- */}
+            {status && (
+                <div className={`mb-6 p-4 rounded-md text-sm font-medium ${
+                    status.type === 'success' 
+                    ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' 
+                    : 'bg-red-500/10 text-red-500 border border-red-500/20'
+                }`}>
+                    {status.type === 'success' ? '✅ ' : '⚠️ '}{status.msg}
+                </div>
+            )}
+
             <div className="bg-[#202024] border border-[#29292e] rounded-lg shadow-xl flex-1 flex flex-col overflow-hidden relative">
                 
-                {/* ======================================================== */}
-                {/* ---> NEW: GLOBAL RECENT FEED (Replaces Empty State) <--- */}
-                {/* ======================================================== */}
+                {/* GLOBAL RECENT FEED */}
                 {!selectedAccountId ? (
                     <div className="flex-1 flex flex-col overflow-hidden animate-in fade-in duration-300">
                         <div className="bg-[#1a1a1e] p-6 border-b border-[#29292e]">
@@ -200,12 +273,13 @@ export const GeneralLedgerView: React.FC = () => {
                                         <tr><td colSpan={6} className="p-8 text-center text-gray-500 italic">No transactions found.</td></tr>
                                     ) : (
                                         recentGlobalTxs.map((tx, idx) => (
-                                            <tr key={idx} className="hover:bg-[#2a2a2f] transition-colors">
+                                            <tr key={idx} className={`hover:bg-[#2a2a2f] transition-colors ${tx.status === 'VOIDED' ? 'opacity-50 line-through' : ''}`}>
                                                 <td className="p-4 text-gray-400 whitespace-nowrap">{formatDate(tx.date)}</td>
                                                 <td className="p-4 font-mono">
-                                                    <button onClick={() => setSelectedTx(tx)} className="text-[#4f46e5] hover:text-[#5b54f6] hover:underline font-bold transition cursor-pointer">
+                                                    <button onClick={() => setSelectedTx(tx)} className="text-[#4f46e5] hover:text-[#5b54f6] hover:underline font-bold transition cursor-pointer flex items-center">
                                                         {tx.referenceNo}
                                                     </button>
+                                                    {renderStatusBadge(tx.status)}
                                                 </td>
                                                 <td className="p-4">
                                                     <span className="font-mono text-gray-300">{tx.accountCode}</span>
@@ -263,7 +337,7 @@ export const GeneralLedgerView: React.FC = () => {
                                 </div>
 
                                 {(searchQuery || startDate || endDate) && (
-                                    <button onClick={clearFilters} className="text-xs text-[#f75a68] hover:text-red-400 font-bold uppercase transition">
+                                    <button onClick={clearFilters} className="text-xs text-[#f75a68] hover:text-red-400 font-bold uppercase transition cursor-pointer">
                                         Clear Filters
                                     </button>
                                 )}
@@ -298,17 +372,18 @@ export const GeneralLedgerView: React.FC = () => {
                                             filteredTransactions.map((tx: any, idx: number) => {
                                                 const isAbnormal = tx.balance < 0;
                                                 return (
-                                                    <tr key={idx} className="hover:bg-[#2a2a2f] transition-colors">
-                                                        <td className="p-4 text-gray-400 whitespace-nowrap">{formatDate(tx.date)}</td>
+                                                    <tr key={idx} className={`hover:bg-[#2a2a2f] transition-colors ${tx.status === 'VOIDED' ? 'opacity-50 line-through' : ''}`}>
+                                                        <td className="p-4 text-sm text-[#8d8d99] whitespace-nowrap">{formatDate(tx.date)}</td>
                                                         <td className="p-4 font-mono">
-                                                            <button onClick={() => setSelectedTx(tx)} className="text-[#4f46e5] hover:text-[#5b54f6] hover:underline font-bold transition cursor-pointer">
-                                                                {tx.referenceNo}
+                                                            <button onClick={() => setSelectedTx(tx)} className="text-[#4f46e5] hover:text-[#5b54f6] hover:underline font-bold transition cursor-pointer flex flex-col items-start">
+                                                                <span>{tx.referenceNo}</span>
                                                             </button>
+                                                            {renderStatusBadge(tx.status)}
                                                         </td>
                                                         <td className="p-4 text-white max-w-xs truncate" title={tx.description}>{tx.description}</td>
-                                                        <td className="p-4 text-right font-mono text-emerald-400">{tx.debit > 0 ? formatCurrency(tx.debit) : '-'}</td>
-                                                        <td className="p-4 text-right font-mono text-[#f75a68]">{tx.credit > 0 ? formatCurrency(tx.credit) : '-'}</td>
-                                                        <td className={`p-4 text-right font-bold font-mono ${isAbnormal ? 'text-[#f75a68]' : 'text-emerald-400'}`}>
+                                                        <td className="p-4 text-sm text-right text-gray-300 font-mono">{formatCurrency(tx.debit)}</td>
+                                                        <td className="p-4 text-sm text-right text-gray-300 font-mono">{formatCurrency(tx.credit)}</td>
+                                                        <td className={`p-4 text-sm text-right font-bold font-mono ${isAbnormal ? 'text-[#f75a68]' : 'text-emerald-400'}`}>
                                                             {formatCurrency(tx.balance, true)}
                                                         </td>
                                                     </tr>
@@ -341,13 +416,16 @@ export const GeneralLedgerView: React.FC = () => {
                 )}
             </div>
 
-            {/* ---> DRILL-DOWN MODAL <--- */}
+            {/* ---> DRILL-DOWN MODAL WITH CUSTOM REACT INPUT <--- */}
             {selectedTx && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
                     <div className="bg-[#202024] border border-[#29292e] rounded-lg shadow-2xl p-6 w-[500px]">
                         <div className="flex justify-between items-center border-b border-[#29292e] pb-4 mb-4">
-                            <h3 className="text-lg font-bold text-white tracking-wide uppercase">Transaction Details</h3>
-                            <button onClick={() => setSelectedTx(null)} className="text-gray-500 hover:text-red-400 cursor-pointer font-bold text-xl">×</button>
+                            <div className="flex items-center space-x-3">
+                                <h3 className="text-lg font-bold text-white tracking-wide uppercase">Transaction Details</h3>
+                                {renderStatusBadge(selectedTx.status)}
+                            </div>
+                            <button onClick={closeModal} className="text-gray-500 hover:text-red-400 cursor-pointer font-bold text-xl">×</button>
                         </div>
                         
                         <div className="space-y-4">
@@ -380,10 +458,37 @@ export const GeneralLedgerView: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="mt-6 pt-4 border-t border-[#29292e] text-center">
-                            <button onClick={() => setSelectedTx(null)} className="px-6 py-2 bg-[#29292e] hover:bg-[#323238] text-white rounded font-bold transition-colors cursor-pointer text-sm">
-                                Close Details
-                            </button>
+                        <div className="mt-6 pt-4 border-t border-[#29292e] flex justify-between items-center min-h-[40px]">
+                            
+                            {/* INLINE VOID REQUEST FORM */}
+                            <div className="flex-1 mr-4">
+                                {(!selectedTx.status || selectedTx.status === 'ACTIVE') && !showVoidInput && (
+                                    <button onClick={() => setShowVoidInput(true)} className="px-4 py-2 bg-red-900/20 hover:bg-red-900/50 text-red-500 border border-red-900/50 rounded text-xs font-bold transition-colors cursor-pointer uppercase tracking-wider">
+                                        ⚠️ Request Void
+                                    </button>
+                                )}
+
+                                {showVoidInput && (
+                                    <div className="flex space-x-2">
+                                        <input 
+                                            type="text" 
+                                            autoFocus
+                                            placeholder="Reason for voiding..." 
+                                            value={voidReason}
+                                            onChange={(e) => setVoidReason(e.target.value)}
+                                            className="flex-1 bg-[#121214] border border-red-900/50 rounded px-3 py-1.5 text-xs text-white focus:outline-none focus:border-red-500"
+                                        />
+                                        <button onClick={submitVoidRequest} className="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded text-xs font-bold transition cursor-pointer">Submit</button>
+                                        <button onClick={() => setShowVoidInput(false)} className="bg-[#29292e] hover:bg-gray-600 text-gray-300 px-3 py-1.5 rounded text-xs transition cursor-pointer">Cancel</button>
+                                    </div>
+                                )}
+                            </div>
+
+                            {!showVoidInput && (
+                                <button onClick={closeModal} className="px-6 py-2 bg-[#29292e] hover:bg-[#323238] text-white rounded font-bold transition-colors cursor-pointer text-sm">
+                                    Close
+                                </button>
+                            )}
                         </div>
                     </div>
                 </div>

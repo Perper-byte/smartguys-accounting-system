@@ -1,4 +1,4 @@
-// src/renderer/src/App.tsx
+// Make sure these are at the top of src/renderer/src/App.tsx
 import { DashboardView } from './components/DashboardView';
 import { BIRReportsView } from './components/BIRReportsView';
 import { DatabaseBackupView } from './components/DatabaseBackupView';
@@ -14,36 +14,36 @@ import { EWTPayoutView } from './components/EWTPayoutView';
 import UserManagementView from './components/UserManagementView';
 import { ReceivePaymentView } from './components/ReceivePaymentView';
 import { BooksOfAccountsView } from './components/BooksOfAccountsView';
-
-// ---> NEW: IMPORT THE WELCOME VIEW <---
+import { AgedReceivablesView } from './components/AgedReceivablesView';
+import { CashierHistoryView } from './components/CashierHistoryView';
+import { VoidApprovalsView } from './components/VoidApprovalsView'; 
 import { WelcomeView } from './components/WelcomeView';
+import { SystemAuditLogView } from './components/SystemAuditLogView';
 
 const ALL_TABS = [
-  // 1. HOME (Welcome screen for everyone)
   { id: 'home', label: 'Home', icon: '🏠', group: 'Home', allowedRoles: ['CASHIER', 'ACCOUNTANT', 'MANAGER', 'IT_PERSONNEL'] },
-
-  // 2. CLINIC OPERATIONS
   { id: 'billing', label: 'Patient Billing (POS)', icon: '💳', group: 'Clinic Operations', allowedRoles: ['CASHIER'] },
   { id: 'collections', label: 'Receive Payments', icon: '💰', group: 'Clinic Operations', allowedRoles: ['CASHIER', 'ACCOUNTANT', 'MANAGER'] },
   { id: 'disbursement', label: 'Cash Disbursements', icon: '💸', group: 'Clinic Operations', allowedRoles: ['CASHIER', 'ACCOUNTANT', 'MANAGER'] },
   { id: 'payouts', label: 'Doctor Payouts', icon: '🩺', group: 'Clinic Operations', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
-
-  // 3. ACCOUNTING
   { id: 'journal', label: 'Journal Entry', icon: '📝', group: 'Accounting', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
   { id: 'adjusting', label: 'Adjusting Entries', icon: '🔧', group: 'Accounting', allowedRoles: ['ACCOUNTANT'] },
   { id: 'ledger', label: 'General Ledger', icon: '📖', group: 'Accounting', allowedRoles: ['ACCOUNTANT'] },
   { id: 'books', label: 'Books of Accounts', icon: '📚', group: 'Accounting', allowedRoles: ['ACCOUNTANT', 'MANAGER', 'IT_PERSONNEL'] },
-
-  // 4. REPORTS & TAXES
-  // ---> CHANGED: Analytics Dashboard is now STRICTLY for the Manager! <---
   { id: 'analytics', label: 'Analytics Dashboard', icon: '📈', group: 'Reports & Taxes', allowedRoles: ['MANAGER'] },
   { id: 'statements', label: 'Financial Statements', icon: '📄', group: 'Reports & Taxes', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'bir', label: 'BIR Tax Compliance', icon: '🏛️', group: 'Reports & Taxes', allowedRoles: ['MANAGER', 'ACCOUNTANT'] },
-
-  // 5. SYSTEM ADMIN
+  { id: 'aging', label: 'Aged Receivables (HMO)', icon: '⏳', group: 'Clinic Operations', allowedRoles: ['MANAGER', 'ACCOUNTANT'] },
+  { id: 'audit', label: 'Audit Trails', icon: '⏳', group: 'Reports & Taxes', allowedRoles: ['IT_PERSONNEL'] },
+  
+  // ---> THE VOID TAB <---
+  { id: 'history', label: 'My Sales History', icon: '🧾', group: 'Clinic Operations', allowedRoles: ['CASHIER'] },
+{ id: 'voids', label: 'Void Approvals', icon: '↩️', group: 'Reports & Taxes', allowedRoles: ['MANAGER'] },
+  
   { id: 'users', label: 'User Management', icon: '👥', group: 'System Admin', allowedRoles: ['IT_PERSONNEL'] },
   { id: 'backup', label: 'Database Backup', icon: '💾', group: 'System Admin', allowedRoles: ['IT_PERSONNEL'] },
 ];
+
 
 const GROUP_ORDER = ['Home', 'Clinic Operations', 'Accounting', 'Reports & Taxes', 'System Admin'];
 
@@ -176,6 +176,10 @@ function App(): React.ReactElement {
               {activeTab === 'collections' && <ReceivePaymentView userId={currentUser.id} />}
               {activeTab === 'payouts' && <EWTPayoutView userId={currentUser.id} />}
               {activeTab === 'users' && <UserManagementView />}
+              {activeTab === 'aging' && <AgedReceivablesView />}
+              {activeTab === 'history' && <CashierHistoryView userId={currentUser.id} />}
+              {activeTab === 'voids' && <VoidApprovalsView userId={currentUser.id} />}
+               {activeTab === 'audit' && <SystemAuditLogView />}
             </div>
           )}
         </main>

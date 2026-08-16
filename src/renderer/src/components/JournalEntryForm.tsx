@@ -2,9 +2,11 @@
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
 
+ const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
 export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean }> = ({ userId, isAdjusting = false }) => {
     const [accounts, setAccounts] = useState<any[]>([]);
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+     const [date, setDate] = useState(getLocalDateString());
     
     // Prefix and Sequence States
     const [refPrefix, setRefPrefix] = useState(isAdjusting ? 'ADJ-' : 'JV-');
