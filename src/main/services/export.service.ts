@@ -41,7 +41,7 @@ export class ExportService {
 
         data.lines.forEach((line: any) => {
             worksheet.addRow([
-                line.accountCode,
+                Number(line.accountCode), // <-- Converts to number
                 line.accountName,
                 line.debit > 0 ? line.debit : null,
                 line.credit > 0 ? line.credit : null
@@ -51,8 +51,9 @@ export class ExportService {
         const totalRow = worksheet.addRow(['', 'Total', data.totalDebits, data.totalCredits]);
         totalRow.font = { name: 'Arial', size: 11, bold: true };
 
-        worksheet.getColumn(3).numFmt = '"₱"#,##0.00;("₱"#,##0.00);"-"';
-        worksheet.getColumn(4).numFmt = '"₱"#,##0.00;("₱"#,##0.00);"-"';
+        // Use Official Accounting Format in Excel (Aligns currency symbol left, numbers right)
+        worksheet.getColumn(3).numFmt = '_("₱"* #,##0.00_);_("₱"* (#,##0.00);_("₱"* "-"??_);_(@_)';
+        worksheet.getColumn(4).numFmt = '_("₱"* #,##0.00_);_("₱"* (#,##0.00);_("₱"* "-"??_);_(@_)';
 
         worksheet.columns.forEach(col => {
             col.width = 25;
