@@ -8,8 +8,10 @@ export const GeneralLedgerView: React.FC = () => {
     const [ledgerData, setLedgerData] = useState<any | null>(null);
     const [loading, setLoading] = useState(false);
 
+    // DATE RANGE FILTER STATES
     const [startDate, setStartDate] = useState<string>('');
     const [endDate, setEndDate] = useState<string>('');
+    const [journalFilter, setJournalFilter] = useState<string>('ALL');
 
     useEffect(() => {
         const api = (window as any).electronAPI;
@@ -73,8 +75,20 @@ export const GeneralLedgerView: React.FC = () => {
             filtered = filtered.filter((tx: any) => new Date(tx.date).toISOString().split('T')[0] <= endDate);
         }
 
+        if (journalFilter !== 'ALL') {
+            filtered = filtered.filter((tx: any) => {
+                const ref = tx.referenceNo.toUpperCase();
+                if (journalFilter === 'CRJ') return ref.startsWith('OR-') || (selectedAccountId === '1010' && tx.debit > 0);
+                if (journalFilter === 'CDJ') return ref.startsWith('CV-') || (selectedAccountId === '1010' && tx.credit > 0);
+                if (journalFilter === 'PJ') return ref.startsWith('PV-') || (selectedAccountId === '2010' && tx.credit > 0);
+                if (journalFilter === 'SJ') return ref.startsWith('INV-') || (selectedAccountId === '1200' && tx.debit > 0);
+                if (journalFilter === 'ADJ') return ref.startsWith('ADJ-');
+                return true;
+            });
+        }
+
         return { list: filtered, beginningBalance };
-    }, [ledgerData, startDate, endDate]);
+    }, [ledgerData, startDate, endDate, journalFilter, selectedAccountId]);
 
     const formatCurrency = (amount: number) => {
         if (amount === 0) return '—';
@@ -93,17 +107,52 @@ export const GeneralLedgerView: React.FC = () => {
             return;
         }
 
-        try {
-            // 1. Add global printing class to instantly hide UI sidebars/headers
-            document.body.classList.add('is-printing');
+        // 1. Grab all UI elements
+        const sidebar = document.querySelector('aside');
+        const topHeader = document.querySelector('header');
+        const mainWrapper = document.querySelector('main');
+        const appLayouts = document.querySelectorAll('.h-screen, .overflow-hidden, .flex-1');
 
-            // 2. Wait 150ms for the browser to visually apply the CSS
+        const ledgerCard = document.getElementById('ledger-card');
+        const controlsDiv = document.getElementById('ledger-controls');
+        const subtitle = document.getElementById('ledger-subtitle');
+        const exportBtn = document.getElementById('export-pdf-btn');
+        const printParams = document.getElementById('print-parameters'); // Our new static text header!
+
+        try {
+            // 2. FORCE hide the unwanted interactive elements using !important
+            if (sidebar) sidebar.style.setProperty('display', 'none', 'important');
+            if (topHeader) topHeader.style.setProperty('display', 'none', 'important');
+            if (controlsDiv) controlsDiv.style.setProperty('display', 'none', 'important');
+            if (subtitle) subtitle.style.setProperty('display', 'none', 'important');
+            if (exportBtn) exportBtn.style.setProperty('display', 'none', 'important');
+
+            // 3. FORCE show the print-only parameters
+            if (printParams) printParams.style.setProperty('display', 'block', 'important');
+
+            // 4. Stretch the layout for the A4 page
+            if (mainWrapper) {
+                mainWrapper.style.setProperty('overflow', 'visible', 'important');
+                mainWrapper.style.setProperty('padding', '0', 'important');
+            }
+            if (ledgerCard) {
+                ledgerCard.style.setProperty('border', 'none', 'important');
+                ledgerCard.style.setProperty('box-shadow', 'none', 'important');
+                ledgerCard.style.setProperty('padding', '0', 'important');
+            }
+            appLayouts.forEach(el => {
+                (el as HTMLElement).style.setProperty('height', 'auto', 'important');
+                (el as HTMLElement).style.setProperty('overflow', 'visible', 'important');
+            });
+
+            // 5. Wait a fraction of a second for React to repaint the screen
             await new Promise(resolve => setTimeout(resolve, 150));
 
-            // 3. Tell Electron to snap the PDF
+            // 6. Snap the PDF
             const api = (window as any).electronAPI;
             const cleanAccountName = ledgerData.accountName.replace(/[^a-zA-Z0-9]/g, '_');
-            const filename = `General_Ledger_${ledgerData.accountCode}_${cleanAccountName}.pdf`;
+            const journalPrefix = journalFilter === 'ALL' ? 'General_Ledger' : `${journalFilter}_Journal`;
+            const filename = `${journalPrefix}_${ledgerData.accountCode}_${cleanAccountName}.pdf`;
 
             const result = await api.exportPDF(filename);
 
@@ -116,8 +165,27 @@ export const GeneralLedgerView: React.FC = () => {
             console.error("PDF Export Error:", err);
             alert(`Export Error: ${err.message || "Failed to generate PDF."}`);
         } finally {
-            // 4. Instantly restore everything back to normal!
-            document.body.classList.remove('is-printing');
+            // 7. Instantly restore everything back to normal!
+            if (sidebar) sidebar.style.display = '';
+            if (topHeader) topHeader.style.display = '';
+            if (controlsDiv) controlsDiv.style.display = '';
+            if (subtitle) subtitle.style.display = '';
+            if (exportBtn) exportBtn.style.display = '';
+            if (printParams) printParams.style.display = 'none'; // Hide print params again
+
+            if (mainWrapper) {
+                mainWrapper.style.overflow = '';
+                mainWrapper.style.padding = '';
+            }
+            if (ledgerCard) {
+                ledgerCard.style.border = '';
+                ledgerCard.style.boxShadow = '';
+                ledgerCard.style.padding = '';
+            }
+            appLayouts.forEach(el => {
+                (el as HTMLElement).style.height = '';
+                (el as HTMLElement).style.overflow = '';
+            });
         }
     };
 
@@ -125,14 +193,32 @@ export const GeneralLedgerView: React.FC = () => {
         <div id="ledger-card" className="w-full bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm min-h-[550px]">
 
             {/* HEADER & FILTERS BAR */}
-            <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 mb-6 border-b border-[#B0DCDA] pb-6">
+            <div className="flex flex-col xl:flex-row justify-between items-start xl:items-end gap-4 mb-6 border-b border-[#B0DCDA] pb-6">
                 <div>
-                    <h2 className="text-xl font-extrabold text-gray-800 tracking-wide">General Ledger</h2>
-                    <p className="text-sm text-gray-500 mt-1 font-medium">View chronological transaction history and running balances.</p>
+                    <h2 className="text-xl font-extrabold text-gray-800 tracking-wide">
+                        {journalFilter === 'ALL' ? 'General Ledger' : `${journalFilter} Specialized Journal`}
+                    </h2>
+                    <p id="ledger-subtitle" className="text-sm text-gray-500 mt-1 font-medium">View chronological transaction history and running balances.</p>
                 </div>
 
-                {/* CONTROLS GROUP (Given an ID for hiding) */}
-                <div id="ledger-controls" className="flex flex-wrap items-end gap-3 w-full lg:w-auto">
+                {/* CONTROLS GROUP (Interactive - Hidden during Print) */}
+                <div id="ledger-controls" className="flex flex-wrap items-end gap-3 w-full xl:w-auto">
+                    <div className="w-48">
+                        <label className="block text-[10px] font-extrabold text-[#1B9387] uppercase tracking-wider mb-1">Journal Type</label>
+                        <select
+                            value={journalFilter}
+                            onChange={(e) => setJournalFilter(e.target.value)}
+                            className="w-full bg-[#E9FAFA] border border-[#B0DCDA] rounded-md p-2.5 text-sm text-[#1B9387] font-bold focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition cursor-pointer"
+                        >
+                            <option value="ALL">All (General Ledger)</option>
+                            <option value="CRJ">Cash Receipts (CRJ)</option>
+                            <option value="CDJ">Cash Disbursements (CDJ)</option>
+                            <option value="SJ">Sales Journal (SJ)</option>
+                            <option value="PJ">Purchase Journal (PJ)</option>
+                            <option value="ADJ">Adjusting Entries (ADJ)</option>
+                        </select>
+                    </div>
+
                     <div className="w-64">
                         <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">Select Account</label>
                         <select
@@ -155,49 +241,59 @@ export const GeneralLedgerView: React.FC = () => {
 
                     <div>
                         <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">From Date</label>
-                        <input
-                            type="date"
-                            value={startDate}
-                            onChange={(e) => setStartDate(e.target.value)}
-                            className="bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-2 text-xs text-gray-800 outline-none focus:border-[#1B9387]"
-                        />
+                        <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-2 text-xs text-gray-800 outline-none focus:border-[#1B9387]" />
                     </div>
 
                     <div>
                         <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">To Date</label>
-                        <input
-                            type="date"
-                            value={endDate}
-                            onChange={(e) => setEndDate(e.target.value)}
-                            className="bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-2 text-xs text-gray-800 outline-none focus:border-[#1B9387]"
-                        />
+                        <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-2 text-xs text-gray-800 outline-none focus:border-[#1B9387]" />
                     </div>
 
-                    {(startDate || endDate) && (
-                        <button
-                            onClick={() => { setStartDate(''); setEndDate(''); }}
-                            className="p-2 text-xs text-red-500 hover:underline font-bold"
-                            title="Clear date filter"
-                        >
+                    {(startDate || endDate || journalFilter !== 'ALL') && (
+                        <button onClick={() => { setStartDate(''); setEndDate(''); setJournalFilter('ALL'); }} className="p-2 text-xs text-red-500 hover:underline font-bold" title="Clear all filters">
                             Clear
                         </button>
                     )}
                 </div>
             </div>
 
-            {loading && (
-                <div className="flex justify-center items-center py-20 text-[#1B9387]">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current"></div>
+            {/* 🔥 PRINT-ONLY STATIC HEADER (Replaces the controls during PDF export) */}
+            <div id="print-parameters" style={{ display: 'none' }} className="mb-6 pb-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="flex space-x-2">
+                        <span className="font-extrabold text-gray-500 uppercase tracking-wider">Journal Type:</span>
+                        <span className="font-bold text-[#1B9387]">
+                            {journalFilter === 'ALL' ? 'General Ledger' : `${journalFilter} Specialized Journal`}
+                        </span>
+                    </div>
+                    <div className="flex space-x-2">
+                        <span className="font-extrabold text-gray-500 uppercase tracking-wider">Account Selected:</span>
+                        <span className="font-bold text-[#1B9387]">
+                            {ledgerData ? `${ledgerData.accountCode} - ${ledgerData.accountName}` : 'None'}
+                        </span>
+                    </div>
+                    {/* Only print Date Range if it was actively filtered */}
+                    {(startDate || endDate) && (
+                        <div className="flex space-x-2 col-span-2 mt-2">
+                            <span className="font-extrabold text-gray-500 uppercase tracking-wider">Filtered Date Range:</span>
+                            <span className="font-bold text-[#1B9387]">
+                                {startDate ? formatDate(startDate) : 'Beginning of Records'}
+                                <span className="text-gray-400 mx-2">TO</span>
+                                {endDate ? formatDate(endDate) : 'Present Date'}
+                            </span>
+                        </div>
+                    )}
                 </div>
-            )}
+            </div>
+
+            {/* REST OF COMPONENT */}
+            {loading && <div className="flex justify-center items-center py-20 text-[#1B9387]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current"></div></div>}
 
             {!loading && !selectedAccountId && (
                 <div className="text-center py-24 bg-[#FBF8F8] border border-dashed border-[#B0DCDA] rounded-xl">
                     <div className="text-4xl mb-3">📖</div>
                     <h3 className="text-base font-bold text-gray-700">No Account Selected</h3>
-                    <p className="text-sm text-gray-500 mt-1 max-w-md mx-auto">
-                        Please select an account from the dropdown above to inspect its ledger transactions, debits, credits, and chronological running balance.
-                    </p>
+                    <p className="text-sm text-gray-500 mt-1 max-w-md mx-auto">Please select an account from the dropdown above to inspect its ledger transactions.</p>
                 </div>
             )}
 
@@ -209,7 +305,6 @@ export const GeneralLedgerView: React.FC = () => {
 
             {!loading && ledgerData && (
                 <div className="animate-in fade-in duration-300">
-
                     <div className="flex items-center justify-between bg-[#E9FAFA] border border-[#B0DCDA] rounded-t-xl p-5 shadow-sm">
                         <div className="flex items-center space-x-3">
                             <div>
@@ -220,19 +315,14 @@ export const GeneralLedgerView: React.FC = () => {
                                     </span>
                                 </div>
                                 <p className="text-xs text-gray-500 font-medium mt-1">
-                                    Showing {ledgerDisplay.list.length} transaction records
+                                    Showing {ledgerDisplay.list.length} transaction records {journalFilter !== 'ALL' && `(Filtered: ${journalFilter})`}
                                 </p>
                             </div>
                         </div>
 
                         <div className="flex items-center space-x-6">
-                            {/* EXPORT BUTTON (Given an ID for hiding) */}
-                            <button
-                                id="export-pdf-btn"
-                                onClick={handleExportPDF}
-                                className="px-3 py-1.5 bg-white hover:bg-gray-50 border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-1.5"
-                            >
-                                <span>📄</span> <span>Export Ledger PDF</span>
+                            <button id="export-pdf-btn" onClick={handleExportPDF} className="px-3 py-1.5 bg-white hover:bg-gray-50 border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-1.5">
+                                <span>📄</span> <span>Export {journalFilter === 'ALL' ? 'Ledger' : journalFilter} PDF</span>
                             </button>
 
                             <div className="text-right border-l border-[#B0DCDA] pl-6">
@@ -253,7 +343,7 @@ export const GeneralLedgerView: React.FC = () => {
                                     <th className="p-3.5 font-extrabold border-r border-[#B0DCDA]">Description</th>
                                     <th className="p-3.5 text-right font-extrabold border-r border-[#B0DCDA]">Debit</th>
                                     <th className="p-3.5 text-right font-extrabold border-r border-[#B0DCDA]">Credit</th>
-                                    <th className="p-3.5 pr-5 text-right font-extrabold">Running Balance</th>
+                                    <th className="p-3.5 pr-5 text-right font-extrabold">Balance</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-100">
@@ -273,7 +363,7 @@ export const GeneralLedgerView: React.FC = () => {
                                 {ledgerDisplay.list.length === 0 ? (
                                     <tr>
                                         <td colSpan={6} className="p-8 text-center text-gray-500 text-sm italic">
-                                            No transactions match the selected date range.
+                                            No transactions match the selected filters.
                                         </td>
                                     </tr>
                                 ) : (

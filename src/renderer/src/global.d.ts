@@ -5,12 +5,13 @@ interface Window {
         getAccounts: () => Promise<any[]>;
         submitJournalEntry: (entryData: any) => Promise<any>;
         getAccountLedger: (accountId: string) => Promise<any>;
-        getTrialBalance: () => Promise<any>;
-        getIncomeStatement: () => Promise<any>;
-        getBalanceSheet: () => Promise<any>;
         triggerBackup: () => Promise<any>;
         generate2550Q: (year: number, quarter: number) => Promise<any>;
         generateRelief: (year: number, quarter: number) => Promise<any>;
         getAnalyticsMetrics: (timeframe: string) => Promise<any>;
+        getTrialBalance: (year?: number, month?: number) => Promise<any>;
+        getIncomeStatement: (year?: number, month?: number) => Promise<any>;
+        getBalanceSheet: (year?: number, month?: number) => Promise<any>;
+        getCashFlowStatement: (year?: number, month?: number) => Promise<any>;
     };
 }

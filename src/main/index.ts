@@ -92,34 +92,45 @@ app.whenReady().then(() => {
   });
 
   // Reports
-  ipcMain.handle(IPC_CHANNELS.REPORTS.TRIAL_BALANCE, async () => {
+  ipcMain.handle('reports:getTrialBalance', async (event, year, month) => {
     try {
-      return await ReportsService.getTrialBalance();
+      let endDate;
+      if (year && month) endDate = new Date(year, month, 0, 23, 59, 59);
+      return await ReportsService.getTrialBalance(undefined, endDate);
     } catch (error: any) {
       return { error: error.message };
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.REPORTS.INCOME_STATEMENT, async () => {
+  ipcMain.handle('reports:getIncomeStatement', async (event, year, month) => {
     try {
-      return await ReportsService.getIncomeStatement();
+      return await ReportsService.getIncomeStatement(year, month);
     } catch (error: any) {
       return { error: error.message };
     }
   });
 
-  ipcMain.handle(IPC_CHANNELS.REPORTS.BALANCE_SHEET, async () => {
+  ipcMain.handle('reports:getBalanceSheet', async (event, year, month) => {
     try {
-      return await ReportsService.getBalanceSheet();
+      return await ReportsService.getBalanceSheet(year, month);
+    } catch (error: any) {
+      return { error: error.message };
+    }
+  });
+
+  ipcMain.handle('reports:getCashFlowStatement', async (event, year, month) => {
+    try {
+      return await ReportsService.getCashFlowStatement(year, month);
     } catch (error: any) {
       return { error: error.message };
     }
   });
 
   // 🚀 EXPORTERS (PDF & EXCEL) - ADDED THIS ENTIRE SECTION!
-  ipcMain.handle(IPC_CHANNELS.EXPORT.TRIAL_BALANCE_EXCEL, async () => {
+  ipcMain.handle(IPC_CHANNELS.EXPORT.TRIAL_BALANCE_EXCEL, async (event, year, month) => {
     try {
-      return await ExportService.exportTrialBalanceToExcel();
+      // 🔥 Pass the year and month to the service
+      return await ExportService.exportTrialBalanceToExcel(year, month);
     } catch (error: any) {
       return { success: false, error: error.message };
     }

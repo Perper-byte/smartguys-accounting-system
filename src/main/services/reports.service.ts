@@ -5,9 +5,10 @@ const prisma = new PrismaClient();
 
 export class ReportsService {
     /**
-     * Generates a Trial Balance: Lists all accounts with their net Debit or Credit balance.
+     * Generates a Trial Balance. 
+     * If startDate/endDate are provided, it filters transactions within that range.
      */
-    static async getTrialBalance() {
+    static async getTrialBalance(startDate?: Date, endDate?: Date) {
         const accounts = await prisma.account.findMany({
             include: { account_type: true },
         });
@@ -17,9 +18,16 @@ export class ReportsService {
         let totalCredits = 0;
 
         for (const acc of accounts) {
-            const lines = await prisma.journalLine.findMany({
-                where: { account_id: acc.code },
-            });
+            const whereClause: any = { account_id: acc.code };
+
+            // Apply date filters if requested
+            if (startDate || endDate) {
+                whereClause.entry = { date: {} };
+                if (startDate) whereClause.entry.date.gte = startDate;
+                if (endDate) whereClause.entry.date.lte = endDate;
+            }
+
+            const lines = await prisma.journalLine.findMany({ where: whereClause });
 
             const sumDebits = lines.reduce((sum, ln) => sum + Number(ln.debit), 0);
             const sumCredits = lines.reduce((sum, ln) => sum + Number(ln.credit), 0);
@@ -61,10 +69,17 @@ export class ReportsService {
     }
 
     /**
-     * Generates an Income Statement (Profit & Loss): Revenue - Expenses
+     * Income Statement: Revenue - Expenses (Strictly for the selected month)
      */
-    static async getIncomeStatement() {
-        const trialBalance = await this.getTrialBalance();
+    static async getIncomeStatement(year?: number, month?: number) {
+        let startDate, endDate;
+        if (year && month) {
+            startDate = new Date(year, month - 1, 1);
+            endDate = new Date(year, month, 0, 23, 59, 59);
+        }
+
+        // Get balances ONLY for the selected month
+        const trialBalance = await this.getTrialBalance(startDate, endDate);
 
         const revenueLines: any[] = [];
         const expenseLines: any[] = [];
@@ -73,15 +88,11 @@ export class ReportsService {
 
         for (const line of trialBalance.lines) {
             if (line.accountType === 'Revenue') {
-                // Revenue has a credit balance
-                const amount = line.credit - line.debit;
-                revenueLines.push({ name: line.accountName, amount });
-                totalRevenue += amount;
+                revenueLines.push({ name: line.accountName, amount: line.credit });
+                totalRevenue += line.credit;
             } else if (line.accountType === 'Expense') {
-                // Expenses have a debit balance
-                const amount = line.debit - line.credit;
-                expenseLines.push({ name: line.accountName, amount });
-                totalExpenses += amount;
+                expenseLines.push({ name: line.accountName, amount: line.debit });
+                totalExpenses += line.debit;
             }
         }
 
@@ -97,42 +108,43 @@ export class ReportsService {
     }
 
     /**
-     * Generates a Balance Sheet: Assets, Liabilities, and Equity
+     * Balance Sheet: Assets, Liabilities, and Equity (Cumulative up to the end of the month)
      */
-    static async getBalanceSheet() {
-        const trialBalance = await this.getTrialBalance();
-        const incomeStatement = await this.getIncomeStatement();
+    static async getBalanceSheet(year?: number, month?: number) {
+        let endDate;
+        if (year && month) endDate = new Date(year, month, 0, 23, 59, 59);
+
+        // Balance Sheet relies on ALL historical data up to the selected date
+        const trialBalance = await this.getTrialBalance(undefined, endDate);
 
         const assetLines: any[] = [];
         const liabilityLines: any[] = [];
         const equityLines: any[] = [];
-
-        let totalAssets = 0;
-        let totalLiabilities = 0;
-        let totalEquity = 0;
+        let totalAssets = 0, totalLiabilities = 0, totalEquity = 0;
+        let cumulativeRevenue = 0, cumulativeExpenses = 0;
 
         for (const line of trialBalance.lines) {
             if (line.accountType === 'Asset') {
-                // Assets are normally debits. If an asset has a credit balance (like overdrawn cash), it is negative.
                 const amount = line.debit - line.credit;
                 assetLines.push({ name: line.accountName, amount });
                 totalAssets += amount;
             } else if (line.accountType === 'Liability') {
-                // Liabilities are normally credits.
                 const amount = line.credit - line.debit;
                 liabilityLines.push({ name: line.accountName, amount });
                 totalLiabilities += amount;
             } else if (line.accountType === 'Equity') {
-                // Equity is normally credits.
                 const amount = line.credit - line.debit;
                 equityLines.push({ name: line.accountName, amount });
                 totalEquity += amount;
+            } else if (line.accountType === 'Revenue') {
+                cumulativeRevenue += line.credit;
+            } else if (line.accountType === 'Expense') {
+                cumulativeExpenses += line.debit;
             }
         }
 
-        // Retained Earnings (Equity) is increased by Net Income
-        const netIncome = incomeStatement.netIncome;
-        const totalLiabilitiesAndEquity = totalLiabilities + totalEquity + netIncome;
+        const cumulativeNetIncome = cumulativeRevenue - cumulativeExpenses;
+        const totalLiabilitiesAndEquity = totalLiabilities + totalEquity + cumulativeNetIncome;
 
         return {
             assets: assetLines,
@@ -141,9 +153,69 @@ export class ReportsService {
             totalAssets: Number(totalAssets.toFixed(2)),
             totalLiabilities: Number(totalLiabilities.toFixed(2)),
             totalEquity: Number(totalEquity.toFixed(2)),
-            netIncome: Number(netIncome.toFixed(2)),
+            netIncome: Number(cumulativeNetIncome.toFixed(2)),
             totalLiabilitiesAndEquity: Number(totalLiabilitiesAndEquity.toFixed(2)),
             isEquationBalanced: totalAssets.toFixed(2) === totalLiabilitiesAndEquity.toFixed(2),
+        };
+    }
+
+    /**
+     * Cash Flow Statement (Strictly for the selected month)
+     */
+    static async getCashFlowStatement(year?: number, month?: number) {
+        let startDate, endDate;
+        if (year && month) {
+            startDate = new Date(year, month - 1, 1);
+            endDate = new Date(year, month, 0, 23, 59, 59);
+        }
+
+        const whereClause: any = { lines: { some: { account_id: '1010' } } };
+        if (startDate || endDate) {
+            whereClause.date = {};
+            if (startDate) whereClause.date.gte = startDate;
+            if (endDate) whereClause.date.lte = endDate;
+        }
+
+        const cashEntries = await prisma.journalEntry.findMany({
+            where: whereClause,
+            include: { lines: { include: { account: { include: { account_type: true } } } } },
+            orderBy: { date: 'asc' }
+        });
+
+        let operatingNet = 0, investingNet = 0, financingNet = 0;
+        const operatingDetails: any[] = [], investingDetails: any[] = [], financingDetails: any[] = [];
+
+        for (const entry of cashEntries) {
+            const cashLine = entry.lines.find(l => l.account_id === '1010');
+            if (!cashLine) continue;
+
+            const netCashChange = Number(cashLine.debit) - Number(cashLine.credit);
+            if (netCashChange === 0) continue;
+
+            const offsetLine = entry.lines.find(l => l.account_id !== '1010' && (Number(l.debit) > 0 || Number(l.credit) > 0)) || entry.lines[0];
+            const offsetAccount = offsetLine.account;
+
+            const detail = { id: entry.id, date: entry.date, description: entry.description, amount: netCashChange };
+
+            if (offsetAccount.code === '1500' || offsetAccount.name.includes('Equipment')) {
+                investingDetails.push(detail);
+                investingNet += netCashChange;
+            } else if (offsetAccount.account_type.name === 'Equity' || offsetAccount.name.includes('Capital')) {
+                financingDetails.push(detail);
+                financingNet += netCashChange;
+            } else {
+                operatingDetails.push(detail);
+                operatingNet += netCashChange;
+            }
+        }
+
+        const netIncreaseInCash = operatingNet + investingNet + financingNet;
+
+        return {
+            operating: { details: operatingDetails, net: Number(operatingNet.toFixed(2)) },
+            investing: { details: investingDetails, net: Number(investingNet.toFixed(2)) },
+            financing: { details: financingDetails, net: Number(financingNet.toFixed(2)) },
+            netIncreaseInCash: Number(netIncreaseInCash.toFixed(2)),
         };
     }
 }

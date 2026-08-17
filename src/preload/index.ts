@@ -3,59 +3,36 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 const api = {
   // Authentication
-  login: (username: string, password: string) =>
-    ipcRenderer.invoke('auth:login', username, password),
+  login: (username: string, password: string) => ipcRenderer.invoke('auth:login', username, password),
 
   // Ledger & Accounts
-  getAccounts: () =>
-    ipcRenderer.invoke('ledger:getAccounts'),
+  getAccounts: () => ipcRenderer.invoke('ledger:getAccounts'),
+  submitJournalEntry: (entryData: any) => ipcRenderer.invoke('ledger:submitEntry', entryData),
+  getAccountLedger: (accountId: string) => ipcRenderer.invoke('ledger:getAccountLedger', accountId),
+  getPayees: () => ipcRenderer.invoke('get-payees'),
+  createPayee: (name: string) => ipcRenderer.invoke('create-payee', name),
+  getPayeeBalance: (payeeId: string) => ipcRenderer.invoke('get-payee-balance', payeeId),
 
-  submitJournalEntry: (entryData: any) =>
-    ipcRenderer.invoke('ledger:submitEntry', entryData),
-
-  getAccountLedger: (accountId: string) =>
-    ipcRenderer.invoke('ledger:getAccountLedger', accountId),
-
-  getPayees: () =>
-    ipcRenderer.invoke('get-payees'),
-
-  createPayee: (name: string) =>
-    ipcRenderer.invoke('create-payee', name),
-
-  getPayeeBalance: (payeeId: string) =>
-    ipcRenderer.invoke('get-payee-balance', payeeId),
-
-  // Financial Reports
-  getTrialBalance: () =>
-    ipcRenderer.invoke('reports:getTrialBalance'),
-
-  getIncomeStatement: () =>
-    ipcRenderer.invoke('reports:getIncomeStatement'),
-
-  getBalanceSheet: () =>
-    ipcRenderer.invoke('reports:getBalanceSheet'),
+  // 🔥 Financial Reports (Fixed to use explicit safe strings!)
+  getTrialBalance: (year?: number, month?: number) => ipcRenderer.invoke('reports:getTrialBalance', year, month),
+  getIncomeStatement: (year?: number, month?: number) => ipcRenderer.invoke('reports:getIncomeStatement', year, month),
+  getBalanceSheet: (year?: number, month?: number) => ipcRenderer.invoke('reports:getBalanceSheet', year, month),
+  getCashFlowStatement: (year?: number, month?: number) => ipcRenderer.invoke('reports:getCashFlowStatement', year, month),
 
   // Exporters
-  exportTrialBalanceExcel: () =>
-    ipcRenderer.invoke('export:trialBalanceExcel'),
-
-  exportPDF: (filename: string) =>
-    ipcRenderer.invoke('export:printToPDF', filename),
+  exportTrialBalanceExcel: (year?: number, month?: number) =>
+    ipcRenderer.invoke('export:trialBalanceExcel', year, month),
+  exportPDF: (filename: string) => ipcRenderer.invoke('export:printToPDF', filename),
 
   // Backups
-  triggerBackup: () =>
-    ipcRenderer.invoke('backup:triggerBackup'),
+  triggerBackup: () => ipcRenderer.invoke('backup:triggerBackup'),
 
   // Tax Compliance
-  generate2550Q: (year: number, quarter: number) =>
-    ipcRenderer.invoke('tax:generate2550Q', year, quarter),
-
-  generateRelief: (year: number, quarter: number) =>
-    ipcRenderer.invoke('tax:generateRelief', year, quarter),
+  generate2550Q: (year: number, quarter: number) => ipcRenderer.invoke('tax:generate2550Q', year, quarter),
+  generateRelief: (year: number, quarter: number) => ipcRenderer.invoke('tax:generateRelief', year, quarter),
 
   // Analytics
-  getAnalyticsMetrics: (timeframe: string) =>
-    ipcRenderer.invoke('analytics:getMetrics', timeframe),
+  getAnalyticsMetrics: (timeframe: string) => ipcRenderer.invoke('analytics:getMetrics', timeframe),
 };
 
 // Expose the API safely to React window object

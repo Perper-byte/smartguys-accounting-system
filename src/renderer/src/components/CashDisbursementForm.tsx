@@ -70,14 +70,16 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
     };
 
     return (
-        <div className="max-w-3xl mx-auto bg-[#202024] border border-[#29292e] rounded-lg p-8 shadow-lg">
-            <div className="flex justify-between items-center mb-6 border-b border-[#29292e] pb-4">
-                <h2 className="text-xl font-bold text-white tracking-wide">New Disbursement</h2>
-                <span className="bg-[#f75a68]/20 text-[#f75a68] text-xs px-3 py-1 rounded font-bold uppercase tracking-widest border border-[#f75a68]/30">Cash Outflow</span>
+        <div className="w-full bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
+            <div className="flex justify-between items-center mb-6 border-b border-[#B0DCDA] pb-4">
+                <h2 className="text-xl font-extrabold text-gray-800 tracking-wide">New Disbursement</h2>
+                <span className="bg-red-50 text-red-500 text-xs px-4 py-1.5 rounded-full font-bold uppercase tracking-widest border border-red-200">
+                    Cash Outflow
+                </span>
             </div>
 
             {status && (
-                <div className={`mb-6 p-4 rounded-md text-sm font-medium ${status.type === 'success' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' : 'bg-red-500/10 text-red-500 border border-red-500/20'}`}>
+                <div className={`mb-6 p-4 rounded-md text-sm font-bold ${status.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
                     {status.type === 'success' ? '✅ ' : '⚠️ '}{status.msg}
                 </div>
             )}
@@ -87,49 +89,57 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                 {/* TOP ROW: Date & Payee */}
                 <div className="grid grid-cols-2 gap-6">
                     <div>
-                        <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Date</label>
-                        <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition" />
+                        <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Date</label>
+                        <input type="date" required value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Payee</label>
-                        <input type="text" required value={payee} onChange={e => setPayee(e.target.value)} placeholder="e.g. Meralco, Supplier Inc." className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition" />
+                        <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Payee</label>
+                        <input type="text" required value={payee} onChange={e => setPayee(e.target.value)} placeholder="e.g. Meralco, Supplier Inc." className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
                     </div>
                 </div>
 
                 {/* MIDDLE ROW: Amount & Check No */}
                 <div className="grid grid-cols-2 gap-6">
                     <div>
-                        <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Amount (₱)</label>
-                        <input type="number" required min="0.01" step="0.01" value={amount} onChange={e => setAmount(parseFloat(e.target.value))} placeholder="0.00" className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white font-mono focus:border-[#4f46e5] outline-none transition" />
+                        <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Amount (₱)</label>
+                        <div className="relative flex items-center">
+                            <span className="absolute left-3 text-gray-400 font-mono text-sm">₱</span>
+                            <input type="number" required min="0.01" step="0.01" value={amount} onChange={e => setAmount(parseFloat(e.target.value))} placeholder="0.00" className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md py-3 pl-8 pr-3 text-sm text-gray-800 font-mono font-bold focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
+                        </div>
                     </div>
                     <div>
-                        <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Check / Voucher No.</label>
-                        <input type="text" required value={referenceNo} onChange={e => setReferenceNo(e.target.value)} placeholder="e.g. CV-1029" className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition" />
+                        <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Check / Voucher No.</label>
+                        <input type="text" required value={referenceNo} onChange={e => setReferenceNo(e.target.value)} placeholder="e.g. CV-1029" className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-bold focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
                     </div>
                 </div>
 
                 {/* ACCOUNT DROPDOWN */}
                 <div>
-                    <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Expense Account</label>
-                    <select required value={expenseAccount} onChange={e => setExpenseAccount(e.target.value)} className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition cursor-pointer">
-                        <option value="" className="text-[#8d8d99]">-- Select Utility, Payroll, or Supply Account --</option>
-                        {expenseAccounts.map(acc => (
-                            <option key={acc.code} value={acc.code} className="bg-[#202024]">{acc.code} - {acc.name}</option>
-                        ))}
-                    </select>
+                    <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Expense Account</label>
+                    <div className="relative">
+                        <select required value={expenseAccount} onChange={e => setExpenseAccount(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 pr-10 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition appearance-none cursor-pointer">
+                            <option value="" className="text-gray-400">-- Select Utility, Payroll, or Supply Account --</option>
+                            {expenseAccounts.map(acc => (
+                                <option key={acc.code} value={acc.code} className="text-gray-800 bg-white">{acc.code} - {acc.name}</option>
+                            ))}
+                        </select>
+                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400">
+                            <svg className="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                        </div>
+                    </div>
                 </div>
 
                 {/* REMARKS */}
                 <div>
-                    <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Remarks</label>
-                    <input type="text" value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Optional details..." className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition" />
+                    <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Remarks</label>
+                    <input type="text" value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Optional details..." className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
                 </div>
 
                 {/* SUBMIT BUTTON */}
                 <button
                     type="submit"
                     disabled={loading}
-                    className="w-full mt-4 bg-[#f75a68] disabled:bg-[#29292e] disabled:text-[#8d8d99] text-white font-bold py-4 rounded-md transition hover:bg-[#ff7682] uppercase tracking-widest shadow-lg"
+                    className="w-full mt-4 bg-red-500 disabled:bg-gray-200 disabled:text-gray-400 disabled:shadow-none text-white font-bold py-4 rounded-md transition hover:bg-red-600 uppercase tracking-widest shadow-md flex justify-center items-center"
                 >
                     {loading ? 'Processing...' : 'Issue Disbursement'}
                 </button>

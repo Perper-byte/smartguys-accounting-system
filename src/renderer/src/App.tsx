@@ -44,10 +44,10 @@ function App(): React.ReactElement {
   }
 
   return (
-    <div className="flex h-screen bg-[#FBF8F8] text-gray-800 overflow-hidden font-sans">
+    <div id="app-wrapper" className="flex h-screen bg-[#FBF8F8] text-gray-800 overflow-hidden font-sans">
 
       {/* PERSISTENT LEFT SIDEBAR */}
-      <aside className="w-64 bg-white border-r border-[#B0DCDA] flex flex-col justify-between shadow-sm z-10 flex-shrink-0">
+      <aside id="app-sidebar" className="w-64 bg-white border-r border-[#B0DCDA] flex flex-col justify-between shadow-sm z-10 flex-shrink-0">
         <div>
           <div className="p-6 border-b border-[#B0DCDA]">
             <div className="flex items-center space-x-3">
@@ -78,9 +78,9 @@ function App(): React.ReactElement {
       </aside>
 
       {/* MAIN CONTAINER AREA */}
-      <div className="flex-1 flex flex-col relative overflow-hidden">
+      <div className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible">
         {/* TOP STATUS BAR */}
-        <header className="h-16 bg-white border-b border-[#B0DCDA] flex items-center justify-between px-8 shadow-sm z-0 flex-shrink-0">
+        <header id="app-header" className="h-16 bg-white border-b border-[#B0DCDA] flex items-center justify-between px-8 shadow-sm z-0 flex-shrink-0">
           <h2 className="text-lg font-extrabold text-gray-800 tracking-wide capitalize">
             {permittedTabs.find(t => t.id === activeTab)?.label || 'Workspace'}
           </h2>
@@ -91,7 +91,7 @@ function App(): React.ReactElement {
         </header>
 
         {/* WORKSPACE CONTENT PANELS */}
-        <main className="flex-1 bg-[#FBF8F8] p-8 overflow-y-auto">
+        <main id="app-main" className="flex-1 p-8 overflow-y-auto bg-[#FBF8F8]">
           {!permittedTabs.find(t => t.id === activeTab) ? (
             <div className="p-6 bg-red-50 border border-red-200 rounded-lg text-center shadow-sm">
               <h3 className="text-red-600 font-bold text-lg">⚠️ Access Denied</h3>

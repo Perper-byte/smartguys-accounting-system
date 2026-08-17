@@ -9,46 +9,62 @@ body {
 }
 
 /* --- PRINT STYLES FOR PDF GENERATION --- */
-@media print {
+@@media print {
 
-  /* 1. BULLETPROOF HIDING USING IDs */
-  #top-header,
-  #ledger-controls,
-  #export-pdf-btn,
-  aside {
-    display: none !important;
-  }
-
-  /* 2. Force exact background colors to print */
+  /* 1. Force exact background colors to print */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
 
-  /* 3. Reset layout wrappers so content flows naturally onto A4 paper */
-  #app,
+  /* 2. COMPLETELY ANNIHILATE THE SIDEBAR, HEADER, AND BUTTONS */
+  #app-sidebar,
+  #app-header,
+  button,
+  select,
+  input[type="date"],
+  .no-print {
+    display: none !important;
+    height: 0 !important;
+    width: 0 !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+    position: absolute !important;
+    z-index: -9999 !important;
+  }
+
+  /* 3. DESTROY THE FLEXBOX LAYOUT SO IT FLOWS LIKE PAPER */
   #root,
-  div.flex.h-screen,
-  div.flex-1.flex.flex-col.overflow-hidden,
-  main {
+  #app,
+  #app-wrapper,
+  #app-wrapper>div {
+    display: block !important;
+    width: 100% !important;
     height: auto !important;
     min-height: auto !important;
     overflow: visible !important;
-    display: block !important;
     position: static !important;
-    background-color: #ffffff !important;
-    padding: 0 !important;
-    margin: 0 !important;
   }
 
-  /* 4. Force paper background to pure white */
+  /* 4. RESET THE MAIN CONTENT AREA TO FULL WIDTH */
+  #app-main {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background-color: #ffffff !important;
+  }
+
+  /* 5. FORCE THE PAGE BACKGROUND TO WHITE */
   html,
   body {
     background-color: #ffffff !important;
     color: #000000 !important;
   }
 
-  /* 5. Stretch the report container full width and remove UI shadows */
+  /* 6. EXPAND REPORT CARDS TO EDGE-TO-EDGE */
   .w-full,
   .max-w-5xl {
     max-width: 100% !important;
@@ -57,12 +73,6 @@ body {
     box-shadow: none !important;
     padding: 0 !important;
     margin: 0 !important;
-  }
-
-  /* 6. Prevent flexbox containers from cutting in half between pages */
-  .flex {
-    display: flex !important;
-    page-break-inside: avoid !important;
   }
 }
 
