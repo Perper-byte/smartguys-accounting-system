@@ -1,4 +1,5 @@
 // src/main/index.ts
+import './env';
 import { IPC_CHANNELS } from '../shared/ipc-channels';
 import { AnalyticsService } from './services/analytics.service';
 import { TaxService } from './services/tax.service';
@@ -204,6 +205,25 @@ app.whenReady().then(() => {
     } catch (error: any) {
       return { error: error.message };
     }
+  });
+
+  // 🚀 NETWORK SETTINGS (LAN CONFIGURATION)
+  ipcMain.handle('config:getServerIp', () => {
+    const configPath = path.join(app.getPath('userData'), 'server-config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      return config.serverIp || 'localhost';
+    }
+    return 'localhost';
+  });
+
+  ipcMain.handle('config:setServerIp', (event, ip: string) => {
+    const configPath = path.join(app.getPath('userData'), 'server-config.json');
+    fs.writeFileSync(configPath, JSON.stringify({ serverIp: ip }));
+
+    // Automatically restart the app to apply the new database connection!
+    app.relaunch();
+    app.exit(0);
   });
 });
 

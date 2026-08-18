@@ -13,5 +13,7 @@ interface Window {
         getIncomeStatement: (year?: number, month?: number) => Promise<any>;
         getBalanceSheet: (year?: number, month?: number) => Promise<any>;
         getCashFlowStatement: (year?: number, month?: number) => Promise<any>;
+        getServerIp: () => Promise<string>;
+        setServerIp: (ip: string) => Promise<void>;
     };
 }

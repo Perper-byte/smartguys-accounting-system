@@ -33,6 +33,9 @@ const api = {
 
   // Analytics
   getAnalyticsMetrics: (timeframe: string) => ipcRenderer.invoke('analytics:getMetrics', timeframe),
+
+  getServerIp: () => ipcRenderer.invoke('config:getServerIp'),
+  setServerIp: (ip: string) => ipcRenderer.invoke('config:setServerIp', ip)
 };
 
 // Expose the API safely to React window object
