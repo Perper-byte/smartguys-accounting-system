@@ -4,7 +4,7 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export interface JournalLineInput {
-    accountId: string; 
+    accountId: string;
     debit: number;
     credit: number;
 }
@@ -13,8 +13,8 @@ export interface JournalEntryInput {
     date: Date;
     referenceNo: string;
     description: string;
-    vatType: string;  
-    payeeId?: string; 
+    vatType: string;
+    payeeId?: string;
     userId: string;
     lines: JournalLineInput[];
 }
@@ -51,8 +51,8 @@ export class LedgerService {
                     date: input.date,
                     reference_no: input.referenceNo,
                     description: input.description,
-                    vat_type: input.vatType, 
-                    payee_id: input.payeeId || null, 
+                    vat_type: input.vatType,
+                    payee_id: input.payeeId || null,
                     user_id: input.userId,
                 },
             });
@@ -95,12 +95,12 @@ export class LedgerService {
         const lines = await prisma.journalLine.findMany({
             where: {
                 entry: { payee_id: payeeId },
-                account_id: { in: ['1200', '2010'] } 
+                account_id: { in: ['1200', '2010'] }
             }
         });
 
-        let arBalance = 0; 
-        let apBalance = 0; 
+        let arBalance = 0;
+        let apBalance = 0;
 
         for (const line of lines) {
             if (line.account_id === '1200') {
@@ -121,12 +121,12 @@ export class LedgerService {
 
         if (!account) throw new Error("Account not found");
 
-        const normalBalance = account.account_type.normal_balance; 
+        const normalBalance = account.account_type.normal_balance;
 
         const lines = await prisma.journalLine.findMany({
             where: { account_id: accountId },
             include: { entry: { include: { payee: true } } },
-            orderBy: { entry: { date: 'asc' } } 
+            orderBy: { entry: { date: 'asc' } }
         });
 
         let runningBalance = 0;
@@ -146,8 +146,8 @@ export class LedgerService {
                 date: line.entry.date,
                 referenceNo: line.entry.reference_no,
                 description: line.entry.description,
-                vatType: line.entry.vat_type, 
-                payee: line.entry.payee?.name || '-', 
+                vatType: line.entry.vat_type,
+                payee: line.entry.payee?.name || '-',
                 debit: debit,
                 credit: credit,
                 balance: runningBalance
@@ -160,5 +160,12 @@ export class LedgerService {
             normalBalance: normalBalance,
             transactions: formattedLines
         };
+    }
+
+    static async getAllJournalEntries() {
+        return await prisma.journalEntry.findMany({
+            orderBy: { date: 'desc' },
+            select: { id: true, reference_no: true, description: true, date: true }
+        });
     }
 }

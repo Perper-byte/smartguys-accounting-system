@@ -225,6 +225,15 @@ app.whenReady().then(() => {
     app.relaunch();
     app.exit(0);
   });
+  
+  ipcMain.handle('ledger:getAllJournalEntries', async () => {
+    try {
+      return await LedgerService.getAllJournalEntries();
+    } catch (error) {
+      console.error(error);
+      return [];
+    }
+  });
 });
 
 // Quit when all windows are closed, except on macOS

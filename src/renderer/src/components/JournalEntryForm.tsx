@@ -5,6 +5,8 @@ import { AddPatientForm } from './AddPatientForm';
 
 export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean }> = ({ userId, isAdjusting = false }) => {
     const [accounts, setAccounts] = useState<any[]>([]);
+    const [pastEntries, setPastEntries] = useState<any[]>([]); // 🔥 NEW: Store past entries for correction
+
     const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
     const [refNo, setRefNo] = useState(isAdjusting ? 'ADJ-' : '');
     const [description, setDescription] = useState(isAdjusting ? 'Adjusting Entry: ' : '');
@@ -14,8 +16,12 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     const [payeeId, setPayeeId] = useState('');
     const [showAddPatient, setShowAddPatient] = useState(false);
 
+    // Dropdown States
     const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
     const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
+    const [isRefDropdownOpen, setIsRefDropdownOpen] = useState(false); // 🔥 NEW: Ref Search State
+    const [activeAccountRow, setActiveAccountRow] = useState<number | null>(null); // Restored Account Search State
+    const [accountSearchQuery, setAccountSearchQuery] = useState('');
 
     const [payeeBalance, setPayeeBalance] = useState<{ receivable: number, payable: number } | null>(null);
     const [lines, setLines] = useState([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
@@ -27,6 +33,8 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         if (api) {
             if (api.getAccounts) api.getAccounts().then(setAccounts).catch(() => setAccounts([]));
             if (api.getPayees) api.getPayees().then(setPayees).catch(() => setPayees([]));
+            // 🔥 Fetch past entries for the Ref search
+            if (api.getAllJournalEntries) api.getAllJournalEntries().then(setPastEntries).catch(() => setPastEntries([]));
         }
     }, []);
 
@@ -106,6 +114,9 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 setPayeeId('');
                 setPayeeSearchQuery('');
                 setLines([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
+
+                // Refresh past entries list
+                if (api.getAllJournalEntries) api.getAllJournalEntries().then(setPastEntries);
             } else {
                 setStatus({ type: 'error', msg: result.error });
             }
@@ -139,15 +150,63 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 </div>
             )}
 
-            {/* TOP ROW: Date, Ref, (VAT conditionally hidden) */}
+            {/* TOP ROW: Date, Ref, VAT */}
             <div className={`grid gap-6 mb-6 ${isAdjusting ? 'grid-cols-2' : 'grid-cols-3'}`}>
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Date</label>
                     <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
                 </div>
-                <div>
-                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Reference No.</label>
-                    <input type="text" value={refNo} onChange={e => setRefNo(e.target.value)} placeholder="e.g. OR-1001" className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-bold focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
+
+                {/* 🔥 SEARCHABLE REFERENCE NO. WITH BUTTON */}
+                <div className="relative">
+                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                        {isAdjusting ? 'Reference No. (Correction)' : 'Reference No.'}
+                    </label>
+                    <div className="flex bg-[#FBF8F8] border border-[#B0DCDA] rounded-md focus-within:border-[#1B9387] focus-within:ring-2 focus-within:ring-[#E9FAFA] transition">
+                        <input
+                            type="text"
+                            value={refNo}
+                            onChange={e => { setRefNo(e.target.value); setIsRefDropdownOpen(true); }}
+                            onFocus={() => setIsRefDropdownOpen(true)}
+                            onBlur={() => setTimeout(() => setIsRefDropdownOpen(false), 200)}
+                            placeholder={isAdjusting ? "e.g. ADJ-OR-1001" : "e.g. OR-1001"}
+                            className="w-full bg-transparent p-3 text-sm text-gray-800 font-bold outline-none"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => setIsRefDropdownOpen(!isRefDropdownOpen)}
+                            className="px-4 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] rounded-r-md transition"
+                            title="Search Past Transactions"
+                        >
+                            🔍
+                        </button>
+                    </div>
+
+                    {/* Past Transactions Dropdown */}
+                    {isRefDropdownOpen && (
+                        <ul className="absolute z-50 w-full mt-1 bg-white border border-[#B0DCDA] rounded-md shadow-xl max-h-48 overflow-y-auto">
+                            <li className="p-2 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider sticky top-0">Recent Database Entries</li>
+                            {pastEntries
+                                .filter(e => e.reference_no.toLowerCase().includes(refNo.replace('ADJ-', '').toLowerCase()))
+                                .map(entry => (
+                                    <li
+                                        key={entry.id}
+                                        onMouseDown={() => {
+                                            // Automatically prefix with ADJ- if adjusting
+                                            setRefNo(isAdjusting && !entry.reference_no.startsWith('ADJ') ? `ADJ-${entry.reference_no}` : entry.reference_no);
+                                            // Optionally auto-fill description
+                                            if (isAdjusting && description === 'Adjusting Entry: ') {
+                                                setDescription(`Adjusting Entry to correct ${entry.reference_no}: ${entry.description}`);
+                                            }
+                                        }}
+                                        className="p-3 text-sm text-gray-800 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-b border-gray-50 last:border-0"
+                                    >
+                                        <span className="font-mono font-bold text-[#1B9387] mr-2">{entry.reference_no}</span>
+                                        <span className="text-gray-500 truncate">{entry.description}</span>
+                                    </li>
+                                ))}
+                        </ul>
+                    )}
                 </div>
 
                 {!isAdjusting && (
@@ -259,79 +318,91 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 </div>
             </div>
 
-            {/* TRANSACTION LINES TABLE (Updated Column Dividers & Focus States!) */}
+            {/* 🔥 RESTORED: SEARCHABLE ACCOUNT TABLE */}
             <div className="border border-[#B0DCDA] rounded-md bg-white overflow-hidden mb-6 shadow-sm">
                 <table className="w-full">
                     <thead className="bg-gray-50 border-b border-[#B0DCDA]">
                         <tr className="text-left text-gray-500 text-xs uppercase tracking-wider">
-                            {/* UPDATED: Darkened vertical column divider border-r border-[#B0DCDA] */}
-                            <th className="p-3 pl-4 w-1/2 font-extrabold border-r border-[#B0DCDA]">Account</th>
-                            <th className="p-3 w-1/4 text-right font-extrabold border-r border-[#B0DCDA]">Debit</th>
-                            <th className="p-3 w-1/4 text-right font-extrabold border-r border-[#B0DCDA]">Credit</th>
-                            <th className="p-3 w-12"></th>
+                            <th className="p-3.5 pl-5 font-extrabold border-r border-[#B0DCDA] w-1/2">Account</th>
+                            <th className="p-3.5 w-1/4 text-right font-extrabold border-r border-[#B0DCDA]">Debit</th>
+                            <th className="p-3.5 w-1/4 text-right font-extrabold border-r border-[#B0DCDA]">Credit</th>
+                            <th className="p-3.5 w-12"></th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {lines.map((line, idx) => (
                             <tr key={idx} className="even:bg-gray-50 odd:bg-white hover:bg-[#E9FAFA]/50 transition">
-                                {/* ACCOUNT COLUMN WITH STRONGER DIVIDER */}
-                                <td className="p-2 pl-4 border-r border-[#B0DCDA]">
-                                    <div className="relative">
-                                        <select
-                                            value={line.accountId}
-                                            onChange={e => updateLine(idx, 'accountId', e.target.value)}
-                                            className="w-full bg-transparent text-sm text-gray-800 outline-none cursor-pointer appearance-none pr-6 font-medium focus:ring-2 focus:ring-[#1B9387]/30 focus:border-[#1B9387] rounded py-1 transition-all"
-                                        >
-                                            <option value="" className="text-gray-400">Select Account...</option>
 
-                                            {Object.entries(groupedAccounts).map(([category, accs]: any) => (
-                                                <optgroup key={category} label={`━━━ ${category.toUpperCase()} ━━━`} className="text-gray-400 font-bold bg-white">
-                                                    {accs.map((acc: any) => (
-                                                        <option key={acc.code} value={acc.code} className="bg-white text-gray-800 font-normal">
-                                                            {acc.code} - {acc.name}
-                                                        </option>
-                                                    ))}
-                                                </optgroup>
-                                            ))}
-                                        </select>
-                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-gray-400">
-                                            <svg className="w-3 h-3 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                                {/* SEARCHABLE ACCOUNT CELL */}
+                                <td className="p-0 border-r border-[#B0DCDA] relative">
+                                    {activeAccountRow === idx ? (
+                                        <div className="absolute z-50 left-0 top-0 w-full min-w-[350px] bg-white border border-[#1B9387] shadow-xl rounded-md overflow-hidden">
+                                            <div className="p-2 bg-[#FBF8F8] border-b border-[#B0DCDA]">
+                                                <input
+                                                    type="text"
+                                                    autoFocus
+                                                    placeholder="🔍 Type account code or name..."
+                                                    value={accountSearchQuery}
+                                                    onChange={(e) => setAccountSearchQuery(e.target.value)}
+                                                    onBlur={() => setTimeout(() => setActiveAccountRow(null), 200)}
+                                                    className="w-full bg-transparent p-1.5 text-sm text-gray-800 outline-none font-medium"
+                                                />
+                                            </div>
+                                            <ul className="max-h-48 overflow-y-auto bg-white">
+                                                {accounts
+                                                    .filter(a => `${a.code} ${a.name}`.toLowerCase().includes(accountSearchQuery.toLowerCase()))
+                                                    .map(acc => (
+                                                        <li
+                                                            key={acc.code}
+                                                            onMouseDown={() => {
+                                                                updateLine(idx, 'accountId', acc.code);
+                                                                setActiveAccountRow(null);
+                                                            }}
+                                                            className="p-3 text-sm text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-b border-gray-50 last:border-0 flex items-center"
+                                                        >
+                                                            <span className="font-mono font-bold text-[#1B9387] w-14 inline-block">{acc.code}</span>
+                                                            <span className="font-medium">{acc.name}</span>
+                                                        </li>
+                                                    ))
+                                                }
+                                                {accounts.filter(a => `${a.code} ${a.name}`.toLowerCase().includes(accountSearchQuery.toLowerCase())).length === 0 && (
+                                                    <li className="p-3 text-sm text-red-500 text-center font-medium">No accounts found.</li>
+                                                )}
+                                            </ul>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        <div
+                                            onClick={() => {
+                                                setActiveAccountRow(idx);
+                                                setAccountSearchQuery('');
+                                            }}
+                                            className="w-full h-full p-3.5 pl-5 text-sm text-gray-800 cursor-text flex justify-between items-center group"
+                                        >
+                                            {line.accountId ? (
+                                                <span>
+                                                    <span className="font-mono font-extrabold text-[#1B9387] mr-3">{line.accountId}</span>
+                                                    <span className="font-medium text-gray-800">{accounts.find(a => a.code === line.accountId)?.name}</span>
+                                                </span>
+                                            ) : (
+                                                <span className="text-gray-400 italic font-medium">Type to search account...</span>
+                                            )}
+                                            <span className="text-gray-300 group-hover:text-[#1B9387] transition">🔍</span>
+                                        </div>
+                                    )}
                                 </td>
 
-                                {/* DEBIT INPUT WITH TEAL FOCUS RING & DARKER PLACEHOLDER */}
                                 <td className="p-2 border-r border-[#B0DCDA]">
                                     <div className="relative flex items-center">
                                         <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            value={line.debit === 0 ? '' : line.debit}
-                                            placeholder="0.00"
-                                            onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)}
-                                            className="w-full bg-transparent pl-8 pr-2 py-1.5 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-400 focus:ring-2 focus:ring-[#1B9387]/30 focus:border-[#1B9387] focus:bg-white rounded transition-all"
-                                        />
+                                        <input type="number" min="0" step="0.01" value={line.debit === 0 ? '' : line.debit} placeholder="0.00" onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)} className="w-full bg-transparent pl-8 pr-2 py-1.5 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-400 focus:ring-2 focus:ring-[#1B9387]/30 focus:border-[#1B9387] focus:bg-white rounded transition-all" />
                                     </div>
                                 </td>
-
-                                {/* CREDIT INPUT WITH TEAL FOCUS RING & DARKER PLACEHOLDER */}
                                 <td className="p-2 border-r border-[#B0DCDA]">
                                     <div className="relative flex items-center">
                                         <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
-                                        <input
-                                            type="number"
-                                            min="0"
-                                            step="0.01"
-                                            value={line.credit === 0 ? '' : line.credit}
-                                            placeholder="0.00"
-                                            onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)}
-                                            className="w-full bg-transparent pl-8 pr-2 py-1.5 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-400 focus:ring-2 focus:ring-[#1B9387]/30 focus:border-[#1B9387] focus:bg-white rounded transition-all"
-                                        />
+                                        <input type="number" min="0" step="0.01" value={line.credit === 0 ? '' : line.credit} placeholder="0.00" onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} className="w-full bg-transparent pl-8 pr-2 py-1.5 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-400 focus:ring-2 focus:ring-[#1B9387]/30 focus:border-[#1B9387] focus:bg-white rounded transition-all" />
                                     </div>
                                 </td>
-
                                 <td className="p-2 text-center">
                                     <button onClick={() => removeLine(idx)} disabled={lines.length <= 2} className="text-red-400 hover:text-red-600 disabled:opacity-20 transition" title="Remove Line">✕</button>
                                 </td>

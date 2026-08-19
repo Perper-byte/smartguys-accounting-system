@@ -15,5 +15,6 @@ interface Window {
         getCashFlowStatement: (year?: number, month?: number) => Promise<any>;
         getServerIp: () => Promise<string>;
         setServerIp: (ip: string) => Promise<void>;
+        getAllJournalEntries: () => Promise<any[]>;
     };
 }
