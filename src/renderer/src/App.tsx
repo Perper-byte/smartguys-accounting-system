@@ -19,11 +19,16 @@ import { CashierHistoryView } from './components/CashierHistoryView';
 import { VoidApprovalsView } from './components/VoidApprovalsView'; 
 import { WelcomeView } from './components/WelcomeView';
 import { SystemAuditLogView } from './components/SystemAuditLogView';
+import { InvoiceTrackerView } from './components/InvoiceTrackerView';
+import { PayrollView } from './components/PayrollView';
+import { ContactDirectoryView } from './components/ContactDirectoryView';
+
 
 const ALL_TABS = [
   { id: 'home', label: 'Home', icon: '🏠', group: 'Home', allowedRoles: ['CASHIER', 'ACCOUNTANT', 'MANAGER', 'IT_PERSONNEL'] },
   { id: 'billing', label: 'Patient Billing (POS)', icon: '💳', group: 'Clinic Operations', allowedRoles: ['CASHIER'] },
   { id: 'collections', label: 'Receive Payments', icon: '💰', group: 'Clinic Operations', allowedRoles: ['CASHIER', 'ACCOUNTANT', 'MANAGER'] },
+   { id: 'directory', label: 'Contact Directory', icon: '📇', group: 'Clinic Operations', allowedRoles: ['CASHIER', 'ACCOUNTANT', 'MANAGER', 'IT_PERSONNEL'] },
   { id: 'disbursement', label: 'Cash Disbursements', icon: '💸', group: 'Clinic Operations', allowedRoles: ['CASHIER', 'ACCOUNTANT', 'MANAGER'] },
   { id: 'payouts', label: 'Doctor Payouts', icon: '🩺', group: 'Clinic Operations', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
   { id: 'journal', label: 'Journal Entry', icon: '📝', group: 'Accounting', allowedRoles: ['CASHIER', 'ACCOUNTANT'] },
@@ -35,6 +40,7 @@ const ALL_TABS = [
   { id: 'bir', label: 'BIR Tax Compliance', icon: '🏛️', group: 'Reports & Taxes', allowedRoles: ['MANAGER', 'ACCOUNTANT'] },
   { id: 'aging', label: 'Aged Receivables (HMO)', icon: '⏳', group: 'Clinic Operations', allowedRoles: ['MANAGER', 'ACCOUNTANT'] },
   { id: 'audit', label: 'Audit Trails', icon: '⏳', group: 'Reports & Taxes', allowedRoles: ['IT_PERSONNEL'] },
+  { id: 'tracker', label: 'Invoice Tracker', icon: '📋', group: 'Clinic Operations', allowedRoles: ['CASHIER', 'ACCOUNTANT', 'MANAGER'] },
   
   // ---> THE VOID TAB <---
   { id: 'history', label: 'My Sales History', icon: '🧾', group: 'Clinic Operations', allowedRoles: ['CASHIER'] },
@@ -42,6 +48,8 @@ const ALL_TABS = [
   
   { id: 'users', label: 'User Management', icon: '👥', group: 'System Admin', allowedRoles: ['IT_PERSONNEL'] },
   { id: 'backup', label: 'Database Backup', icon: '💾', group: 'System Admin', allowedRoles: ['IT_PERSONNEL'] },
+
+  { id: 'payroll', label: 'HR & Payroll', icon: '🧑‍🤝‍🧑', group: 'Clinic Operations', allowedRoles: ['ACCOUNTANT', 'MANAGER'] },
 ];
 
 
@@ -179,7 +187,10 @@ function App(): React.ReactElement {
               {activeTab === 'aging' && <AgedReceivablesView />}
               {activeTab === 'history' && <CashierHistoryView userId={currentUser.id} />}
               {activeTab === 'voids' && <VoidApprovalsView userId={currentUser.id} />}
-               {activeTab === 'audit' && <SystemAuditLogView />}
+              {activeTab === 'audit' && <SystemAuditLogView />}
+              {activeTab === 'tracker' && <InvoiceTrackerView />}
+              {activeTab === 'payroll' && <PayrollView userId={currentUser.id} />}
+               {activeTab === 'directory' && <ContactDirectoryView />}
             </div>
           )}
         </main>

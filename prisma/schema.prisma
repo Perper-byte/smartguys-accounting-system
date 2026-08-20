@@ -72,12 +72,17 @@ model Account {
 // 3. TRANSACTIONS & BOOKKEEPING (Core Engine)
 // ------------------------------------------
 model Payee {
-  id   String  @id @default(uuid()) @db.VarChar(50)
-  name String  @db.VarChar(150)
-  tin  String? @db.VarChar(50)
+  id           String  @id @default(uuid()) @db.VarChar(50)
+  name         String  @db.VarChar(150)
+  tin          String? @db.VarChar(50)
+  type         String  @default("PATIENT") @db.VarChar(50) 
+  
+  // ---> NEW CRM FIELDS <---
+  email        String? @db.VarChar(100)
+  phone_number String? @db.VarChar(50)
+  address      String? @db.Text
 
   journal_entries JournalEntry[]
-
   @@map("payees")
 }
 
@@ -119,4 +124,26 @@ model JournalLine {
   @@index([account_id]) 
   @@index([entry_id]) 
   @@map("journal_lines")
+}
+
+// ------------------------------------------
+// 4. HR & PAYROLL MODULE
+// ------------------------------------------
+model Employee {
+  id             Int      @id @default(autoincrement())
+  first_name     String   @db.VarChar(100)
+  last_name      String   @db.VarChar(100)
+  position       String   @db.VarChar(100) // e.g., "Head Nurse", "Receptionist"
+  monthly_salary Decimal  @default(0.00) @db.Decimal(15, 2)
+  
+  // Government IDs
+  tin            String?  @db.VarChar(50)
+  sss_no         String?  @db.VarChar(50)
+  philhealth_no  String?  @db.VarChar(50)
+  pagibig_no     String?  @db.VarChar(50)
+
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+
+  @@map("employees")
 }

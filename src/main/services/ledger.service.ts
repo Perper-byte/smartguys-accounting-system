@@ -9,12 +9,32 @@ export const LedgerService = {
     return await prisma.account.findMany({ include: { account_type: true }, orderBy: { code: 'asc' } });
   },
 
-  async getPayees() {
-    return await prisma.payee.findMany({ orderBy: { name: 'asc' } });
+  async getPayees(typeFilter?: string) {
+    let whereClause = {};
+    if (typeFilter) {
+        const types = typeFilter.split(',');
+        whereClause = { type: { in: types } };
+    }
+    return await prisma.payee.findMany({ where: whereClause, orderBy: { name: 'asc' } });
   },
 
-  async createPayee(name: string) {
-    return await prisma.payee.create({ data: { name } });
+ async createPayee(name: string, type: string = 'PATIENT', tin?: string, email?: string, phone?: string, address?: string) {
+    return await prisma.payee.create({
+      data: { 
+          name, 
+          type,
+          tin: tin || null,
+          email: email || null,
+          phone_number: phone || null,
+          address: address || null
+      }
+    });
+  },
+  async updatePayeeTin(payeeId: string, tin: string) {
+    return await prisma.payee.update({
+        where: { id: payeeId },
+        data: { tin: tin }
+    });
   },
 
   async getPayeeBalance(payeeId: string) {
@@ -71,11 +91,108 @@ export const LedgerService = {
     return { accountCode: account.code, accountName: account.name, normalBalance, transactions, currentBalance: balance };
   },
 
+    async getContactsWithBalances() {
+    // 1. Fetch all contacts
+    const payees = await prisma.payee.findMany({ orderBy: { name: 'asc' } });
+    
+    // 2. Fetch all A/R (1200) and A/P (2010) lines
+    const lines = await prisma.journalLine.findMany({
+        where: { 
+            account_id: { in: ['1200', '2010'] }, 
+            entry: { payee_id: { not: null }, status: 'ACTIVE' } 
+        },
+        include: { entry: true }
+    });
+
+    // 3. Group the balances by Payee
+    const balances: Record<string, { receivable: number, payable: number }> = {};
+    for (const line of lines) {
+        const pId = line.entry.payee_id as string;
+        if (!balances[pId]) balances[pId] = { receivable: 0, payable: 0 };
+        
+        if (line.account_id === '1200') balances[pId].receivable += (Number(line.debit) - Number(line.credit));
+        if (line.account_id === '2010') balances[pId].payable += (Number(line.credit) - Number(line.debit));
+    }
+
+    // 4. Merge and return
+    return payees.map(p => ({
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        email: p.email,
+        phone: p.phone_number,
+        tin: p.tin,
+        youOwe: balances[p.id]?.payable || 0,   // Accounts Payable
+        theyOwe: balances[p.id]?.receivable || 0 // Accounts Receivable
+    }));
+  },
+
+
+  async getFullLedgerReport(startDateStr: string, endDateStr: string) {
+    const startDate = new Date(startDateStr);
+    startDate.setHours(0, 0, 0, 0);
+    const endDate = new Date(endDateStr);
+    endDate.setHours(23, 59, 59, 999);
+
+    const accounts = await prisma.account.findMany({ include: { account_type: true }, orderBy: { code: 'asc' } });
+    
+    const periodLines = await prisma.journalLine.findMany({
+        where: { entry: { date: { gte: startDate, lte: endDate } } },
+        include: { entry: { include: { payee: true } } },
+        orderBy: { entry: { date: 'asc' } }
+    });
+
+    const priorLines = await prisma.journalLine.findMany({
+        where: { entry: { date: { lt: startDate } } }
+    });
+
+    const report: any[] = [];
+
+    for (const acc of accounts) {
+        const normalBalance = acc.account_type.normal_balance;
+        
+        const accPriorLines = priorLines.filter(l => l.account_id === acc.code);
+        let openingBalance = 0;
+        for (const l of accPriorLines) {
+            if (normalBalance === 'DEBIT') openingBalance += (Number(l.debit) - Number(l.credit));
+            else openingBalance += (Number(l.credit) - Number(l.debit));
+        }
+
+        const accPeriodLines = periodLines.filter(l => l.account_id === acc.code);
+        
+        if (openingBalance === 0 && accPeriodLines.length === 0) continue;
+
+        let runningBalance = openingBalance;
+        let totalDebit = 0; let totalCredit = 0;
+
+        const transactions = accPeriodLines.map(l => {
+            const deb = Number(l.debit); const cred = Number(l.credit);
+            totalDebit += deb; totalCredit += cred;
+
+            if (normalBalance === 'DEBIT') runningBalance += (deb - cred);
+            else runningBalance += (cred - deb);
+
+            return {
+                id: l.id, entryId: l.entry.id, date: l.entry.date, referenceNo: l.entry.reference_no,
+                description: l.entry.description, payeeName: l.entry.payee?.name || '-',
+                debit: deb, credit: cred, balance: runningBalance, status: l.entry.status
+            };
+        });
+
+        report.push({
+            accountCode: acc.code, accountName: acc.name, normalBalance: normalBalance,
+            openingBalance: openingBalance, transactions: transactions,
+            totalDebit: totalDebit, totalCredit: totalCredit, closingBalance: runningBalance
+        });
+    }
+
+    return report;
+  },
+
   async getNextReferenceSequence(prefix: string) {
     const lastEntry = await prisma.journalEntry.findFirst({ where: { reference_no: { startsWith: prefix } }, orderBy: { date: 'desc' } });
     if (!lastEntry) return '001';
-    const lastSeqString = lastEntry.reference_no.replace(prefix, '');
-    const lastSeqNum = parseInt(lastSeqString, 10);
+    const lastSeqNum = parseInt(lastEntry.reference_no.replace(prefix, ''), 10);
     if (isNaN(lastSeqNum) || lastSeqNum > 999999) return '001'; 
     return (lastSeqNum + 1).toString().padStart(3, '0');
   },
@@ -122,29 +239,12 @@ export const LedgerService = {
     });
   },
 
-  // ---> THE FIX: Formatting the Decimals before sending to Electron! <---
   async getPendingVoids() {
-    const entries = await prisma.journalEntry.findMany({
+    return await prisma.journalEntry.findMany({
         where: { status: 'PENDING_VOID' },
         include: { user: true, payee: true, lines: { include: { account: true } } },
         orderBy: { date: 'desc' }
     });
-
-    return entries.map(entry => ({
-        id: entry.id,
-        date: entry.date,
-        reference_no: entry.reference_no,
-        description: entry.description,
-        void_reason: entry.void_reason,
-        user: { username: entry.user?.username || 'Unknown' },
-        payee: entry.payee ? { name: entry.payee.name } : null,
-        lines: entry.lines.map(line => ({
-            accountCode: line.account.code,
-            accountName: line.account.name,
-            debit: Number(line.debit),
-            credit: Number(line.credit)
-        }))
-    }));
   },
 
   async rejectVoid(entryId: string) {
@@ -170,8 +270,8 @@ export const LedgerService = {
             lines: {
                 create: original.lines.map(line => ({
                     account_id: line.account_id,
-                    debit: line.credit, // FLIPPED TO REVERSE!
-                    credit: line.debit  // FLIPPED TO REVERSE!
+                    debit: line.credit, 
+                    credit: line.debit  
                 }))
             }
         }

@@ -304,4 +304,71 @@ static async getShiftReport(userId: string) {
 
         return report.sort((a, b) => b.total - a.total);
     }
+
+    static async getInvoiceTracker() {
+        // 1. Fetch ALL Invoices from oldest to newest
+        const invoices = await prisma.journalEntry.findMany({
+            where: { reference_no: { startsWith: 'INV-' }, status: { not: 'VOIDED' } },
+            include: { lines: true, payee: true },
+            orderBy: { date: 'asc' } 
+        });
+
+        // 2. Fetch ALL Payments/Collections (Credits to Account 1200)
+        const arCreditLines = await prisma.journalLine.findMany({
+            where: { account_id: '1200', credit: { gt: 0 }, entry: { payee_id: { not: null }, status: { not: 'VOIDED' } } },
+            include: { entry: true }
+        });
+
+        // 3. Group the payments by Patient/Payee
+        const payeeCredits: Record<string, number> = {};
+        for (const line of arCreditLines) {
+            const pId = line.entry.payee_id!.toString();
+            payeeCredits[pId] = (payeeCredits[pId] || 0) + Number(line.credit);
+        }
+
+        const results: any[] = [];
+
+        // 4. Apply payments to invoices sequentially (FIFO)
+        for (const inv of invoices) {
+            const totalAmount = inv.lines.reduce((sum, l) => sum + Number(l.debit), 0);
+            const isAR = inv.lines.some(l => l.account_id === '1200'); 
+
+            let paid = 0; let balance = 0; let status = 'Unpaid';
+
+            if (!isAR) {
+                // Paid in Cash/GCash instantly
+                paid = totalAmount; balance = 0; status = 'Fully Paid';
+            } else {
+                // Charged to HMO/Credit
+                const pId = inv.payee_id?.toString();
+                if (pId && payeeCredits[pId] !== undefined) {
+                    let availableCredit = payeeCredits[pId];
+                    if (availableCredit >= totalAmount) {
+                        paid = totalAmount; balance = 0; status = 'Fully Paid';
+                        payeeCredits[pId] -= totalAmount; 
+                    } else if (availableCredit > 0) {
+                        paid = availableCredit; balance = totalAmount - availableCredit; status = 'Partially Paid';
+                        payeeCredits[pId] = 0; 
+                    } else {
+                        paid = 0; balance = totalAmount; status = 'Unpaid';
+                    }
+                } else {
+                    paid = 0; balance = totalAmount; status = 'Unpaid';
+                }
+            }
+
+            results.push({
+                id: inv.id,
+                date: inv.date,
+                referenceNo: inv.reference_no,
+                payeeName: inv.payee?.name || 'Walk-in / Cash',
+                total: totalAmount,
+                paid: paid,
+                balance: balance,
+                status: status
+            });
+        }
+
+        return results.sort((a,b) => b.date.getTime() - a.date.getTime());
+    }
 }

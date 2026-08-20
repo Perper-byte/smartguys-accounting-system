@@ -9,20 +9,25 @@ export const api = {
   submitJournalEntry: (entryData) => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.SUBMIT_ENTRY, entryData),
   getAccountLedger: (accountId) => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.GET_LEDGER, accountId),
 
-  getPayees: () => ipcRenderer.invoke('get-payees'),
-  createPayee: (name) => ipcRenderer.invoke('create-payee', name),
-  getPayeeBalance: (payeeId) => ipcRenderer.invoke('get-payee-balance', payeeId),
+  // ---> UPDATED PAYEE BRIDGES <---
+  getPayees: (typeFilter?: string) => ipcRenderer.invoke('get-payees', typeFilter),
+   createPayee: (name: string, type?: string, tin?: string, email?: string, phone?: string, address?: string) => 
+      ipcRenderer.invoke('create-payee', name, type, tin, email, phone, address),
+  
+  getPayeeBalance: (payeeId: string) => ipcRenderer.invoke('get-payee-balance', payeeId),
   updatePayeeTin: (payeeId: string, tin: string) => ipcRenderer.invoke('update-payee-tin', payeeId, tin),
 
   getNextSequence: (prefix: string) => ipcRenderer.invoke('get-next-sequence', prefix),
   getPayoutHistory: () => ipcRenderer.invoke('get-payout-history'),
   getAllRecentTransactions: () => ipcRenderer.invoke('get-all-recent-transactions'),
+  getFullLedgerReport: (startDate: string, endDate: string) => ipcRenderer.invoke('get-full-ledger-report', startDate, endDate),
 
   requestVoid: (id: string, reason: string) => ipcRenderer.invoke('request-void', id, reason),
   getPendingVoids: () => ipcRenderer.invoke('get-pending-voids'),
   rejectVoid: (id: string) => ipcRenderer.invoke('reject-void', id),
   approveVoid: (id: string, managerId: string) => ipcRenderer.invoke('approve-void', id, managerId),
   getUserSalesHistory: (userId: string) => ipcRenderer.invoke('get-user-sales-history', userId),
+  getContactsWithBalances: () => ipcRenderer.invoke('get-contacts-with-balances'),
 
   getBooksOfAccounts: (bookType: string, startDate: string, endDate: string) => ipcRenderer.invoke('get-books-of-accounts', bookType, startDate, endDate),
   getTrialBalance: (start?: string, end?: string) => ipcRenderer.invoke(IPC_CHANNELS.REPORTS.TRIAL_BALANCE, start, end),
@@ -32,7 +37,10 @@ export const api = {
   getPettyCashBalance: () => ipcRenderer.invoke('get-petty-cash-balance'),
   getAgedReceivables: () => ipcRenderer.invoke('get-aged-receivables'),
 
-  // ---> NEW AUDIT BRIDGES <---
+  getEmployees: () => ipcRenderer.invoke('get-employees'),
+  createEmployee: (data: any) => ipcRenderer.invoke('create-employee', data),
+  processPayroll: (data: any) => ipcRenderer.invoke('process-payroll', data),
+
   logAction: (userId: string, action: string, details: string) => ipcRenderer.invoke('log-action', userId, action, details),
   getAuditLogs: (startDate: string, endDate: string) => ipcRenderer.invoke('get-audit-logs', startDate, endDate),
 
