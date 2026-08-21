@@ -26,49 +26,50 @@ import { ReconciliationView } from './components/ReconciliationView';
 
 
 type Role = 'CASHIER' | 'ACCOUNTANT' | 'MANAGER' | 'IT_PERSONNEL';
+
+// Streamlined and strict role groupings
 const ROLES: Record<string, Role[]> = {
   ALL: ['CASHIER', 'ACCOUNTANT', 'MANAGER', 'IT_PERSONNEL'],
-  CASHIER: ['CASHIER'],
-  ACCOUNTING: ['ACCOUNTANT'],
-  ACCOUNTANT_MANAGER: ['ACCOUNTANT', 'MANAGER'],
-  MANAGER: ['MANAGER'],
-  IT: ['IT_PERSONNEL'],
-  ACCOUNTANT_MANAGER_IT: ['ACCOUNTANT', 'MANAGER', 'IT_PERSONNEL'],
-  CASHIER_ACCOUNTANT_MANAGER: ['CASHIER', 'ACCOUNTANT', 'MANAGER'],
+  CASHIER_ONLY: ['CASHIER'],
+  ACCOUNTANT_ONLY: ['ACCOUNTANT'],
+  MANAGER_ONLY: ['MANAGER'],
+  IT_ONLY: ['IT_PERSONNEL'],
+  FINANCE_TEAM: ['ACCOUNTANT', 'MANAGER'], // Functions shared by Accounting and Management
+  OPS_FINANCE: ['CASHIER', 'ACCOUNTANT'], // Functions shared by Cashiers and Accounting
 } as const;
 
 const ALL_TABS = [
-  // Home
+  // Home (Available to everyone)
   { id: 'home', label: 'Home', icon: '🏠', group: 'Home', allowedRoles: ROLES.ALL },
 
-  // Clinic Operations: cashier workflows stay separate from accounting posting.
-  { id: 'billing', label: 'Patient Billing (POS)', icon: '💳', group: 'Clinic Operations', allowedRoles: ROLES.CASHIER },
-  { id: 'collections', label: 'Receive Payments', icon: '💰', group: 'Clinic Operations', allowedRoles: ROLES.CASHIER_ACCOUNTANT_MANAGER },
+  // Clinic Operations
+  { id: 'billing', label: 'Patient Billing (POS)', icon: '💳', group: 'Clinic Operations', allowedRoles: ROLES.CASHIER_ONLY },
+  { id: 'collections', label: 'Receive Payments', icon: '💰', group: 'Clinic Operations', allowedRoles: ROLES.OPS_FINANCE },
   { id: 'directory', label: 'Contact Directory', icon: '📇', group: 'Clinic Operations', allowedRoles: ROLES.ALL },
-  { id: 'disbursement', label: 'Cash Disbursements', icon: '💸', group: 'Clinic Operations', allowedRoles: ROLES.ACCOUNTANT_MANAGER },
-  { id: 'payouts', label: 'Doctor Payouts', icon: '🩺', group: 'Clinic Operations', allowedRoles: ROLES.ACCOUNTANT_MANAGER },
-  { id: 'aging', label: 'Aged Receivables (HMO)', icon: '⏳', group: 'Clinic Operations', allowedRoles: ROLES.ACCOUNTANT_MANAGER },
-  { id: 'tracker', label: 'Invoice Tracker', icon: '📋', group: 'Clinic Operations', allowedRoles: ROLES.CASHIER_ACCOUNTANT_MANAGER },
-  { id: 'history', label: 'My Sales History', icon: '🧾', group: 'Clinic Operations', allowedRoles: ROLES.CASHIER },
-  { id: 'payroll', label: 'HR & Payroll', icon: '🧑‍🤝‍🧑', group: 'Clinic Operations', allowedRoles: ROLES.ACCOUNTANT_MANAGER },
+  { id: 'disbursement', label: 'Cash Disbursements', icon: '💸', group: 'Clinic Operations', allowedRoles: ROLES.ACCOUNTANT_ONLY },
+  { id: 'payouts', label: 'Doctor Payouts', icon: '🩺', group: 'Clinic Operations', allowedRoles: ROLES.ACCOUNTANT_ONLY },
+  { id: 'aging', label: 'Aged Receivables (HMO)', icon: '⏳', group: 'Clinic Operations', allowedRoles: ROLES.FINANCE_TEAM },
+  { id: 'tracker', label: 'Invoice Tracker', icon: '📋', group: 'Clinic Operations', allowedRoles: ROLES.ACCOUNTANT_ONLY },
+  { id: 'history', label: 'My Sales History', icon: '🧾', group: 'Clinic Operations', allowedRoles: ROLES.CASHIER_ONLY },
+  { id: 'payroll', label: 'HR & Payroll', icon: '🧑‍🤝‍🧑', group: 'Clinic Operations', allowedRoles: ROLES.FINANCE_TEAM },
 
-  // Accounting: posting and reconciliation belong to accountants; managers review.
-  { id: 'journal', label: 'Journal Entry', icon: '📝', group: 'Accounting', allowedRoles: ROLES.ACCOUNTING },
-  { id: 'adjusting', label: 'Adjusting Entries', icon: '🔧', group: 'Accounting', allowedRoles: ROLES.ACCOUNTING },
-  { id: 'ledger', label: 'General Ledger', icon: '📖', group: 'Accounting', allowedRoles: ROLES.ACCOUNTING },
-  { id: 'reconciliation', label: 'Bank Reconciliation', icon: '🏦', group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_MANAGER },
-  { id: 'books', label: 'Books of Accounts', icon: '📚', group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_MANAGER_IT },
+  // Accounting
+  { id: 'journal', label: 'Journal Entry', icon: '📝', group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
+  { id: 'adjusting', label: 'Adjusting Entries', icon: '🔧', group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
+  { id: 'ledger', label: 'General Ledger', icon: '📖', group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
+  { id: 'reconciliation', label: 'Bank Reconciliation', icon: '🏦', group: 'Accounting', allowedRoles: ROLES.FINANCE_TEAM },
+  { id: 'books', label: 'Books of Accounts', icon: '📚', group: 'Accounting', allowedRoles: ROLES.FINANCE_TEAM },
 
-  // Reports and compliance
-  { id: 'analytics', label: 'Analytics Dashboard', icon: '📈', group: 'Reports & Taxes', allowedRoles: ROLES.MANAGER },
-  { id: 'statements', label: 'Financial Statements', icon: '📄', group: 'Reports & Taxes', allowedRoles: ROLES.ACCOUNTANT_MANAGER },
-  { id: 'bir', label: 'BIR Tax Compliance', icon: '🏛️', group: 'Reports & Taxes', allowedRoles: ROLES.ACCOUNTANT_MANAGER },
-  { id: 'audit', label: 'Audit Trails', icon: '⏳', group: 'Reports & Taxes', allowedRoles: ROLES.IT },
-  { id: 'voids', label: 'Void Approvals', icon: '↩️', group: 'Reports & Taxes', allowedRoles: ROLES.MANAGER },
+  // Reports and Compliance
+  { id: 'analytics', label: 'Analytics Dashboard', icon: '📈', group: 'Reports & Taxes', allowedRoles: ROLES.MANAGER_ONLY },
+  { id: 'statements', label: 'Financial Statements', icon: '📄', group: 'Reports & Taxes', allowedRoles: ROLES.FINANCE_TEAM },
+  { id: 'bir', label: 'BIR Tax Compliance', icon: '🏛️', group: 'Reports & Taxes', allowedRoles: ROLES.ACCOUNTANT_ONLY },
+  { id: 'voids', label: 'Void Approvals', icon: '↩️', group: 'Reports & Taxes', allowedRoles: ROLES.MANAGER_ONLY },
 
-  // System administration
-  { id: 'users', label: 'User Management', icon: '👥', group: 'System Admin', allowedRoles: ROLES.IT },
-  { id: 'backup', label: 'Database Backup', icon: '💾', group: 'System Admin', allowedRoles: ROLES.IT },
+  // System Administration
+  { id: 'audit', label: 'Audit Trails', icon: '⏳', group: 'System Admin', allowedRoles: ROLES.IT_ONLY },
+  { id: 'users', label: 'User Management', icon: '👥', group: 'System Admin', allowedRoles: ROLES.IT_ONLY },
+  { id: 'backup', label: 'Database Backup', icon: '💾', group: 'System Admin', allowedRoles: ROLES.IT_ONLY },
 ];
 
 
