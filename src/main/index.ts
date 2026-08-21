@@ -55,6 +55,26 @@ app.whenReady().then(() => {
   ipcMain.handle('update-payee-tin', async (e, payeeId: string, tin: string) => { try { await LedgerService.updatePayeeTin(payeeId, tin); return { success: true }; } catch (err: any) { return { success: false, error: err.message }; } });
   
   ipcMain.handle(IPC_CHANNELS.LEDGER.GET_ACCOUNTS, async () => { try { return await LedgerService.getAccounts(); } catch (err) { return []; } });
+  ipcMain.handle('get-bank-accounts', async () => { try { return await LedgerService.getBankAccounts(); } catch (err) { return []; } });
+  ipcMain.handle('create-bank-account', async (_e, data) => { try { return { success: true, data: await LedgerService.createBankAccount(data) }; } catch (err: any) { return { success: false, error: err.message }; } });
+  ipcMain.handle('get-reconciliation-data', async (_e, bankAccountId, startDate, endDate) => { try { return await LedgerService.getReconciliationData(bankAccountId, startDate, endDate); } catch (err: any) { return { error: err.message }; } });
+  ipcMain.handle('create-bank-transaction', async (_e, data) => { try { return { success: true, data: await LedgerService.createBankTransaction(data) }; } catch (err: any) { return { success: false, error: err.message }; } });
+  ipcMain.handle('import-bank-transactions', async (_e, data) => {
+    try {
+      const result = await LedgerService.importBankTransactions(data);
+      await AuditService.logAction(data.userId, 'IMPORTED BANK STATEMENT', `Imported ${result.count} transaction(s) from ${data.fileName || 'bank statement'}; skipped ${result.skippedCount} duplicate(s).`);
+      return { success: true, data: result };
+    } catch (err: any) { return { success: false, error: err.message }; }
+  });
+  ipcMain.handle('match-bank-transaction', async (_e, bankTransactionId, journalEntryId, userId) => { try { await LedgerService.matchBankTransaction(bankTransactionId, journalEntryId, userId); return { success: true }; } catch (err: any) { return { success: false, error: err.message }; } });
+  ipcMain.handle('unmatch-bank-transaction', async (_e, bankTransactionId) => { try { await LedgerService.unmatchBankTransaction(bankTransactionId); return { success: true }; } catch (err: any) { return { success: false, error: err.message }; } });
+  ipcMain.handle('remove-bank-transaction', async (_e, bankTransactionId, userId) => {
+    try {
+      await LedgerService.removeBankTransaction(bankTransactionId);
+      await AuditService.logAction(userId, 'REMOVED BANK TRANSACTION', `Removed unmatched bank transaction ${bankTransactionId} from the reconciliation queue.`);
+      return { success: true };
+    } catch (err: any) { return { success: false, error: err.message }; }
+  });
   ipcMain.handle(IPC_CHANNELS.LEDGER.SUBMIT_ENTRY, async (e, entryData) => { 
       try { 
           const result = await LedgerService.createJournalEntry(entryData); 
@@ -95,7 +115,7 @@ app.whenReady().then(() => {
   ipcMain.handle('get-audit-logs', async (e, startDate, endDate) => { try { return await AuditService.getAuditLogs(startDate, endDate); } catch (err: any) { return []; } });
 
   ipcMain.handle(IPC_CHANNELS.TAX.GENERATE_2550Q, async (e, year, quarter) => { try { return await TaxService.generate2550Q(year, quarter); } catch (err: any) { return { error: err.message }; } });
-  ipcMain.handle(IPC_CHANNELS.TAX.GENERATE_RELIEF, async (e, year, quarter) => { try { return await TaxService.generateReliefAnnexes(year, quarter); } catch (err: any) { return { error: error.message }; } });
+  ipcMain.handle(IPC_CHANNELS.TAX.GENERATE_RELIEF, async (e, year, quarter) => { try { return await TaxService.generateReliefAnnexes(year, quarter); } catch (err: any) { return { error: err.message }; } });
   ipcMain.handle(IPC_CHANNELS.ANALYTICS.GET_METRICS, async () => { try { return await AnalyticsService.getDashboardMetrics(); } catch (err: any) { return { error: err.message }; } });
   ipcMain.handle(IPC_CHANNELS.BACKUP.TRIGGER, async () => { return await BackupService.executeBackup(); });
 });

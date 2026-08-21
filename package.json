@@ -27,7 +27,8 @@
     "bcrypt": "^6.0.0",
     "echarts": "^6.1.0",
     "echarts-for-react": "^3.0.6",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",

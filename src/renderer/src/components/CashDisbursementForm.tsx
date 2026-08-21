@@ -104,7 +104,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                 vatDebit = Number((numAmount - expenseDebit).toFixed(2));
             }
 
-            const lines = [];
+            const lines: Array<{ accountId: string; debit: number; credit: number }> = [];
             lines.push({ accountId: expenseAccount, debit: expenseDebit, credit: 0 });
             if (isVatable && vatDebit > 0) lines.push({ accountId: '1300', debit: vatDebit, credit: 0 });
             lines.push({ accountId: sourceAccount, debit: 0, credit: numAmount });

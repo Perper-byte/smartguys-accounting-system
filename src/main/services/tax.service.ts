@@ -81,9 +81,13 @@ export const TaxService = {
       year,
       quarter,
       vatableSales,
+            netSales: vatableSales,
+            grossSales: vatableSales + outputVat,
       exemptSales,
       outputVat,
       vatablePurchases,
+            netPurchases: vatablePurchases,
+            grossPurchases: vatablePurchases + inputVat,
       inputVat,
       creditableVatWithheld,
       netVatPayable,
@@ -134,6 +138,7 @@ export const TaxService = {
             supplierName: entry.payee.name,
             tin: entry.payee.tin || '000-000-000-000',
             grossAmount: grossAmount,
+            netAmount: grossAmount - inputVatAmount,
             tax: inputVatAmount
         });
       }

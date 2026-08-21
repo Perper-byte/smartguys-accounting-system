@@ -19,6 +19,7 @@ model User {
 
   journal_entries JournalEntry[]
   audit_logs      AuditLog[]
+  reconciliations Reconciliation[]
 
   @@map("users")
 }
@@ -64,6 +65,7 @@ model Account {
 
   account_type  AccountType   @relation(fields: [type_id], references: [id])
   journal_lines JournalLine[]
+  bank_accounts BankAccount[]
 
   @@map("accounts")
 }
@@ -103,6 +105,7 @@ model JournalEntry {
   payee Payee?        @relation(fields: [payee_id], references: [id])
   user  User          @relation(fields: [user_id], references: [id])
   lines JournalLine[]
+  reconciliation Reconciliation?
 
   @@index([date]) 
   @@index([reference_no]) 
@@ -146,4 +149,51 @@ model Employee {
   created_at     DateTime @default(now())
 
   @@map("employees")
+}
+
+model BankAccount {
+  id              String            @id @default(uuid()) @db.VarChar(50)
+  name            String            @db.VarChar(150)
+  account_number  String?           @db.VarChar(100)
+  ledger_account  String            @db.VarChar(50)
+  created_at      DateTime          @default(now())
+
+  ledger_account_ref Account          @relation(fields: [ledger_account], references: [code])
+  transactions       BankTransaction[]
+
+  @@index([ledger_account])
+  @@map("bank_accounts")
+}
+
+model BankTransaction {
+  id               String          @id @default(uuid()) @db.VarChar(50)
+  bank_account_id  String          @db.VarChar(50)
+  transaction_date DateTime        @db.DateTime
+  description      String          @db.Text
+  reference_no     String?         @db.VarChar(100)
+  amount           Decimal         @db.Decimal(15, 2)
+  status           String          @default("UNMATCHED") @db.VarChar(20)
+  created_at       DateTime        @default(now())
+  removed_at       DateTime?
+
+  bank_account   BankAccount     @relation(fields: [bank_account_id], references: [id], onDelete: Cascade)
+  reconciliation Reconciliation?
+
+  @@index([bank_account_id, transaction_date])
+  @@index([status])
+  @@map("bank_transactions")
+}
+
+model Reconciliation {
+  id                  String          @id @default(uuid()) @db.VarChar(50)
+  bank_transaction_id String          @unique @db.VarChar(50)
+  journal_entry_id    String          @unique @db.VarChar(50)
+  matched_at          DateTime        @default(now())
+  matched_by          String          @db.VarChar(50)
+
+  bank_transaction BankTransaction @relation(fields: [bank_transaction_id], references: [id], onDelete: Cascade)
+  journal_entry    JournalEntry    @relation(fields: [journal_entry_id], references: [id])
+  user             User            @relation(fields: [matched_by], references: [id])
+
+  @@map("reconciliations")
 }

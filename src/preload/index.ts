@@ -6,6 +6,14 @@ export const api = {
   login: (username, password) => ipcRenderer.invoke(IPC_CHANNELS.AUTH.LOGIN, username, password),
   
   getAccounts: () => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.GET_ACCOUNTS),
+  getBankAccounts: () => ipcRenderer.invoke('get-bank-accounts'),
+  createBankAccount: (data: any) => ipcRenderer.invoke('create-bank-account', data),
+  getReconciliationData: (bankAccountId: string, startDate: string, endDate: string) => ipcRenderer.invoke('get-reconciliation-data', bankAccountId, startDate, endDate),
+  createBankTransaction: (data: any) => ipcRenderer.invoke('create-bank-transaction', data),
+  importBankTransactions: (data: any) => ipcRenderer.invoke('import-bank-transactions', data),
+  matchBankTransaction: (bankTransactionId: string, journalEntryId: string, userId: string) => ipcRenderer.invoke('match-bank-transaction', bankTransactionId, journalEntryId, userId),
+  unmatchBankTransaction: (bankTransactionId: string) => ipcRenderer.invoke('unmatch-bank-transaction', bankTransactionId),
+  removeBankTransaction: (bankTransactionId: string, userId: string) => ipcRenderer.invoke('remove-bank-transaction', bankTransactionId, userId),
   submitJournalEntry: (entryData) => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.SUBMIT_ENTRY, entryData),
   getAccountLedger: (accountId) => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.GET_LEDGER, accountId),
 

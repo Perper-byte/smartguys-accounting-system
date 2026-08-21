@@ -3,11 +3,177 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+export type JournalEntryInput = {
+    date: Date;
+    referenceNo: string;
+    description: string;
+    userId: string;
+    payeeId?: string;
+    vatType?: string;
+    lines: Array<{ accountId: string; debit: number; credit: number }>;
+};
+
 export const LedgerService = {
   
   async getAccounts() {
     return await prisma.account.findMany({ include: { account_type: true }, orderBy: { code: 'asc' } });
   },
+
+    async getBankAccounts() {
+        return await prisma.bankAccount.findMany({ include: { ledger_account_ref: true }, orderBy: { name: 'asc' } });
+    },
+
+    async createBankAccount(data: { name: string; accountNumber?: string; ledgerAccount: string }) {
+        return await prisma.bankAccount.create({ data: {
+            name: data.name,
+            account_number: data.accountNumber || null,
+            ledger_account: data.ledgerAccount
+        }, include: { ledger_account_ref: true } });
+    },
+
+    async getReconciliationData(bankAccountId: string, startDateStr: string, endDateStr: string) {
+        const startDate = new Date(startDateStr);
+        startDate.setHours(0, 0, 0, 0);
+        const endDate = new Date(endDateStr);
+        endDate.setHours(23, 59, 59, 999);
+        const bankAccount = await prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
+        if (!bankAccount) throw new Error('Bank account not found');
+
+        const transactions = await prisma.bankTransaction.findMany({
+            where: { bank_account_id: bankAccountId, status: { not: 'DELETED' }, transaction_date: { gte: startDate, lte: endDate } },
+            include: { reconciliation: { include: { journal_entry: true } } },
+            orderBy: { transaction_date: 'desc' }
+        });
+        const entries = await prisma.journalEntry.findMany({
+            where: {
+                date: { gte: startDate, lte: endDate },
+                status: 'ACTIVE',
+                NOT: { reference_no: { startsWith: 'RVS-' } },
+                lines: { some: { account_id: bankAccount.ledger_account } },
+                reconciliation: null
+            },
+            include: { lines: true },
+            orderBy: { date: 'desc' }
+        });
+        return {
+            bankAccount,
+            transactions: transactions.map(transaction => ({
+                ...transaction,
+                amount: Number(transaction.amount),
+                matchedEntry: transaction.reconciliation?.journal_entry || null
+            })),
+            entries: entries.map(entry => ({
+                id: entry.id,
+                date: entry.date,
+                referenceNo: entry.reference_no,
+                description: entry.description,
+                amount: entry.lines
+                    .filter(line => line.account_id === bankAccount.ledger_account)
+                    .reduce((total, line) => total + Number(line.debit) - Number(line.credit), 0)
+            }))
+        };
+    },
+
+    async createBankTransaction(data: { bankAccountId: string; date: string; description: string; referenceNo?: string; amount: number }) {
+        const transaction = await prisma.bankTransaction.create({ data: {
+            bank_account_id: data.bankAccountId,
+            transaction_date: new Date(data.date),
+            description: data.description,
+            reference_no: data.referenceNo || null,
+            amount: data.amount
+        } });
+        return {
+            id: transaction.id,
+            bank_account_id: transaction.bank_account_id,
+            transaction_date: transaction.transaction_date.toISOString(),
+            description: transaction.description,
+            reference_no: transaction.reference_no,
+            amount: Number(transaction.amount),
+            status: transaction.status,
+            created_at: transaction.created_at.toISOString()
+        };
+    },
+
+    async importBankTransactions(data: { bankAccountId: string; transactions: Array<{ date: string; description: string; referenceNo?: string; amount: number }> }) {
+        if (!data.transactions.length) throw new Error('No bank transactions to import');
+        if (!data.bankAccountId) throw new Error('Bank account is required');
+
+        const bankAccount = await prisma.bankAccount.findUnique({ where: { id: data.bankAccountId } });
+        if (!bankAccount) throw new Error('Bank account not found');
+
+        for (const transaction of data.transactions) {
+            if (!transaction.description?.trim()) throw new Error('Every imported row needs a description');
+            if (!Number.isFinite(Number(transaction.amount)) || Number(transaction.amount) === 0) throw new Error('Every imported row needs a non-zero amount');
+            if (Number.isNaN(new Date(transaction.date).getTime())) throw new Error('Every imported row needs a valid date');
+        }
+
+        const dates = data.transactions.map(transaction => new Date(transaction.date));
+        const earliestDate = new Date(Math.min(...dates.map(date => date.getTime())));
+        const latestDate = new Date(Math.max(...dates.map(date => date.getTime())));
+        latestDate.setHours(23, 59, 59, 999);
+        const existingTransactions = await prisma.bankTransaction.findMany({
+            where: {
+                bank_account_id: data.bankAccountId,
+                status: { not: 'DELETED' },
+                transaction_date: { gte: earliestDate, lte: latestDate }
+            },
+            select: { transaction_date: true, description: true, reference_no: true, amount: true }
+        });
+        const duplicateKey = (transaction: { date: string; description: string; referenceNo?: string; amount: number }) =>
+            `${new Date(transaction.date).toISOString().slice(0, 10)}|${transaction.description.trim().toLowerCase()}|${transaction.referenceNo?.trim().toLowerCase() || ''}|${Number(transaction.amount).toFixed(2)}`;
+        const existingKeys = new Set(existingTransactions.map(transaction => duplicateKey({
+            date: transaction.transaction_date.toISOString(),
+            description: transaction.description,
+            referenceNo: transaction.reference_no || undefined,
+            amount: Number(transaction.amount)
+        })));
+        const importKeys = new Set<string>();
+        const newTransactions = data.transactions.filter(transaction => {
+            const key = duplicateKey(transaction);
+            if (existingKeys.has(key) || importKeys.has(key)) return false;
+            importKeys.add(key);
+            return true;
+        });
+        const skippedCount = data.transactions.length - newTransactions.length;
+        if (!newTransactions.length) return { count: 0, skippedCount };
+
+        const result = await prisma.bankTransaction.createMany({
+            data: newTransactions.map(transaction => ({
+                bank_account_id: data.bankAccountId,
+                transaction_date: new Date(transaction.date),
+                description: transaction.description.trim(),
+                reference_no: transaction.referenceNo?.trim() || null,
+                amount: Number(transaction.amount)
+            }))
+        });
+        return { count: result.count, skippedCount };
+    },
+
+    async matchBankTransaction(bankTransactionId: string, journalEntryId: string, userId: string) {
+        return await prisma.$transaction(async transaction => {
+            const bankTransaction = await transaction.bankTransaction.findUnique({ where: { id: bankTransactionId } });
+            if (!bankTransaction || bankTransaction.status !== 'UNMATCHED') throw new Error('Bank transaction is already reconciled or missing');
+            await transaction.reconciliation.create({ data: { bank_transaction_id: bankTransactionId, journal_entry_id: journalEntryId, matched_by: userId } });
+            return await transaction.bankTransaction.update({ where: { id: bankTransactionId }, data: { status: 'MATCHED' } });
+        });
+    },
+
+    async unmatchBankTransaction(bankTransactionId: string) {
+        return await prisma.$transaction(async transaction => {
+            await transaction.reconciliation.delete({ where: { bank_transaction_id: bankTransactionId } });
+            return await transaction.bankTransaction.update({ where: { id: bankTransactionId }, data: { status: 'UNMATCHED' } });
+        });
+    },
+
+    async removeBankTransaction(bankTransactionId: string) {
+        const bankTransaction = await prisma.bankTransaction.findUnique({ where: { id: bankTransactionId } });
+        if (!bankTransaction) throw new Error('Bank transaction not found');
+        if (bankTransaction.status !== 'UNMATCHED') throw new Error('Only unmatched transactions can be removed');
+        return await prisma.bankTransaction.update({
+            where: { id: bankTransactionId },
+            data: { status: 'DELETED', removed_at: new Date() }
+        });
+    },
 
   async getPayees(typeFilter?: string) {
     let whereClause = {};
@@ -49,7 +215,16 @@ export const LedgerService = {
     return { receivable, payable };
   },
 
-  async createJournalEntry(data: any) {
+    async createJournalEntry(data: JournalEntryInput) {
+        const validLines = data.lines.filter(line => line.accountId && (Number(line.debit) > 0 || Number(line.credit) > 0));
+        if (data.lines.some(line => Number(line.debit) < 0 || Number(line.credit) < 0)) {
+            throw new Error('Validation Error: Debit and Credit values cannot be negative');
+        }
+        const totalDebit = validLines.reduce((sum, line) => sum + Number(line.debit), 0);
+        const totalCredit = validLines.reduce((sum, line) => sum + Number(line.credit), 0);
+        if (!validLines.length || Math.abs(totalDebit - totalCredit) > 0.005) {
+            throw new Error('Validation Error: Journal entry must be balanced');
+        }
     const entry = await prisma.journalEntry.create({
       data: {
           date: new Date(data.date),
@@ -59,7 +234,7 @@ export const LedgerService = {
           user_id: data.userId, 
           payee_id: data.payeeId || null, 
           lines: {
-              create: data.lines.map((l: any) => ({
+              create: validLines.map((l) => ({
                   account_id: l.accountId,
                   debit: l.debit,
                   credit: l.credit
@@ -67,7 +242,7 @@ export const LedgerService = {
           }
       }
     });
-    return { success: true, referenceNo: entry.reference_no };
+    return { success: true, referenceNo: entry.reference_no, entryId: entry.id };
   },
 
   async getAccountLedger(accountId: string) {
