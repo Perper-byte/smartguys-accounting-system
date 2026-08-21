@@ -221,11 +221,17 @@ app.whenReady().then(() => {
     const configPath = path.join(app.getPath('userData'), 'server-config.json');
     fs.writeFileSync(configPath, JSON.stringify({ serverIp: ip }));
 
-    // Automatically restart the app to apply the new database connection!
-    app.relaunch();
-    app.exit(0);
+    if (app.isPackaged) {
+      // In the final .exe, automatically restart the system seamlessly
+      app.relaunch();
+      app.exit(0);
+      return { success: true, restarted: true };
+    } else {
+      // In Developer Mode, DO NOT restart (to protect the Vite server)
+      return { success: true, restarted: false };
+    }
   });
-  
+
   ipcMain.handle('ledger:getAllJournalEntries', async () => {
     try {
       return await LedgerService.getAllJournalEntries();
@@ -233,6 +239,10 @@ app.whenReady().then(() => {
       console.error(error);
       return [];
     }
+  });
+
+  ipcMain.handle('system:ping', async () => {
+    return await AuthService.pingDatabase();
   });
 });
 

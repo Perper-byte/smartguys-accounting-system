@@ -25,13 +25,35 @@ const ALL_TABS = [
 function App(): React.ReactElement {
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string; role: string } | null>(null);
   const [activeTab, setActiveTab] = useState<string>('');
+  const [isOnline, setIsOnline] = useState(true);
 
   const permittedTabs = currentUser ? ALL_TABS.filter(tab => tab.allowedRoles.includes(currentUser.role)) : [];
 
   useEffect(() => {
-    if (currentUser && permittedTabs.length > 0 && !permittedTabs.find(t => t.id === activeTab)) {
-      setActiveTab(permittedTabs[0].id);
+    if (currentUser && permittedTabs.length > 0) {
+      const isTabValid = permittedTabs.some(t => t.id === activeTab);
+      if (!isTabValid) {
+        setActiveTab(permittedTabs[0].id); // Auto-clicks 'Analytics Dashboard' for Accountant
+      }
     }
+  }, [currentUser]); 
+
+  useEffect(() => {
+    // Only start pinging if the user is logged in
+    if (!currentUser) return;
+
+    const checkConnection = async () => {
+      const api = (window as any).electronAPI;
+      if (api && api.pingDatabase) {
+        const status = await api.pingDatabase();
+        setIsOnline(status);
+      }
+    };
+
+    checkConnection(); // Check immediately
+    const interval = setInterval(checkConnection, 5000); // Ping every 5 seconds
+
+    return () => clearInterval(interval); // Cleanup on unmount
   }, [currentUser]);
 
   const handleLogout = () => {
@@ -84,9 +106,11 @@ function App(): React.ReactElement {
           <h2 className="text-lg font-extrabold text-gray-800 tracking-wide capitalize">
             {permittedTabs.find(t => t.id === activeTab)?.label || 'Workspace'}
           </h2>
-          <div className="flex items-center space-x-4 bg-[#E9FAFA] px-4 py-1.5 rounded-full border border-[#B0DCDA]">
-            <div className="h-2 w-2 rounded-full bg-[#1B9387] animate-pulse"></div>
-            <span className="text-xs text-[#1B9387] font-bold tracking-wide uppercase">Local Connection: Online</span>
+          <div className={`flex items-center space-x-4 px-4 py-1.5 rounded-full border transition-colors duration-300 ${isOnline ? 'bg-[#E9FAFA] border-[#B0DCDA]' : 'bg-red-50 border-red-200'}`}>
+            <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-[#1B9387] animate-pulse' : 'bg-red-500'}`}></div>
+            <span className={`text-xs font-bold tracking-wide uppercase ${isOnline ? 'text-[#1B9387]' : 'text-red-600'}`}>
+              Local Connection: {isOnline ? 'Online' : 'Offline'}
+            </span>
           </div>
         </header>
 

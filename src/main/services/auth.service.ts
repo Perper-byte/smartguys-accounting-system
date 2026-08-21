@@ -39,4 +39,14 @@ export class AuthService {
       role: user.role, // e.g. "CASHIER", "ACCOUNTANT", "MANAGER"
     };
   }
+
+  static async pingDatabase(): Promise<boolean> {
+    try {
+      // A tiny, fast query just to prove the connection is alive
+      await prisma.user.findFirst();
+      return true;
+    } catch (error) {
+      return false; // Returns false if the ethernet cable is unplugged!
+    }
+  }
 }

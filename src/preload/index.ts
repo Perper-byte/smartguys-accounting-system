@@ -38,6 +38,8 @@ const api = {
   setServerIp: (ip: string) => ipcRenderer.invoke('config:setServerIp', ip),
 
   getAllJournalEntries: () => ipcRenderer.invoke('ledger:getAllJournalEntries'),
+
+  pingDatabase: () => ipcRenderer.invoke('system:ping'),
 };
 
 // Expose the API safely to React window object

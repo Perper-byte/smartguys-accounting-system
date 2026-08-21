@@ -52,13 +52,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
   const handleSaveNetwork = async () => {
     const api = (window as any).electronAPI;
     if (api && api.setServerIp) {
-      await api.setServerIp(serverIp); // This will restart the app!
+      const result = await api.setServerIp(serverIp);
+
+      if (result && !result.restarted) {
+        // This only triggers in VS Code Developer Mode
+        alert("LAN IP Saved! Because you are in Developer Mode, automatic restart is disabled. Please close the app and run 'npm run dev' again manually.");
+        setShowSettings(false);
+      }
     }
   };
 
   return (
     <div className="flex min-h-screen w-full bg-[#FBF8F8] font-sans relative">
-      
+
       {/* 🌐 NETWORK SETTINGS MODAL */}
       {showSettings && (
         <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex justify-center items-center">
@@ -96,7 +102,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
         <div className="absolute inset-0 bg-gradient-to-br from-[#1B9387]/50 to-[#28958B]/40"></div>
         <div className="relative z-10 text-center px-12">
           <div className="h-32 w-32 rounded-3xl bg-[#E9FAFA] flex items-center justify-center mx-auto mb-8 shadow-2xl border-4 border-[#B0DCDA] overflow-hidden bg-white p-2">
-            <img src={logoImage} alt="SmartGuys Logo" className="w-full h-full object-contain"/>
+            <img src={logoImage} alt="SmartGuys Logo" className="w-full h-full object-contain" />
           </div>
           <h1 className="text-5xl font-extrabold text-white tracking-tight mb-4 drop-shadow-md">SmartGuys Clinic</h1>
           <p className="text-xl text-[#E9FAFA] font-medium tracking-wide drop-shadow-sm">LAN-Based Accounting & Financial Management</p>
@@ -109,9 +115,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
 
       {/* RIGHT SIDE: LOGIN FORM */}
       <div className="w-full lg:w-2/5 flex flex-col justify-center px-8 sm:px-16 lg:px-20 bg-white shadow-[-20px_0_40px_-15px_rgba(0,0,0,0.1)] z-10 relative">
-        
+
         {/* 🌐 NETWORK SETTINGS GEAR ICON */}
-        <button 
+        <button
           onClick={() => setShowSettings(true)}
           className="absolute top-6 right-8 text-gray-400 hover:text-[#1B9387] transition flex items-center space-x-2 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200 shadow-sm"
           title="Configure LAN Settings"

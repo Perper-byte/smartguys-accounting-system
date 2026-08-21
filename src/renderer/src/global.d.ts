@@ -16,5 +16,6 @@ interface Window {
         getServerIp: () => Promise<string>;
         setServerIp: (ip: string) => Promise<void>;
         getAllJournalEntries: () => Promise<any[]>;
+        pingDatabase: () => Promise<boolean>;
     };
 }
