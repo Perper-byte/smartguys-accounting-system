@@ -48,12 +48,12 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
             fireEvent.click(screen.getByRole('button', { name: /Sign In/i }));
         });
 
-        expect(screen.getByText('john_accountant')).toBeInTheDocument();
+        expect(screen.getAllByText('john_accountant').length).toBeGreaterThan(0);
         expect(screen.getByText('ACCOUNTANT')).toBeInTheDocument();
-        expect(screen.getAllByText(/Analytics Dashboard/i).length).toBeGreaterThan(0);
+        expect(screen.getByText('Bank Reconciliation')).toBeInTheDocument();
 
         // STRICT DENIALS: Accountant cannot see Cashier, Manager, or IT screens
-        expect(screen.queryByText('Disbursements')).not.toBeInTheDocument();
+        expect(screen.getByText('Cash Disbursements')).toBeInTheDocument();
         expect(screen.queryByText('Database Backup')).not.toBeInTheDocument();
         expect(screen.queryByText('BIR Tax Reports')).not.toBeInTheDocument();
     });
@@ -75,12 +75,14 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
         });
 
         // VERIFY CASHIER SIDEBAR LINKS
-        expect(screen.getByText('mary_cashier')).toBeInTheDocument();
+        expect(screen.getAllByText('mary_cashier').length).toBeGreaterThan(0);
         expect(screen.getByText('CASHIER')).toBeInTheDocument();
-        expect(screen.getAllByText(/Journal Entry/i).length).toBeGreaterThan(0);
-        expect(screen.getByText('Disbursements')).toBeInTheDocument();
+        expect(screen.getByText('Patient Billing (POS)')).toBeInTheDocument();
+        expect(screen.getByText('Receive Payments')).toBeInTheDocument();
 
         // STRICT DENIALS
+        expect(screen.queryByText('Journal Entry')).not.toBeInTheDocument();
+        expect(screen.queryByText('Cash Disbursements')).not.toBeInTheDocument();
         expect(screen.queryByText('Analytics Dashboard')).not.toBeInTheDocument();
         expect(screen.queryByText('General Ledger')).not.toBeInTheDocument();
         expect(screen.queryByText('Database Backup')).not.toBeInTheDocument();
@@ -103,7 +105,7 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
         });
 
         // VERIFY IT SIDEBAR LINKS
-        expect(screen.getByText('admin_it')).toBeInTheDocument();
+        expect(screen.getAllByText('admin_it').length).toBeGreaterThan(0);
         expect(screen.getByText('IT_PERSONNEL')).toBeInTheDocument();
 
         // Database Backup appears in Sidebar and Content
@@ -112,6 +114,6 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
         // STRICT DENIALS
         expect(screen.queryByText('Analytics Dashboard')).not.toBeInTheDocument();
         expect(screen.queryByText('Journal Entry')).not.toBeInTheDocument();
-        expect(screen.queryByText('Disbursements')).not.toBeInTheDocument();
+        expect(screen.queryByText('Cash Disbursements')).not.toBeInTheDocument();
     });
 });

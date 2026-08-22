@@ -3,33 +3,46 @@ import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { AddPatientForm } from './AddPatientForm';
 
+// Prevents timezone bugs when selecting dates (From feature branch)
+const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+
 export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean }> = ({ userId, isAdjusting = false }) => {
     const [accounts, setAccounts] = useState<any[]>([]);
-    const [pastEntries, setPastEntries] = useState<any[]>([]); // 🔥 NEW: Store past entries for correction
+    const [pastEntries, setPastEntries] = useState<any[]>([]); // 🔥 NEW: Store past entries for correction (From main branch)
 
-    const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-    const [refNo, setRefNo] = useState(isAdjusting ? 'ADJ-' : '');
+    const [date, setDate] = useState(getLocalDateString());
+    
+    // Prefix and Sequence States (From feature branch)
+    const [refPrefix, setRefPrefix] = useState(isAdjusting ? 'ADJ-' : 'JV-');
+    const [refSequence, setRefSequence] = useState('');
     const [description, setDescription] = useState(isAdjusting ? 'Adjusting Entry: ' : '');
 
     const [vatType, setVatType] = useState(isAdjusting ? 'EXEMPT' : 'VATABLE');
     const [payees, setPayees] = useState<any[]>([]);
-    const [payeeId, setPayeeId] = useState('');
-    const [showAddPatient, setShowAddPatient] = useState(false);
-
-    // Dropdown States
+const [payeeId, setPayeeId] = useState(''); 
+    
+    // Modal & Form Toggles
+    const [showAddPayee, setShowAddPayee] = useState(false); // Generic Payee (From feature)
+    const [showAddPatient, setShowAddPatient] = useState(false); // Patient Form (From main)
+    
+    // Inline Add-Payee States (From feature)
+    const [newPayeeName, setNewPayeeName] = useState('');
+    const [isSubmittingPayee, setIsSubmittingPayee] = useState(false);
+    
+    // Dropdown Search States (Combined)
     const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
     const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
-    const [isRefDropdownOpen, setIsRefDropdownOpen] = useState(false); // 🔥 NEW: Ref Search State
-    const [activeAccountRow, setActiveAccountRow] = useState<number | null>(null); // Restored Account Search State
-    const [accountSearchQuery, setAccountSearchQuery] = useState('');
-
-    const [payeeBalance, setPayeeBalance] = useState<{ receivable: number, payable: number } | null>(null);
+    const [isRefDropdownOpen, setIsRefDropdownOpen] = useState(false); // From main
+    const [activeAccountRow, setActiveAccountRow] = useState<number | null>(null); // From main
+    const [accountSearchQuery, setAccountSearchQuery] = useState(''); // From main
+    
+    const [payeeBalance, setPayeeBalance] = useState<{receivable: number, payable: number} | null>(null);
     const [lines, setLines] = useState([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
     const [status, setStatus] = useState<{ type: 'error' | 'success', msg: string } | null>(null);
     const [loading, setLoading] = useState(false);
 
     useEffect(() => {
-        const api = (window as any).electronAPI;
+        const api = (window as any).electronAPI || (window as any).api;
         if (api) {
             if (api.getAccounts) api.getAccounts().then(setAccounts).catch(() => setAccounts([]));
             if (api.getPayees) api.getPayees().then(setPayees).catch(() => setPayees([]));
@@ -38,13 +51,27 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         }
     }, []);
 
+    // ---> NEW: Auto-Fetch the next Sequence Number <---
+    useEffect(() => {
+        const fetchNextSeq = async () => {
+            try {
+                const api = (window as any).api || (window as any).electronAPI;
+                const nextSeq = await api.getNextSequence(refPrefix);
+                setRefSequence(nextSeq);
+            } catch (error) {
+                console.error("Failed to fetch next sequence", error);
+            }
+        };
+        fetchNextSeq();
+    }, [refPrefix, status]); // Re-runs when Prefix changes, or after a successful submit!
+
     useEffect(() => {
         if (!payeeId) {
             setPayeeBalance(null);
             return;
         }
         const fetchBalance = async () => {
-            const api = (window as any).electronAPI;
+            const api = (window as any).electronAPI || (window as any).api;
             if (api && api.getPayeeBalance) {
                 const bal = await api.getPayeeBalance(payeeId);
                 setPayeeBalance(bal);
@@ -64,10 +91,37 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         }, {});
     }, [accounts]);
 
+// 🔥 INLINE PAYEE CREATION (From feature branch)
+    const handleCreatePayee = async () => {
+        if (!newPayeeName.trim()) return;
+        setIsSubmittingPayee(true);
+        try {
+            const api = (window as any).electronAPI || (window as any).api;
+            await api.createPayee(newPayeeName);
+            
+            const updatedPayees = await api.getPayees();
+            setPayees(updatedPayees);
+            
+            const newRecord = updatedPayees.find((p: any) => p.name.toLowerCase() === newPayeeName.toLowerCase());
+            if (newRecord) setPayeeId(newRecord.id);
+
+            setShowAddPayee(false);
+            setNewPayeeName('');
+            setStatus({ type: 'success', msg: `Successfully added ${newPayeeName} to the database!` });
+        } catch (error) {
+            console.error(error);
+            setStatus({ type: 'error', msg: "Failed to create new record." });
+        } finally {
+            setIsSubmittingPayee(false);
+        }
+    };
+
+    // 🔥 PATIENT MODAL CALLBACK (From main branch)
     const handlePatientAdded = () => {
         setShowAddPatient(false);
-        const api = (window as any).electronAPI;
+        const api = (window as any).electronAPI || (window as any).api;
         if (api && api.getPayees) api.getPayees().then(setPayees).catch(() => setPayees([]));
+    };
     };
 
     const addLine = () => setLines([...lines, { accountId: '', debit: 0, credit: 0 }]);
@@ -95,12 +149,20 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         setLoading(true);
 
         try {
+            if (!refSequence.trim()) throw new Error("Please enter a Sequence Number for the Reference.");
+            
             const validLines = lines.filter(l => l.accountId !== '' && (l.debit > 0 || l.credit > 0));
-            const api = (window as any).electronAPI;
+            const api = (window as any).electronAPI || (window as any).api;
+            
+            // Format sequence to always be padded (e.g. typing '5' turns into '005')
+            const paddedSequence = refSequence.padStart(3, '0');
+            const fullReferenceNo = `${refPrefix}${paddedSequence}`;
+
             const result = await api.submitJournalEntry({
                 date: new Date(date),
-                referenceNo: refNo,
-                description: isAdjusting ? description : `[${vatType}] ${description}`,
+                referenceNo: fullReferenceNo,
+                description,
+                vatType,
                 payeeId: payeeId === '' ? undefined : payeeId,
                 userId,
                 lines: validLines
@@ -108,30 +170,31 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
 
             if (result.success) {
                 setStatus({ type: 'success', msg: `Entry ${result.referenceNo} posted successfully!` });
-                setRefNo(isAdjusting ? 'ADJ-' : '');
-                setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
-                setVatType(isAdjusting ? 'EXEMPT' : 'VATABLE');
-                setPayeeId('');
-                setPayeeSearchQuery('');
+setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
+                setVatType(isAdjusting ? 'EXEMPT' : 'VATABLE'); 
+                setPayeeId(''); 
+                setPayeeSearchQuery(''); 
                 setLines([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
+                
+                // NOTE: We don't need to setRefSequence here, the useEffect automatically fetches the next one!
 
-                // Refresh past entries list
+                // Refresh past entries list (From main branch)
                 if (api.getAllJournalEntries) api.getAllJournalEntries().then(setPastEntries);
             } else {
                 setStatus({ type: 'error', msg: result.error });
             }
         } catch (err: any) {
-            setStatus({ type: 'error', msg: "Connection Error: Failed to submit to database." });
+            setStatus({ type: 'error', msg: err.message || "Failed to submit to database." });
         } finally {
             setLoading(false);
         }
     };
 
     const filteredPayees = payees.filter(p => p.name.toLowerCase().includes(payeeSearchQuery.toLowerCase()));
-    const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- No Patient Tagged --';
+    const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- No Sub-Account Tagged --';
 
     return (
-        <div className="w-full bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
+<div className="max-w-4xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
 
             {/* HEADER */}
             <div className="flex justify-between items-center mb-6 border-b border-[#B0DCDA] pb-4">
@@ -150,52 +213,72 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 </div>
             )}
 
-            {/* TOP ROW: Date, Ref, VAT */}
+{/* TOP ROW: Date, Ref, VAT */}
             <div className={`grid gap-6 mb-6 ${isAdjusting ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                
                 <div>
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Date</label>
-                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
+                    <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition cursor-pointer" />
                 </div>
 
-                {/* 🔥 SEARCHABLE REFERENCE NO. WITH BUTTON */}
+                {/* 🔥 HYBRID REFERENCE NO. (Prefix + Sequence + Search Dropdown) */}
                 <div className="relative">
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
                         {isAdjusting ? 'Reference No. (Correction)' : 'Reference No.'}
                     </label>
                     <div className="flex bg-[#FBF8F8] border border-[#B0DCDA] rounded-md focus-within:border-[#1B9387] focus-within:ring-2 focus-within:ring-[#E9FAFA] transition">
-                        <input
-                            type="text"
-                            value={refNo}
-                            onChange={e => { setRefNo(e.target.value); setIsRefDropdownOpen(true); }}
-                            onFocus={() => setIsRefDropdownOpen(true)}
-                            onBlur={() => setTimeout(() => setIsRefDropdownOpen(false), 200)}
-                            placeholder={isAdjusting ? "e.g. ADJ-OR-1001" : "e.g. OR-1001"}
-                            className="w-full bg-transparent p-3 text-sm text-gray-800 font-bold outline-none"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => setIsRefDropdownOpen(!isRefDropdownOpen)}
-                            className="px-4 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] rounded-r-md transition"
-                            title="Search Past Transactions"
+                        <select 
+                            value={refPrefix} 
+                            onChange={e => setRefPrefix(e.target.value)}
+                            disabled={isAdjusting} 
+                            className="bg-gray-50 border-r border-[#B0DCDA] rounded-l-md px-2 py-3 text-xs font-bold text-gray-600 outline-none cursor-pointer disabled:opacity-80 disabled:cursor-not-allowed"
                         >
-                            🔍
-                        </button>
+                            {isAdjusting ? (
+                                <option value="ADJ-">ADJ-</option>
+                            ) : (
+                                <>
+                                    <option value="JV-">JV-</option>
+                                    <option value="PJ-">PJ-</option>
+                                </>
+                            )}
+                        </select>
+                        <input 
+                            type="text" 
+                            value={refSequence} 
+                            onChange={e => { setRefSequence(e.target.value); if(isAdjusting) setIsRefDropdownOpen(true); }} 
+                            onFocus={() => { if(isAdjusting) setIsRefDropdownOpen(true); }}
+                            onBlur={() => setTimeout(() => setIsRefDropdownOpen(false), 200)}
+                            placeholder={isAdjusting ? "Search (e.g. OR-1001)" : "001"} 
+                            className="w-full bg-transparent p-3 text-sm font-mono text-gray-800 font-bold outline-none" 
+                        />
+                        {isAdjusting && (
+                            <button
+                                type="button"
+                                onClick={() => setIsRefDropdownOpen(!isRefDropdownOpen)}
+                                className="px-4 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] rounded-r-md transition"
+                                title="Search Past Transactions"
+                            >
+                                🔍
+                            </button>
+                        )}
                     </div>
 
-                    {/* Past Transactions Dropdown */}
-                    {isRefDropdownOpen && (
+                    {/* Past Transactions Dropdown (Only opens when adjusting!) */}
+                    {isAdjusting && isRefDropdownOpen && (
                         <ul className="absolute z-50 w-full mt-1 bg-white border border-[#B0DCDA] rounded-md shadow-xl max-h-48 overflow-y-auto">
                             <li className="p-2 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider sticky top-0">Recent Database Entries</li>
                             {pastEntries
-                                .filter(e => e.reference_no.toLowerCase().includes(refNo.replace('ADJ-', '').toLowerCase()))
+                                .filter(e => e.reference_no.toLowerCase().includes(refSequence.toLowerCase()))
                                 .map(entry => (
                                     <li
                                         key={entry.id}
                                         onMouseDown={() => {
-                                            // Automatically prefix with ADJ- if adjusting
-                                            setRefNo(isAdjusting && !entry.reference_no.startsWith('ADJ') ? `ADJ-${entry.reference_no}` : entry.reference_no);
-                                            // Optionally auto-fill description
-                                            if (isAdjusting && description === 'Adjusting Entry: ') {
+                                            // Extract sequence by removing ADJ- if it's there
+                                            const cleanRef = entry.reference_no.replace('ADJ-', '');
+                                            setRefSequence(cleanRef);
+                                            
+                                            // Safely auto-fill the description if it hasn't been changed yet
+                                            if (typeof description !== 'undefined' && description === 'Adjusting Entry: ' && typeof setDescription !== 'undefined') {
                                                 setDescription(`Adjusting Entry to correct ${entry.reference_no}: ${entry.description}`);
                                             }
                                         }}
@@ -209,6 +292,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                     )}
                 </div>
 
+                {/* Hide VAT Type entirely if we are adjusting */}
                 {!isAdjusting && (
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">VAT Type</label>
@@ -225,19 +309,52 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                     </div>
                 )}
             </div>
+                        </div>
+                    </div>
+                )}
+            </div>
 
-            {/* PAYEE & DESCRIPTION */}
+{/* PAYEE & DESCRIPTION */}
             <div className="mb-6 border-b border-[#B0DCDA] pb-6 relative">
                 {!isAdjusting && (
                     <div className="mb-6">
+                        
                         <div className="flex justify-between items-end mb-2">
-                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Patient / Payee (For AR/AP)</label>
-                            <button type="button" onClick={() => setShowAddPatient(!showAddPatient)} className="text-xs font-bold text-[#1B9387] hover:text-[#28958B] transition hover:underline">
-                                {showAddPatient ? 'Cancel' : '+ Add New Patient'}
-                            </button>
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Contact / Subsidiary (For AR/AP)</label>
+                            <div className="flex space-x-4">
+                                <button type="button" onClick={() => { setShowAddPatient(!showAddPatient); setShowAddPayee(false); }} className="text-xs font-bold text-[#1B9387] hover:text-[#28958B] transition hover:underline">
+                                    {showAddPatient ? 'Cancel Patient' : '+ Add Patient'}
+                                </button>
+                                <button type="button" onClick={() => { setShowAddPayee(!showAddPayee); setShowAddPatient(false); }} className="text-xs font-bold text-[#1B9387] hover:text-[#28958B] transition hover:underline">
+                                    {showAddPayee ? 'Cancel Vendor' : '+ Add Vendor/Other'}
+                                </button>
+                            </div>
                         </div>
 
+                        {/* Patient Modal (From main branch) */}
                         {showAddPatient && <AddPatientForm onPatientAdded={handlePatientAdded} />}
+
+                        {/* Inline Vendor Adder (From feature branch, restyled to light mode) */}
+                        {showAddPayee && (
+                            <div className="mb-3 p-3 bg-[#E9FAFA] border border-[#B0DCDA] rounded-md flex gap-3 shadow-inner">
+                                <input 
+                                    type="text" 
+                                    placeholder="Enter Name (e.g., Metro Drug, Dr. Smith)"
+                                    value={newPayeeName}
+                                    onChange={e => setNewPayeeName(e.target.value)}
+                                    className="flex-1 bg-white border border-[#B0DCDA] rounded px-3 text-sm text-gray-800 outline-none focus:border-[#1B9387]"
+                                    autoFocus
+                                />
+                                <button 
+                                    type="button"
+                                    onClick={handleCreatePayee}
+                                    disabled={isSubmittingPayee || !newPayeeName.trim()}
+                                    className="bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-bold px-4 py-2 rounded transition disabled:opacity-50"
+                                >
+                                    {isSubmittingPayee ? 'Saving...' : 'Save to DB'}
+                                </button>
+                            </div>
+                        )}
 
                         <div className="relative mt-2">
                             <div
@@ -256,7 +373,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                         <input
                                             type="text"
                                             autoFocus
-                                            placeholder="🔍 Search patient name..."
+                                            placeholder="🔍 Search contact name..."
                                             value={payeeSearchQuery}
                                             onChange={(e) => setPayeeSearchQuery(e.target.value)}
                                             className="w-full bg-transparent p-2 text-sm text-gray-800 outline-none placeholder-gray-400"
@@ -268,38 +385,46 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                             onClick={() => { setPayeeId(''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }}
                                             className="p-3 text-sm text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition font-medium"
                                         >
-                                            -- No Patient Tagged --
+                                            -- No Sub-Account Tagged --
                                         </li>
-                                        {filteredPayees.length > 0 ? (
-                                            filteredPayees.map(p => (
+                                        {/* Restored the missing map logic that Git deleted! */}
+                                        {filteredPayees && filteredPayees.length > 0 ? (
+                                            filteredPayees.map((p: any) => (
                                                 <li
                                                     key={p.id}
                                                     onClick={() => { setPayeeId(p.id); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }}
-                                                    className="p-3 text-sm text-gray-800 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-t border-gray-100 font-medium"
+                                                    className="p-3 text-sm text-gray-800 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-t border-gray-50"
                                                 >
                                                     {p.name}
                                                 </li>
                                             ))
                                         ) : (
-                                            <li className="p-3 text-sm text-red-500 text-center border-t border-gray-100">
-                                                No patients found. Click "+ Add New Patient".
+                                            <li className="p-3 text-sm text-gray-500 text-center italic border-t border-gray-50">
+                                                No records found.
                                             </li>
                                         )}
                                     </ul>
                                 </div>
                             )}
                         </div>
+                    </div>
+                )}
+                                        >
+                                            -- No Patient Tagged --
+                                        </li>
 
-                        {payeeBalance && (
+                        </div>
+
+{payeeBalance && (
                             <div className="mt-3 flex gap-3 text-xs">
                                 {payeeBalance.receivable > 0 && (
                                     <span className="text-red-600 font-bold bg-red-50 px-3 py-1.5 rounded border border-red-200 flex items-center shadow-sm">
-                                        ⚠️ Patient owes you: ₱{payeeBalance.receivable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        ⚠️ They owe clinic: ₱{payeeBalance.receivable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </span>
                                 )}
                                 {payeeBalance.payable > 0 && (
                                     <span className="text-amber-600 font-bold bg-amber-50 px-3 py-1.5 rounded border border-amber-200 flex items-center shadow-sm">
-                                        ⚠️ You owe supplier: ₱{payeeBalance.payable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        ⚠️ Clinic owes them: ₱{payeeBalance.payable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </span>
                                 )}
                                 {payeeBalance.receivable <= 0 && payeeBalance.payable <= 0 && (
@@ -308,6 +433,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                     </span>
                                 )}
                             </div>
+                        )}
                         )}
                     </div>
                 )}
@@ -331,10 +457,10 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {lines.map((line, idx) => (
-                            <tr key={idx} className="even:bg-gray-50 odd:bg-white hover:bg-[#E9FAFA]/50 transition">
+<tr key={idx} className="even:bg-gray-50 odd:bg-white hover:bg-[#E9FAFA]/50 transition">
 
-                                {/* SEARCHABLE ACCOUNT CELL */}
-                                <td className="p-0 border-r border-[#B0DCDA] relative">
+                                {/* SEARCHABLE ACCOUNT CELL (Fixed the missing inactive state!) */}
+                                <td className="p-0 border-r border-[#B0DCDA] relative align-top">
                                     {activeAccountRow === idx ? (
                                         <div className="absolute z-50 left-0 top-0 w-full min-w-[350px] bg-white border border-[#1B9387] shadow-xl rounded-md overflow-hidden">
                                             <div className="p-2 bg-[#FBF8F8] border-b border-[#B0DCDA]">
@@ -371,6 +497,20 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                             </ul>
                                         </div>
                                     ) : (
+                                        <div 
+                                            onClick={() => { setActiveAccountRow(idx); setAccountSearchQuery(''); }}
+                                            className="p-3 text-sm text-gray-800 font-medium cursor-pointer flex justify-between items-center h-full w-full min-h-[44px]"
+                                        >
+                                            <span className={line.accountId ? 'text-gray-800' : 'text-gray-400'}>
+                                                {line.accountId ? `${line.accountId} - ${accounts.find(a => a.code === line.accountId)?.name || ''}` : 'Select Account...'}
+                                            </span>
+                                            <svg className="w-4 h-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                            </svg>
+                                        </div>
+                                    )}
+                                        </div>
+                                    ) : (
                                         <div
                                             onClick={() => {
                                                 setActiveAccountRow(idx);
@@ -403,8 +543,43 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                         <input type="number" min="0" step="0.01" value={line.credit === 0 ? '' : line.credit} placeholder="0.00" onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} className="w-full bg-transparent pl-8 pr-2 py-1.5 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-400 focus:ring-2 focus:ring-[#1B9387]/30 focus:border-[#1B9387] focus:bg-white rounded transition-all" />
                                     </div>
                                 </td>
-                                <td className="p-2 text-center">
-                                    <button onClick={() => removeLine(idx)} disabled={lines.length <= 2} className="text-red-400 hover:text-red-600 disabled:opacity-20 transition" title="Remove Line">✕</button>
+{/* DEBIT INPUT */}
+                                <td className="p-0 border-r border-[#B0DCDA] align-top">
+                                    <input 
+                                        type="number" 
+                                        min="0" 
+                                        step="0.01" 
+                                        value={line.debit === 0 ? '' : line.debit} 
+                                        placeholder="0.00" 
+                                        onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)} 
+                                        className="w-full h-full min-h-[44px] bg-transparent p-3 text-sm text-right text-gray-800 font-mono font-medium outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" 
+                                    />
+                                </td>
+                                
+                                {/* CREDIT INPUT */}
+                                <td className="p-0 border-r border-[#B0DCDA] align-top">
+                                    <input 
+                                        type="number" 
+                                        min="0" 
+                                        step="0.01" 
+                                        value={line.credit === 0 ? '' : line.credit} 
+                                        placeholder="0.00" 
+                                        onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} 
+                                        className="w-full h-full min-h-[44px] bg-transparent p-3 text-sm text-right text-gray-800 font-mono font-medium outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" 
+                                    />
+                                </td>
+                                
+                                {/* REMOVE BUTTON (From main branch) */}
+                                <td className="p-2 text-center align-middle">
+                                    <button 
+                                        type="button" 
+                                        onClick={() => removeLine(idx)} 
+                                        disabled={lines.length <= 2} 
+                                        className="text-red-400 hover:text-red-600 disabled:opacity-20 transition cursor-pointer font-bold" 
+                                        title="Remove Line"
+                                    >
+                                        ✕
+                                    </button>
                                 </td>
                             </tr>
                         ))}
@@ -414,7 +589,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
 
             {/* FOOTER & MATH VALIDATION */}
             <div className="flex justify-between items-end mt-6">
-                <button onClick={addLine} className="text-[#1B9387] text-sm font-bold hover:bg-[#E9FAFA] px-5 py-2.5 rounded-md transition border border-transparent hover:border-[#B0DCDA] shadow-sm">
+<button type="button" onClick={addLine} className="text-[#1B9387] text-sm font-bold hover:bg-[#E9FAFA] px-5 py-2.5 rounded-md transition border border-transparent hover:border-[#B0DCDA] shadow-sm cursor-pointer">
                     + Add Line
                 </button>
 
@@ -431,16 +606,17 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                         {isBalanced ? (
                             <span className="text-[#1B9387] text-sm font-extrabold uppercase tracking-widest flex items-center justify-end">✓ Balanced</span>
                         ) : (
-                            <span className="text-red-500 text-sm font-extrabold uppercase tracking-widest flex items-center justify-end">Out of Balance</span>
+                            <span className="text-red-500 text-sm font-extrabold uppercase tracking-widest flex items-center justify-end">⚠️ Out of Balance</span>
                         )}
                     </div>
                 </div>
             </div>
 
-            <button
-                disabled={!isBalanced || !refNo || loading}
+<button
+                type="button"
+                disabled={!isBalanced || !refSequence || loading}
                 onClick={handleSubmit}
-                className="w-full mt-8 bg-[#1B9387] disabled:bg-gray-200 disabled:text-gray-500 disabled:shadow-none text-white font-bold py-4 rounded-md transition hover:bg-[#28958B] uppercase tracking-widest shadow-md flex justify-center items-center"
+                className="w-full mt-8 bg-[#1B9387] disabled:bg-gray-200 disabled:text-gray-500 disabled:shadow-none text-white font-bold py-4 rounded-md transition hover:bg-[#28958B] uppercase tracking-widest shadow-md flex justify-center items-center cursor-pointer disabled:cursor-not-allowed"
             >
                 {loading ? 'Processing...' : (isAdjusting ? 'Post Adjusting Entry' : 'Post Journal Entry')}
             </button>

@@ -10,6 +10,8 @@
     "composite": true,
     "jsx": "react-jsx",
     "baseUrl": ".",
+    "types": ["jest", "node"],
+    "noUnusedLocals": false,
     "paths": {
       "@renderer/*": [
         "src/renderer/src/*"

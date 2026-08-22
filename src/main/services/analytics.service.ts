@@ -13,6 +13,9 @@ export class AnalyticsService {
 
         let currentPeriodRevenue = 0;
         let currentPeriodExpenses = 0;
+        
+        // Retained from feature/POS-System to power the Donut Chart!
+        const expenseBreakdownMap: Record<string, number> = {};
 
         let periods = 6;
         if (timeframe === 'daily') periods = 7;     // 7 days
@@ -61,19 +64,20 @@ export class AnalyticsService {
             if (i === periods - 1) {
                 overallStartOfTrend = startOfPeriod;
             }
+        });
 
-            trendLabels.push(label);
+trendLabels.push(label);
 
-            // Fetch Revenue precisely for this interval
+            // Fetch Revenue precisely for this interval (Filters by ACTIVE status)
             const revLines = await prisma.journalLine.findMany({
-                where: { account: { account_type: { name: 'Revenue' } }, entry: { date: { gte: startOfPeriod, lte: endOfPeriod } } }
+                where: { account: { account_type: { name: 'Revenue' } }, entry: { date: { gte: startOfPeriod, lte: endOfPeriod }, status: 'ACTIVE' } }
             });
             const intervalRev = revLines.reduce((sum, ln) => sum + Number(ln.credit) - Number(ln.debit), 0);
             trendRevenue.push(Number(intervalRev.toFixed(2)));
 
-            // Fetch Expenses precisely for this interval
+            // Fetch Expenses precisely for this interval (Filters by ACTIVE status)
             const expLines = await prisma.journalLine.findMany({
-                where: { account: { account_type: { name: 'Expense' } }, entry: { date: { gte: startOfPeriod, lte: endOfPeriod } } }
+                where: { account: { account_type: { name: 'Expense' } }, entry: { date: { gte: startOfPeriod, lte: endOfPeriod }, status: 'ACTIVE' } }
             });
             const intervalExp = expLines.reduce((sum, ln) => sum + Number(ln.debit) - Number(ln.credit), 0);
             trendExpenses.push(Number(intervalExp.toFixed(2)));
@@ -85,7 +89,7 @@ export class AnalyticsService {
             }
         }
 
-        // 2. GENERATE DYNAMIC EXPENSE BREAKDOWN (Now matched to the timeframe!)
+        // 2. GENERATE DYNAMIC EXPENSE BREAKDOWN (Matched to timeframe!)
         const expenseAccounts = await prisma.account.findMany({ where: { account_type: { name: 'Expense' } } });
         const expenseBreakdown: { name: string; value: number }[] = [];
 
@@ -93,7 +97,7 @@ export class AnalyticsService {
             const lines = await prisma.journalLine.findMany({
                 where: {
                     account_id: acc.code,
-                    entry: { date: { gte: overallStartOfTrend || new Date(0) } }
+                    entry: { date: { gte: overallStartOfTrend || new Date(0) }, status: 'ACTIVE' }
                 }
             });
             const netBalance = lines.reduce((sum, ln) => sum + Number(ln.debit) - Number(ln.credit), 0);
@@ -102,8 +106,14 @@ export class AnalyticsService {
             }
         }
 
+        // Sort biggest expenses first for the Donut Chart (Kept from feature branch!)
+        expenseBreakdown.sort((a, b) => b.value - a.value);
+
         // 3. CALCULATE LIQUIDITY (Total All-Time Cash)
-        const cashLines = await prisma.journalLine.findMany({ where: { account_id: '1010' } });
+        // Kept BOTH 1010 (Bank) and 1020 (Petty Cash) from feature branch
+        const cashLines = await prisma.journalLine.findMany({ 
+            where: { account_id: { in: ['1010', '1020'] }, entry: { status: 'ACTIVE' } } 
+        });
         const netCash = cashLines.reduce((sum, ln) => sum + Number(ln.debit) - Number(ln.credit), 0);
 
         // Calculate Operating Margin KPI
@@ -134,12 +144,39 @@ export class AnalyticsService {
             };
         });
 
+            let mRev = 0; let mExp = 0;
+            mLines.forEach(l => {
+                if (l.account.account_type.name === 'Revenue') mRev += (Number(l.credit) - Number(l.debit));
+                if (l.account.account_type.name === 'Expense') mExp += (Number(l.debit) - Number(l.credit));
+            });
+            
+            labels.push(monthName);
+            trendRevenue.push(mRev);
+            trendExpenses.push(mExp);
+        }
+
+        // Return the exact structure DashboardView.tsx is expecting!
         return {
-            kpi: { revenue: currentPeriodRevenue, expenses: currentPeriodExpenses, netCash, margin },
+kpi: { 
+                revenue: currentPeriodRevenue, 
+                expenses: currentPeriodExpenses, 
+                netCash, 
+                margin: Number(margin.toFixed(1)) // 1 decimal place (Kept from feature branch!)
+            },
+            trendData: { 
+                labels: trendLabels, 
+                revenue: trendRevenue, 
+                expenses: trendExpenses 
+            },
             expenseBreakdown,
-            trendData: { labels: trendLabels, revenue: trendRevenue, expenses: trendExpenses },
             narrative,
             recentTransactions
         };
+        };
+
+    } catch (error) {
+        console.error("Analytics Error:", error);
+        return { error: "Failed to compute analytics." };
     }
-}
+  }
+};

@@ -3,126 +3,147 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-export class TaxService {
-    /**
-     * Helper function to get the start and end dates of a specific quarter
-     */
-    private static getQuarterDates(year: number, quarter: number) {
-        const startMonth = (quarter - 1) * 3; // Q1 = 0 (Jan), Q2 = 3 (Apr), etc.
-        const startDate = new Date(year, startMonth, 1);
-        const endDate = new Date(year, startMonth + 3, 0); // Last day of the 3rd month
-        return { startDate, endDate };
+export const TaxService = {
+  
+  async generate2550Q(year: number, quarter: number) {
+    let startDate: Date;
+    let endDate: Date;
+
+    // ---> NEW: If quarter is 0, fetch the entire year! <---
+    if (quarter === 0) {
+        startDate = new Date(year, 0, 1); // Jan 1
+        endDate = new Date(year, 11, 31, 23, 59, 59); // Dec 31
+    } else {
+        const startMonth = (quarter - 1) * 3;
+        startDate = new Date(year, startMonth, 1);
+        endDate = new Date(year, startMonth + 3, 0, 23, 59, 59);
     }
 
-    /**
-     * Generates data for BIR Form 2550Q (Quarterly Value-Added Tax Return)
-     */
-    static async generate2550Q(year: number, quarter: number) {
-        const { startDate, endDate } = this.getQuarterDates(year, quarter);
+    const entries = await prisma.journalEntry.findMany({
+      where: { date: { gte: startDate, lte: endDate } },
+      include: { lines: true, payee: true } 
+    });
 
-        // 1. Fetch all journal entries within the selected quarter
-        const entries = await prisma.journalEntry.findMany({
-            where: {
-                date: { gte: startDate, lte: endDate }
-            },
-            include: {
-                lines: { include: { account: { include: { account_type: true } } } }
-            }
-        });
+    let outputVat = 0;
+    let inputVat = 0;
+    let exemptSales = 0;
+    let creditableVatWithheld = 0;
+    let ewtWithheld = 0;
+    
+    const qapList: any[] = [];
 
-        let vatableSales = 0;
-        let vatablePurchases = 0;
+    entries.forEach(entry => {
+      let hasEwt = false;
+      let ewtAmount = 0;
+      let grossPayout = 0;
 
-        // 2. Aggregate Sales and Purchases
-        for (const entry of entries) {
-            for (const line of entry.lines) {
-                // Sales/Revenue (Credit balance)
-                if (line.account.account_type.name === 'Revenue') {
-                    vatableSales += Number(line.credit);
-                }
-                // Purchases/Expenses (Debit balance, excluding payroll since salaries have no VAT)
-                if (line.account.account_type.name === 'Expense' && line.account.name !== 'Salaries Expense') {
-                    vatablePurchases += Number(line.debit);
-                }
-            }
+      entry.lines.forEach(line => {
+        const credit = Number(line.credit);
+        const debit = Number(line.debit);
+
+        if (line.account_id === '2020' && credit > 0) outputVat += credit;
+        if (line.account_id === '1300' && debit > 0) inputVat += debit;
+        if (line.account_id === '1310' && debit > 0) creditableVatWithheld += debit;
+        if (entry.vat_type === 'EXEMPT' && line.account_id.startsWith('40') && credit > 0) {
+            exemptSales += credit;
         }
 
-        // 3. Philippine VAT Calculation (12%)
-        // Assuming ledger amounts are Gross (VAT Inclusive). 
-        // Net of VAT = Gross / 1.12. Output VAT = Gross - Net.
-        const netSales = vatableSales / 1.12;
-        const outputVat = vatableSales - netSales;
-
-        const netPurchases = vatablePurchases / 1.12;
-        const inputVat = vatablePurchases - netPurchases;
-
-        const netVatPayable = outputVat - inputVat;
-
-        return {
-            year,
-            quarter,
-            grossSales: Number(vatableSales.toFixed(2)),
-            netSales: Number(netSales.toFixed(2)),
-            outputVat: Number(outputVat.toFixed(2)),
-
-            grossPurchases: Number(vatablePurchases.toFixed(2)),
-            netPurchases: Number(netPurchases.toFixed(2)),
-            inputVat: Number(inputVat.toFixed(2)),
-
-            netVatPayable: Number(netVatPayable.toFixed(2))
-        };
-    }
-
-    /**
-     * Generates data for BIR Relief Annexes (Summary List of Sales and Purchases)
-     */
-    static async generateReliefAnnexes(year: number, quarter: number) {
-        const { startDate, endDate } = this.getQuarterDates(year, quarter);
-
-        // Fetch entries with Payees (since Annexes require TINs)
-        const entries = await prisma.journalEntry.findMany({
-            where: {
-                date: { gte: startDate, lte: endDate },
-                payee_id: { not: null } // Only get transactions with recorded payees/clients
-            },
-            include: {
-                payee: true,
-                lines: { include: { account: { include: { account_type: true } } } }
-            }
-        });
-
-        const annexA_Sales: any[] = [];
-        const annexB_Purchases: any[] = [];
-
-        for (const entry of entries) {
-            for (const line of entry.lines) {
-                if (line.account.account_type.name === 'Revenue' && Number(line.credit) > 0) {
-                    const gross = Number(line.credit);
-                    annexA_Sales.push({
-                        date: entry.date,
-                        refNo: entry.reference_no,
-                        customerName: entry.payee?.name,
-                        tin: entry.payee?.tin || '000-000-000-000',
-                        grossAmount: gross,
-                        netAmount: Number((gross / 1.12).toFixed(2)),
-                        tax: Number((gross - (gross / 1.12)).toFixed(2))
-                    });
-                }
-                if (line.account.account_type.name === 'Expense' && Number(line.debit) > 0 && line.account.name !== 'Salaries Expense') {
-                    const gross = Number(line.debit);
-                    annexB_Purchases.push({
-                        date: entry.date,
-                        refNo: entry.reference_no,
-                        supplierName: entry.payee?.name,
-                        tin: entry.payee?.tin || '000-000-000-000',
-                        grossAmount: gross,
-                        netAmount: Number((gross / 1.12).toFixed(2)),
-                        tax: Number((gross - (gross / 1.12)).toFixed(2))
-                    });
-                }
-            }
+        if (line.account_id === '2050' && credit > 0) {
+            ewtWithheld += credit;
+            hasEwt = true;
+            ewtAmount += credit;
         }
+        if (line.account_id === '2010' && debit > 0) {
+            grossPayout += debit; 
+        }
+      });
 
-        return { annexA_Sales, annexB_Purchases };
+      if (hasEwt && entry.payee) {
+         const taxRate = Math.round((ewtAmount / grossPayout) * 100);
+         let atcCode = taxRate === 5 ? 'WI011' : 'WI157';
+
+         qapList.push({
+            date: entry.date,
+            payeeName: entry.payee.name,
+            tin: entry.payee.tin || '000-000-000-000',
+            atc: atcCode,
+            grossAmount: grossPayout,
+            taxWithheld: ewtAmount
+         });
+      }
+    });
+
+    const vatableSales = outputVat / 0.12;
+    const vatablePurchases = inputVat / 0.12;
+    const netVatPayable = outputVat - inputVat - creditableVatWithheld;
+
+    return {
+      year,
+      quarter,
+      vatableSales,
+            netSales: vatableSales,
+            grossSales: vatableSales + outputVat,
+      exemptSales,
+      outputVat,
+      vatablePurchases,
+            netPurchases: vatablePurchases,
+            grossPurchases: vatablePurchases + inputVat,
+      inputVat,
+      creditableVatWithheld,
+      netVatPayable,
+      ewtWithheld,
+      qapList 
+    };
+  },
+
+  async generateReliefAnnexes(year: number, quarter: number) {
+    let startDate: Date;
+    let endDate: Date;
+
+    // ---> NEW: If quarter is 0, fetch the entire year! <---
+    if (quarter === 0) {
+        startDate = new Date(year, 0, 1);
+        endDate = new Date(year, 11, 31, 23, 59, 59);
+    } else {
+        const startMonth = (quarter - 1) * 3;
+        startDate = new Date(year, startMonth, 1);
+        endDate = new Date(year, startMonth + 3, 0, 23, 59, 59);
     }
-}
+
+    const entries = await prisma.journalEntry.findMany({
+      where: { date: { gte: startDate, lte: endDate }, payee_id: { not: null } },
+      include: { lines: true, payee: true }
+    });
+
+    const annexB_Purchases: any[] = [];
+
+    entries.forEach(entry => {
+      let hasInputVat = false;
+      let inputVatAmount = 0;
+      let grossAmount = 0;
+
+      entry.lines.forEach(line => {
+        if (line.account_id === '1300' && Number(line.debit) > 0) {
+            hasInputVat = true;
+            inputVatAmount = Number(line.debit);
+        }
+        if (Number(line.credit) > 0 && line.account_id === '1010') {
+            grossAmount += Number(line.credit);
+        }
+      });
+
+      if (hasInputVat && entry.payee) {
+        annexB_Purchases.push({
+            date: entry.date,
+            supplierName: entry.payee.name,
+            tin: entry.payee.tin || '000-000-000-000',
+            grossAmount: grossAmount,
+            netAmount: grossAmount - inputVatAmount,
+            tax: inputVatAmount
+        });
+      }
+    });
+
+    return { annexB_Purchases };
+  }
+};

@@ -1,13 +1,17 @@
-// src/renderer/src/components/FinancialStatementsView.tsx
 import * as React from 'react';
 import { useState, useEffect } from 'react';
+
+const getLocalDateString = (date: Date) => {
+    return new Date(date.getTime() - (date.getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+};
+
 
 export const FinancialStatementsView: React.FC = () => {
     const [statementType, setStatementType] = useState<'trial' | 'income' | 'balance' | 'cash-flow'>('trial');
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
 
-    // 🔥 NEW: Month and Year Selection States
+// 🔥 NEW: Month and Year Selection States (Aligned with the backend!)
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth() + 1;
     const [selectedYear, setSelectedYear] = useState<number>(currentYear);
@@ -18,7 +22,8 @@ export const FinancialStatementsView: React.FC = () => {
             setLoading(true);
             setData(null);
             try {
-                const api = (window as any).electronAPI;
+                // Kept both API references just to be safe!
+                const api = (window as any).electronAPI || (window as any).api;
                 let result;
                 if (statementType === 'trial') result = await api.getTrialBalance(selectedYear, selectedMonth);
                 else if (statementType === 'income') result = await api.getIncomeStatement(selectedYear, selectedMonth);
@@ -33,17 +38,18 @@ export const FinancialStatementsView: React.FC = () => {
             }
         };
 
+    useEffect(() => {
         fetchReport();
     }, [statementType, selectedYear, selectedMonth]);
 
-    const formatCurrency = (val: number | null | undefined) => {
+// Kept isAbnormal parameter from feature branch for backward compatibility!
+    const formatCurrency = (val: number | null | undefined, isAbnormal: boolean = false) => {
         if (val === null || val === undefined || isNaN(val) || val === 0) return '—';
         const formattedAmount = Math.abs(val).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        return val < 0 ? `(₱ ${formattedAmount})` : `₱ ${formattedAmount}`;
+        return isAbnormal || val < 0 ? `(₱ ${formattedAmount})` : `₱ ${formattedAmount}`;
     };
 
     const handleExportExcel = async () => {
-        // 🔥 We are now passing selectedYear and selectedMonth!
         const result = await (window as any).electronAPI.exportTrialBalanceExcel(selectedYear, selectedMonth);
         if (result.success) alert(`Report exported successfully to:\n${result.filePath}`);
         else if (result.error) alert(`Export Failed: ${result.error}`);
@@ -94,7 +100,7 @@ export const FinancialStatementsView: React.FC = () => {
             await new Promise(resolve => setTimeout(resolve, 150));
 
             // 5. Snap the PDF
-            const api = (window as any).electronAPI;
+            const api = (window as any).electronAPI || (window as any).api;
             const filename = `${statementType.toUpperCase()}_Statement_${selectedYear}_${selectedMonth}.pdf`;
             const result = await api.exportPDF(filename);
 
@@ -171,30 +177,50 @@ export const FinancialStatementsView: React.FC = () => {
                 </div>
             </div>
 
-            {/* TABS */}
-            <div id="fs-tabs" className="flex bg-[#FBF8F8] p-1.5 rounded-lg border border-[#B0DCDA] shadow-inner mb-6 max-w-2xl mx-auto">
+            {/* TAB NAVIGATION (Reconstructed for Light Mode & Cash Flow) */}
+            <div id="fs-tabs" className="flex flex-wrap gap-2 mb-6 bg-[#FBF8F8] p-1.5 rounded-lg border border-[#B0DCDA] shadow-inner w-fit">
                 {(['trial', 'income', 'balance', 'cash-flow'] as const).map((type) => (
                     <button
                         key={type}
-                        onClick={() => setStatementType(type)}
-                        className={`flex-1 py-2 text-xs font-extrabold rounded-md transition uppercase tracking-wider ${statementType === type ? 'bg-[#1B9387] text-white shadow-sm' : 'text-gray-500 hover:text-[#1B9387]'
-                            }`}
+                        onClick={() => setStatementType(type as any)}
+                        className={`px-5 py-2 text-xs font-bold rounded-md transition uppercase tracking-wider ${
+                            statementType === type
+                            ? 'bg-[#1B9387] text-white shadow-md'
+                            : 'text-gray-500 hover:text-[#1B9387] hover:bg-[#E9FAFA]'
+                        }`}
                     >
                         {type === 'trial' ? 'Trial Balance' : type === 'income' ? 'Income Statement' : type === 'balance' ? 'Balance Sheet' : 'Cash Flow'}
                     </button>
                 ))}
             </div>
+                </div>
+            </div>
+            {/* ---> END OF REDESIGNED HEADER <--- */}
 
-            {loading && <div className="flex justify-center items-center py-20 text-[#1B9387]"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current"></div></div>}
+            {/* Official Print Header (Only visible on paper) */}
+            <div className="hidden print:block text-center mb-6 border-b pb-4">
+                <h1 className="text-2xl font-bold uppercase tracking-widest text-black">SmartGuys Clinic Inc.</h1>
+                <h2 className="text-lg font-bold uppercase mt-1 text-black">
+                    {statementType === 'trial' ? 'Trial Balance' : statementType === 'income' ? 'Income Statement' : 'Balance Sheet'}
+                </h2>
+                <p className="text-sm italic text-gray-600">
+                    For the period: {new Date(startDate).toLocaleDateString()} to {new Date(endDate).toLocaleDateString()}
+                </p>
+            </div>
+
+{loading && (
+                <div className="flex justify-center items-center py-20 text-[#1B9387] print:hidden">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current"></div>
+                </div>
+            )}
 
             {!loading && data && (
-                <div className="animate-in fade-in duration-300">
-
+                <div className="space-y-6 print:text-black animate-in fade-in duration-300">
                     {/* =========================================
               A. TRIAL BALANCE
           ========================================= */}
                     {statementType === 'trial' && (
-                        <div className="space-y-6 bg-white max-w-4xl mx-auto">
+<div className="space-y-6 bg-white max-w-4xl mx-auto">
 
                             {/* 🔥 NEW: Report Header for Print */}
                             <div className="text-center pb-4 border-b-2 border-gray-800">
@@ -244,7 +270,7 @@ export const FinancialStatementsView: React.FC = () => {
               B. INCOME STATEMENT
           ========================================= */}
                     {statementType === 'income' && (
-                        <div className="space-y-8 bg-white max-w-3xl mx-auto">
+<div className="space-y-8 bg-white max-w-3xl mx-auto">
                             <div className="text-center pb-4 border-b-2 border-gray-800">
                                 <h2 className="text-2xl font-extrabold text-gray-800">SmartGuys Community Healthcare Inc.</h2>
                                 <h3 className="text-lg font-bold text-gray-600 mt-1">Income Statement</h3>
@@ -284,7 +310,7 @@ export const FinancialStatementsView: React.FC = () => {
                             <div className="flex justify-between items-center p-5 bg-[#E9FAFA] border-t-2 border-b-4 border-[#B0DCDA] rounded-md shadow-sm">
                                 <span className="text-base font-extrabold text-gray-800 uppercase tracking-wider">Net Income (Loss)</span>
                                 <span className={`text-xl font-bold font-mono ${data.netIncome >= 0 ? 'text-[#1B9387]' : 'text-red-600'}`}>
-                                    {formatCurrency(data.netIncome)}
+                                    {formatCurrency(data.netIncome, data.netIncome < 0)}
                                 </span>
                             </div>
                         </div>
@@ -294,7 +320,7 @@ export const FinancialStatementsView: React.FC = () => {
               C. BALANCE SHEET
           ========================================= */}
                     {statementType === 'balance' && (
-                        <div className="space-y-8 bg-white max-w-3xl mx-auto">
+<div className="space-y-8 bg-white max-w-3xl mx-auto">
                             <div className="text-center pb-4 border-b-2 border-gray-800">
                                 <h2 className="text-2xl font-extrabold text-gray-800">SmartGuys Community Healthcare Inc.</h2>
                                 <h3 className="text-lg font-bold text-gray-600 mt-1">Balance Sheet</h3>
@@ -306,7 +332,7 @@ export const FinancialStatementsView: React.FC = () => {
                                 {data.assets?.map((asset: any, idx: number) => (
                                     <div key={idx} className="flex justify-between text-sm py-2 px-4 pl-8 hover:bg-gray-50">
                                         <span className="text-gray-700 font-medium">{asset.name}</span>
-                                        <span className={`font-mono ${asset.amount < 0 ? 'text-red-500 font-bold' : 'text-gray-800'}`}>{formatCurrency(asset.amount)}</span>
+                                        <span className={`font-mono ${asset.amount < 0 ? 'text-red-500 font-bold' : 'text-gray-800'}`}>{formatCurrency(asset.amount, asset.amount < 0)}</span>
                                     </div>
                                 ))}
                                 <div className="flex justify-between text-sm font-extrabold pt-3 px-4 mt-2 border-t border-[#B0DCDA]">
@@ -316,7 +342,8 @@ export const FinancialStatementsView: React.FC = () => {
                             </div>
 
                             <div>
-                                <h3 className="text-sm font-extrabold uppercase tracking-wider text-[#1B9387] border-b border-[#B0DCDA] pb-2 mb-3">Liabilities</h3>
+<h3 className="text-sm font-extrabold uppercase tracking-wider text-[#1B9387] border-b border-[#B0DCDA] pb-2 mb-3">Liabilities</h3>
+                                {data.liabilities?.length === 0 && <p className="text-sm text-gray-400 px-4 pl-8 italic">No liabilities recorded.</p>}
                                 {data.liabilities?.map((lia: any, idx: number) => (
                                     <div key={idx} className="flex justify-between text-sm py-2 px-4 pl-8 hover:bg-gray-50">
                                         <span className="text-gray-700 font-medium">{lia.name}</span>
@@ -330,7 +357,7 @@ export const FinancialStatementsView: React.FC = () => {
                             </div>
 
                             <div>
-                                <h3 className="text-sm font-extrabold uppercase tracking-wider text-[#1B9387] border-b border-[#B0DCDA] pb-2 mb-3">Equity</h3>
+<h3 className="text-sm font-extrabold uppercase tracking-wider text-[#1B9387] border-b border-[#B0DCDA] pb-2 mb-3">Equity</h3>
                                 {data.equity?.map((eq: any, idx: number) => (
                                     <div key={idx} className="flex justify-between text-sm py-2 px-4 pl-8 hover:bg-gray-50">
                                         <span className="text-gray-700 font-medium">{eq.name}</span>
@@ -339,7 +366,8 @@ export const FinancialStatementsView: React.FC = () => {
                                 ))}
                                 <div className="flex justify-between text-sm py-2 px-4 pl-8 text-gray-500 italic border-t border-gray-100 mt-2 pt-2">
                                     <span>Accumulated Net Income / Loss</span>
-                                    <span className="font-mono font-medium">{formatCurrency(data.netIncome)}</span>
+                                    {/* Preserved negative formatting from feature branch! */}
+                                    <span className="font-mono font-medium">{formatCurrency(data.netIncome, data.netIncome < 0)}</span>
                                 </div>
                                 <div className="flex justify-between text-sm font-extrabold pt-3 px-4 mt-2 border-t border-[#B0DCDA]">
                                     <span className="text-gray-800 uppercase tracking-wide">Total Equity</span>
@@ -356,10 +384,15 @@ export const FinancialStatementsView: React.FC = () => {
                                     {formatCurrency(data.totalLiabilitiesAndEquity)}
                                 </span>
                             </div>
+                            
+                            {!data.isEquationBalanced && (
+                                <div className="text-center text-red-500 font-bold text-sm uppercase tracking-widest mt-4 print:hidden">
+                                    ⚠️ ERROR: BALANCE SHEET IS OUT OF BALANCE
+                                </div>
+                            )}
                         </div>
                     )}
-
-                    {/* =========================================
+{/* =========================================
               D. CASH FLOW STATEMENT
           ========================================= */}
                     {statementType === 'cash-flow' && (
@@ -376,12 +409,12 @@ export const FinancialStatementsView: React.FC = () => {
                                 {data.operating?.details.map((item: any, idx: number) => (
                                     <div key={idx} className="flex justify-between text-sm py-2 px-4 pl-8 hover:bg-gray-50 transition">
                                         <span className="text-gray-700">{item.description}</span>
-                                        <span className={`font-mono ${item.amount < 0 ? 'text-red-500 font-medium' : 'text-gray-800'}`}>{formatCurrency(item.amount)}</span>
+                                        <span className={`font-mono ${item.amount < 0 ? 'text-red-500 font-medium' : 'text-gray-800'}`}>{formatCurrency(item.amount, item.amount < 0)}</span>
                                     </div>
                                 ))}
                                 <div className="flex justify-between text-sm font-extrabold pt-3 px-4 mt-3 border-t border-[#B0DCDA]">
                                     <span className="text-gray-800 uppercase tracking-wide">Net Cash from Operating Activities</span>
-                                    <span className="font-mono text-gray-800">{formatCurrency(data.operating?.net)}</span>
+                                    <span className="font-mono text-gray-800">{formatCurrency(data.operating?.net, data.operating?.net < 0)}</span>
                                 </div>
                             </div>
 
@@ -391,12 +424,12 @@ export const FinancialStatementsView: React.FC = () => {
                                 {data.investing?.details.map((item: any, idx: number) => (
                                     <div key={idx} className="flex justify-between text-sm py-2 px-4 pl-8 hover:bg-gray-50 transition">
                                         <span className="text-gray-700">{item.description}</span>
-                                        <span className={`font-mono ${item.amount < 0 ? 'text-red-500 font-medium' : 'text-gray-800'}`}>{formatCurrency(item.amount)}</span>
+                                        <span className={`font-mono ${item.amount < 0 ? 'text-red-500 font-medium' : 'text-gray-800'}`}>{formatCurrency(item.amount, item.amount < 0)}</span>
                                     </div>
                                 ))}
                                 <div className="flex justify-between text-sm font-extrabold pt-3 px-4 mt-3 border-t border-[#B0DCDA]">
                                     <span className="text-gray-800 uppercase tracking-wide">Net Cash from Investing Activities</span>
-                                    <span className="font-mono text-gray-800">{formatCurrency(data.investing?.net)}</span>
+                                    <span className="font-mono text-gray-800">{formatCurrency(data.investing?.net, data.investing?.net < 0)}</span>
                                 </div>
                             </div>
 
@@ -406,24 +439,23 @@ export const FinancialStatementsView: React.FC = () => {
                                 {data.financing?.details.map((item: any, idx: number) => (
                                     <div key={idx} className="flex justify-between text-sm py-2 px-4 pl-8 hover:bg-gray-50 transition">
                                         <span className="text-gray-700">{item.description}</span>
-                                        <span className={`font-mono ${item.amount < 0 ? 'text-red-500 font-medium' : 'text-gray-800'}`}>{formatCurrency(item.amount)}</span>
+                                        <span className={`font-mono ${item.amount < 0 ? 'text-red-500 font-medium' : 'text-gray-800'}`}>{formatCurrency(item.amount, item.amount < 0)}</span>
                                     </div>
                                 ))}
                                 <div className="flex justify-between text-sm font-extrabold pt-3 px-4 mt-3 border-t border-[#B0DCDA]">
                                     <span className="text-gray-800 uppercase tracking-wide">Net Cash from Financing Activities</span>
-                                    <span className="font-mono text-gray-800">{formatCurrency(data.financing?.net)}</span>
+                                    <span className="font-mono text-gray-800">{formatCurrency(data.financing?.net, data.financing?.net < 0)}</span>
                                 </div>
                             </div>
 
                             <div className={`flex justify-between items-center p-5 border-t-2 border-b-4 shadow-sm mt-8 rounded-md ${data.netIncreaseInCash < 0 ? 'bg-red-50 border-red-200' : 'bg-[#E9FAFA] border-[#B0DCDA]'}`}>
                                 <span className="text-base font-extrabold text-gray-800 uppercase tracking-wider">Net Increase (Decrease) in Cash</span>
                                 <span className={`text-xl font-bold font-mono ${data.netIncreaseInCash < 0 ? 'text-red-600' : 'text-[#1B9387]'}`}>
-                                    {formatCurrency(data.netIncreaseInCash)}
+                                    {formatCurrency(data.netIncreaseInCash, data.netIncreaseInCash < 0)}
                                 </span>
                             </div>
                         </div>
                     )}
-
                 </div>
             )}
         </div>
