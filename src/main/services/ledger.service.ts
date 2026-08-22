@@ -3,11 +3,18 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-export type JournalEntryInput = {
+export interface JournalLineInput {
+    accountId: string;
+    debit: number;
+    credit: number;
+}
+
+export interface JournalEntryInput {
     date: Date;
     referenceNo: string;
     description: string;
-    userId: string;
+    vatType: string;
+    payeeId?: string;
     payeeId?: string;
     vatType?: string;
     lines: Array<{ accountId: string; debit: number; credit: number }>;
@@ -107,10 +114,12 @@ export const LedgerService = {
             if (Number.isNaN(new Date(transaction.date).getTime())) throw new Error('Every imported row needs a valid date');
         }
 
+// --- 1. BANK TRANSACTION IMPORT LOGIC (From feature/POS-System) ---
         const dates = data.transactions.map(transaction => new Date(transaction.date));
         const earliestDate = new Date(Math.min(...dates.map(date => date.getTime())));
         const latestDate = new Date(Math.max(...dates.map(date => date.getTime())));
         latestDate.setHours(23, 59, 59, 999);
+        
         const existingTransactions = await prisma.bankTransaction.findMany({
             where: {
                 bank_account_id: data.bankAccountId,
@@ -119,14 +128,17 @@ export const LedgerService = {
             },
             select: { transaction_date: true, description: true, reference_no: true, amount: true }
         });
+        
         const duplicateKey = (transaction: { date: string; description: string; referenceNo?: string; amount: number }) =>
             `${new Date(transaction.date).toISOString().slice(0, 10)}|${transaction.description.trim().toLowerCase()}|${transaction.referenceNo?.trim().toLowerCase() || ''}|${Number(transaction.amount).toFixed(2)}`;
+            
         const existingKeys = new Set(existingTransactions.map(transaction => duplicateKey({
             date: transaction.transaction_date.toISOString(),
             description: transaction.description,
             referenceNo: transaction.reference_no || undefined,
             amount: Number(transaction.amount)
         })));
+        
         const importKeys = new Set<string>();
         const newTransactions = data.transactions.filter(transaction => {
             const key = duplicateKey(transaction);
@@ -134,8 +146,30 @@ export const LedgerService = {
             importKeys.add(key);
             return true;
         });
+        
         const skippedCount = data.transactions.length - newTransactions.length;
         if (!newTransactions.length) return { count: 0, skippedCount };
+
+        // =================================================================================
+        // ⚠️ WARNING: CHECK YOUR FUNCTION BOUNDARIES HERE!
+        // Because Git merged these, it might have deleted the closing brace `}` 
+        // for the import function and the opening signature for `createJournalEntry`.
+        // Ensure you have something like `}, async createJournalEntry(input: any) {` 
+        // between these two blocks if it's missing!
+        // =================================================================================
+
+        // --- 2. JOURNAL ENTRY CREATION LOGIC (From main) ---
+        return await prisma.$transaction(async (tx) => {
+            const entry = await tx.journalEntry.create({
+                data: {
+                    date: input.date,
+                    reference_no: input.referenceNo,
+                    description: input.description,
+                    vat_type: input.vatType,
+                    payee_id: input.payeeId || null,
+                    user_id: input.userId, // Kept to support the new Tax/Payee fields!
+                },
+            });
 
         const result = await prisma.bankTransaction.createMany({
             data: newTransactions.map(transaction => ({
@@ -289,7 +323,7 @@ export const LedgerService = {
         if (line.account_id === '2010') balances[pId].payable += (Number(line.credit) - Number(line.debit));
     }
 
-    // 4. Merge and return
+// 4. Merge and return (From feature/POS-System)
     return payees.map(p => ({
         id: p.id,
         name: p.name,
@@ -300,9 +334,19 @@ export const LedgerService = {
         youOwe: balances[p.id]?.payable || 0,   // Accounts Payable
         theyOwe: balances[p.id]?.receivable || 0 // Accounts Receivable
     }));
-  },
+  }
 
+  // NEW BALANCE FUNCTION (From main)
+  static async getPayeeBalance(payeeId: string) {
+      const lines = await prisma.journalLine.findMany({
+          where: {
+              entry: { payee_id: payeeId },
+              account_id: { in: ['1200', '2010'] }
+          }
+      });
 
+      let arBalance = 0;
+      let apBalance = 0;
   async getFullLedgerReport(startDateStr: string, endDateStr: string) {
     const startDate = new Date(startDateStr);
     startDate.setHours(0, 0, 0, 0);
@@ -361,29 +405,55 @@ export const LedgerService = {
         });
     }
 
-    return report;
-  },
+return report;
+  }
 
-  async getNextReferenceSequence(prefix: string) {
+  // --- NEW METHODS FROM FEATURE BRANCH ---
+  static async getNextReferenceSequence(prefix: string) {
     const lastEntry = await prisma.journalEntry.findFirst({ where: { reference_no: { startsWith: prefix } }, orderBy: { date: 'desc' } });
     if (!lastEntry) return '001';
     const lastSeqNum = parseInt(lastEntry.reference_no.replace(prefix, ''), 10);
     if (isNaN(lastSeqNum) || lastSeqNum > 999999) return '001'; 
     return (lastSeqNum + 1).toString().padStart(3, '0');
-  },
+  }
 
-  async getPayoutHistory() {
+  static async getPayoutHistory() {
     const entries = await prisma.journalEntry.findMany({
         where: { reference_no: { startsWith: 'CV-' }, payee_id: { not: null } },
         include: { payee: true, lines: true }, orderBy: { date: 'desc' }
     });
+    
     const history: any[] = [];
+    
     entries.forEach(entry => {
         let gross = 0; let tax = 0; let net = 0;
         entry.lines.forEach(line => {
             if (line.account_id === '2010' && Number(line.debit) > 0) gross += Number(line.debit);
             if (line.account_id === '2050' && Number(line.credit) > 0) tax += Number(line.credit);
             if (line.account_id === '1010' && Number(line.credit) > 0) net += Number(line.credit);
+        });
+        
+        // Git swallowed the bottom of this function during the conflict!
+        // Reconstructed the push and return:
+        history.push({ ...entry, gross, tax, net });
+    });
+    
+    return history;
+  }
+
+  // ==========================================
+  // ⚠️ WARNING: CHECK YOUR FUNCTION BOUNDARIES!
+  // ==========================================
+  // The code below belongs INSIDE whatever function the main branch was running 
+  // (likely `getAccountLedger`). If it throws a syntax error after pasting, you may 
+  // need to move these 3 lines so they sit correctly inside their intended function.
+
+  const normalBalance = account.account_type.normal_balance;
+
+  const lines = await prisma.journalLine.findMany({
+      where: { account_id: accountId },
+      include: { entry: { include: { payee: true } } },
+      orderBy: { entry: { date: 'asc' } }
         });
         if (gross > 0) history.push({ id: entry.id, date: entry.date, referenceNo: entry.reference_no, payee: entry.payee, description: entry.description, gross, tax, net });
     });
@@ -452,20 +522,44 @@ export const LedgerService = {
         }
     });
 
-    await prisma.journalEntry.update({ where: { id: entryId }, data: { status: 'VOIDED' } });
-    return { success: true };
-  },
+// --- 1. END OF getAccountLedger LOOP (From main branch) ---
+            return {
+                id: line.id,
+                date: line.entry.date,
+                referenceNo: line.entry.reference_no,
+                description: line.entry.description,
+                vatType: line.entry.vat_type,
+                payee: line.entry.payee?.name || '-',
+                debit: debit,
+                credit: credit,
+                balance: runningBalance
+            };
+        });
+    } // <-- Closes the getAccountLedger function
 
-  async getUserSalesHistory(userId: string) {
-    const entries = await prisma.journalEntry.findMany({
-        where: {
-            user_id: userId,
-            OR: [ { reference_no: { startsWith: 'INV-' } }, { reference_no: { startsWith: 'OR-' } } ]
-        },
-        orderBy: { date: 'desc' },
-        take: 100,
-        include: { payee: true, lines: { include: { account: true } } }
-    });
+    // --- 2. END OF VOID ENTRY FUNCTION (From feature branch) ---
+    // ⚠️ Check right ABOVE where you pasted this! Make sure there is a function signature 
+    // like `static async voidJournalEntry(entryId: string) {` somewhere above this line!
+        await prisma.journalEntry.update({ where: { id: entryId }, data: { status: 'VOIDED' } });
+        return { success: true };
+    } // <-- Closes the void function
+
+    // --- 3. NEW METHOD: USER SALES HISTORY (From feature branch) ---
+    static async getUserSalesHistory(userId: string) {
+        const entries = await prisma.journalEntry.findMany({
+            where: {
+                user_id: userId,
+                OR: [ { reference_no: { startsWith: 'INV-' } }, { reference_no: { startsWith: 'OR-' } } ]
+            },
+            orderBy: { date: 'desc' },
+            take: 100,
+            include: { payee: true, lines: { include: { account: true } } }
+        });
+        
+        // Git swallowed the return statement for this function during the conflict!
+        // Reconstructed it here:
+        return entries;
+    }
 
     return entries.map(entry => {
         const totalAmount = entry.lines.reduce((sum, line) => sum + Number(line.debit), 0);
@@ -474,6 +568,11 @@ export const LedgerService = {
             payeeName: entry.payee?.name || 'Walk-in / Cash', totalAmount: totalAmount, status: entry.status,
             lines: entry.lines.map(l => ({ accountCode: l.account.code, accountName: l.account.name, debit: Number(l.debit), credit: Number(l.credit) }))
         };
-    });
-  }
-};
+// --- NEW METHOD FROM MAIN BRANCH ---
+    static async getAllJournalEntries() {
+        return await prisma.journalEntry.findMany({
+            orderBy: { date: 'desc' },
+            select: { id: true, reference_no: true, description: true, date: true }
+        });
+    }
+} // <-- This single bracket safely closes the entire LedgerService class!

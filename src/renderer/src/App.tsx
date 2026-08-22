@@ -1,4 +1,6 @@
-// Make sure these are at the top of src/renderer/src/App.tsx
+// src/renderer/src/App.tsx
+import * as React from 'react';
+import { useState, useEffect } from 'react';
 import { DashboardView } from './components/DashboardView';
 import { BIRReportsView } from './components/BIRReportsView';
 import { DatabaseBackupView } from './components/DatabaseBackupView';
@@ -6,8 +8,6 @@ import { FinancialStatementsView } from './components/FinancialStatementsView';
 import { GeneralLedgerView } from './components/GeneralLedgerView';
 import { CashDisbursementForm } from './components/CashDisbursementForm';
 import { JournalEntryForm } from './components/JournalEntryForm';
-import * as React from 'react';
-import { useState, useEffect } from 'react';
 import { LoginScreen } from "./components/LoginScreen";
 import { POSBillingView } from './components/POSBillingView';
 import { EWTPayoutView } from './components/EWTPayoutView';
@@ -24,6 +24,8 @@ import { PayrollView } from './components/PayrollView';
 import { ContactDirectoryView } from './components/ContactDirectoryView';
 import { ReconciliationView } from './components/ReconciliationView';
 
+// Kept from main branch for the UI!
+import logoImage from './assets/smartguys_logo.jpg';
 
 type Role = 'CASHIER' | 'ACCOUNTANT' | 'MANAGER' | 'IT_PERSONNEL';
 
@@ -78,15 +80,35 @@ const GROUP_ORDER = ['Home', 'Clinic Operations', 'Accounting', 'Reports & Taxes
 function App(): React.ReactElement {
   const [currentUser, setCurrentUser] = useState<{ id: string; username: string; role: string } | null>(null);
   const [activeTab, setActiveTab] = useState<string>('');
+  const [isOnline, setIsOnline] = useState(true);
 
-  const permittedTabs = currentUser
-    ? ALL_TABS.filter(tab => tab.allowedRoles.includes(currentUser.role))
-    : [];
+const permittedTabs = currentUser ? ALL_TABS.filter(tab => tab.allowedRoles.includes(currentUser.role)) : [];
 
   useEffect(() => {
-    if (currentUser && permittedTabs.length > 0 && !permittedTabs.find(t => t.id === activeTab)) {
-      setActiveTab(permittedTabs[0].id);
+    if (currentUser && permittedTabs.length > 0) {
+      const isTabValid = permittedTabs.some(t => t.id === activeTab);
+      if (!isTabValid) {
+        setActiveTab(permittedTabs[0].id); // Auto-clicks 'Analytics Dashboard' for Accountant
+      }
     }
+  }, [currentUser]); 
+
+  useEffect(() => {
+    // Only start pinging if the user is logged in
+    if (!currentUser) return;
+
+    const checkConnection = async () => {
+      const api = (window as any).electronAPI;
+      if (api && api.pingDatabase) {
+        const status = await api.pingDatabase();
+        setIsOnline(status);
+      }
+    };
+
+    checkConnection(); // Check immediately
+    const interval = setInterval(checkConnection, 5000); // Ping every 5 seconds
+
+    return () => clearInterval(interval); // Cleanup on unmount
   }, [currentUser]);
 
   const handleLogout = () => {
@@ -95,21 +117,21 @@ function App(): React.ReactElement {
   };
 
   if (!currentUser) {
-    return <LoginScreen onLoginSuccess={(user) => setCurrentUser(user)} />
+    return <LoginScreen onLoginSuccess={(user) => setCurrentUser(user)} />;
   }
 
   return (
-    <div className="flex h-screen bg-[#121214] text-[#e1e1e6] overflow-hidden print:bg-white print:text-black print:h-auto print:overflow-visible">
+<div id="app-wrapper" className="flex h-screen bg-[#FBF8F8] text-gray-800 overflow-hidden font-sans print:bg-white print:text-black print:h-auto print:overflow-visible">
 
-      <aside className="w-64 bg-[#202024] border-r border-[#29292e] flex flex-col justify-between print:hidden shadow-xl z-20">
+      {/* PERSISTENT LEFT SIDEBAR */}
+      <aside id="app-sidebar" className="w-64 bg-white border-r border-[#B0DCDA] flex flex-col justify-between shadow-sm z-20 flex-shrink-0 print:hidden">
         <div className="flex flex-col h-full overflow-hidden">
           
-          <div className="p-6 border-b border-[#29292e] shrink-0">
+          <div className="p-6 border-b border-[#B0DCDA] shrink-0">
             <div className="flex items-center space-x-3">
-              <div className="h-8 w-8 rounded-full bg-[#4f46e5] flex items-center justify-center font-bold text-white shadow-lg">S</div>
-              <span className="font-bold tracking-wide text-white text-lg">SmartGuys</span>
+              <img src={logoImage} alt="Clinic Logo" className="h-10 w-10 object-contain drop-shadow-sm" />
+              <span className="font-extrabold tracking-wide text-gray-800 text-lg">SmartGuys Clinic</span>
             </div>
-            <p className="text-[10px] text-[#7c7c8a] mt-1.5 font-bold tracking-widest uppercase ml-11">Clinic Accounting</p>
           </div>
 
           <nav className="p-4 overflow-y-auto flex-1 space-y-6 custom-scrollbar">
@@ -120,7 +142,7 @@ function App(): React.ReactElement {
               return (
                 <div key={groupName}>
                   {groupName !== 'Home' && (
-                    <h3 className="px-4 text-[10px] font-bold text-[#7c7c8a] uppercase tracking-widest mb-3">
+                    <h3 className="px-4 text-[10px] font-bold text-[#1B9387] uppercase tracking-widest mb-3">
                       {groupName}
                     </h3>
                   )}
@@ -130,10 +152,10 @@ function App(): React.ReactElement {
                       <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`w-full flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        className={`w-full flex items-center space-x-3 px-4 py-2.5 rounded-lg text-sm font-bold transition-all duration-200 ${
                           activeTab === tab.id
-                          ? 'bg-[#4f46e5] text-white shadow-md shadow-[#4f46e5]/20'
-                          : 'text-[#a1a1aa] hover:bg-[#29292e] hover:text-white'
+                          ? 'bg-[#1B9387] text-white shadow-md'
+                          : 'text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387]'
                         }`}
                       >
                         <span className="text-lg opacity-90">{tab.icon}</span>
@@ -147,41 +169,45 @@ function App(): React.ReactElement {
           </nav>
         </div>
 
-        <div className="p-5 border-t border-[#29292e] bg-[#1a1a1e] flex items-center justify-between shrink-0">
+        <div className="p-5 border-t border-[#B0DCDA] bg-gray-50 flex items-center justify-between shrink-0">
           <div className="min-w-0">
-            <p className="text-sm font-bold text-white truncate">{currentUser.username}</p>
-            <p className="text-[10px] text-[#8d8d99] uppercase font-bold tracking-widest mt-0.5">{currentUser.role}</p>
+            <p className="text-sm font-bold text-gray-800 truncate">{currentUser.username}</p>
+            <p className="text-[10px] text-[#28958B] uppercase font-extrabold tracking-widest mt-0.5">{currentUser.role}</p>
           </div>
           <button
             onClick={handleLogout}
             title="Log out of system"
-            className="p-2.5 text-[#f75a68] hover:text-white hover:bg-[#f75a68] rounded-md transition-colors cursor-pointer"
+            className="p-2.5 text-red-400 hover:text-white hover:bg-red-500 rounded-md transition-colors cursor-pointer"
           >
             🚪
           </button>
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col overflow-hidden print:overflow-visible bg-[#121214]">
-
-        <header className="h-16 bg-[#202024] border-b border-[#29292e] flex items-center justify-between px-8 print:hidden shadow-sm z-10">
-          <h2 className="text-lg font-bold text-white tracking-wide">
+      {/* MAIN CONTAINER AREA */}
+      <div className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible bg-[#FBF8F8]">
+        
+        {/* TOP STATUS BAR */}
+        <header id="app-header" className="h-16 bg-white border-b border-[#B0DCDA] flex items-center justify-between px-8 shadow-sm z-10 flex-shrink-0 print:hidden">
+          <h2 className="text-lg font-extrabold text-gray-800 tracking-wide capitalize">
             {permittedTabs.find(t => t.id === activeTab)?.label || 'Workspace'}
           </h2>
-          <div className="flex items-center space-x-3 bg-[#121214] px-4 py-1.5 rounded-full border border-[#29292e]">
-            <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></div>
-            <span className="text-xs text-[#8d8d99] font-bold uppercase tracking-wider">System Online</span>
+          
+          <div className={`flex items-center space-x-4 px-4 py-1.5 rounded-full border transition-colors duration-300 ${isOnline ? 'bg-[#E9FAFA] border-[#B0DCDA]' : 'bg-red-50 border-red-200'}`}>
+            <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-[#1B9387] animate-pulse' : 'bg-red-500'}`}></div>
+            <span className={`text-xs font-bold tracking-wide uppercase ${isOnline ? 'text-[#1B9387]' : 'text-red-600'}`}>
+              Local Connection: {isOnline ? 'Online' : 'Offline'}
+            </span>
           </div>
         </header>
 
-        <main className="flex-1 p-8 overflow-y-auto print:p-0 print:bg-white print:overflow-visible relative">
-
+        {/* WORKSPACE CONTENT PANELS */}
+        <main id="app-main" className="flex-1 p-8 overflow-y-auto print:p-0 print:bg-white print:overflow-visible relative">
+          
           {!permittedTabs.find(t => t.id === activeTab) ? (
-            <div className="p-6 bg-red-500/10 border border-red-500/30 rounded-lg text-center print:hidden">
-              <h3 className="text-red-500 font-bold">⚠️ Access Denied</h3>
-              <p className="text-sm text-red-400 mt-1">
-                Your role ({currentUser.role}) does not have permission to view this module.
-              </p>
+            <div className="p-6 bg-red-50 border border-red-200 rounded-lg text-center shadow-sm print:hidden">
+              <h3 className="text-red-600 font-bold text-lg">⚠️ Access Denied</h3>
+              <p className="text-sm text-red-500 mt-2 font-medium">Your role ({currentUser.role}) does not have permission to view this module.</p>
             </div>
           ) : (
             <div className="h-full animate-in fade-in duration-300">
@@ -191,12 +217,11 @@ function App(): React.ReactElement {
               
               {/* ---> RENDER THE DASHBOARD (NOW ANALYTICS ONLY) <--- */}
               {activeTab === 'analytics' && <DashboardView />}
-              
               {activeTab === 'journal' && <JournalEntryForm userId={currentUser.id} />}
               {activeTab === 'adjusting' && <JournalEntryForm userId={currentUser.id} isAdjusting={true} />}
               {activeTab === 'disbursement' && <CashDisbursementForm userId={currentUser.id} />}
               {activeTab === 'ledger' && <GeneralLedgerView />}
-              {activeTab === 'reconciliation' && <ReconciliationView userId={currentUser.id} />}
+{activeTab === 'reconciliation' && <ReconciliationView userId={currentUser.id} />}
               {activeTab === 'books' && <BooksOfAccountsView />}
               {activeTab === 'statements' && <FinancialStatementsView />}
               {activeTab === 'bir' && <BIRReportsView />}
@@ -211,7 +236,7 @@ function App(): React.ReactElement {
               {activeTab === 'audit' && <SystemAuditLogView />}
               {activeTab === 'tracker' && <InvoiceTrackerView />}
               {activeTab === 'payroll' && <PayrollView userId={currentUser.id} />}
-               {activeTab === 'directory' && <ContactDirectoryView />}
+              {activeTab === 'directory' && <ContactDirectoryView />}
             </div>
           )}
         </main>
@@ -219,4 +244,5 @@ function App(): React.ReactElement {
     </div>
   );
 }
+
 export default App;
