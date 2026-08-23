@@ -1,10 +1,9 @@
-/* src/renderer/src/assets/main.css */
 @import "tailwindcss";
 
 body {
   margin: 0;
-  background-color: #FBF8F8;
-  color: #1f2937;
+  background-color: #121214; /* Dark theme default background */
+  color: #e1e1e6;
   font-family: system-ui, -apple-system, sans-serif;
 }
 
@@ -12,110 +11,4 @@ body {
   .field {
     @apply rounded-md border border-[#3a3a42] bg-[#16161a] px-3 py-2 text-sm text-white outline-none transition-colors placeholder:text-[#6f6f7c] focus:border-[#4f46e5] focus:ring-1 focus:ring-[#4f46e5]/40;
   }
-}
-
-/* --- PRINT STYLES FOR PDF GENERATION --- */
-@media print {
-
-  /* 1. Force exact background colors to print */
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  /* 2. COMPLETELY ANNIHILATE THE SIDEBAR, HEADER, AND BUTTONS */
-  #app-sidebar,
-  #app-header,
-  button,
-  select,
-  input[type="date"],
-  .no-print {
-    display: none !important;
-    height: 0 !important;
-    width: 0 !important;
-    opacity: 0 !important;
-    visibility: hidden !important;
-    position: absolute !important;
-    z-index: -9999 !important;
-  }
-
-  /* 3. DESTROY THE FLEXBOX LAYOUT SO IT FLOWS LIKE PAPER */
-  #root,
-  #app,
-  #app-wrapper,
-  #app-wrapper>div {
-    display: block !important;
-    width: 100% !important;
-    height: auto !important;
-    min-height: auto !important;
-    overflow: visible !important;
-    position: static !important;
-  }
-
-  /* 4. RESET THE MAIN CONTENT AREA TO FULL WIDTH */
-  #app-main {
-    display: block !important;
-    width: 100% !important;
-    height: auto !important;
-    overflow: visible !important;
-    padding: 0 !important;
-    margin: 0 !important;
-    background-color: #ffffff !important;
-  }
-
-  /* 5. FORCE THE PAGE BACKGROUND TO WHITE */
-  html,
-  body {
-    background-color: #ffffff !important;
-    color: #000000 !important;
-  }
-
-  /* 6. EXPAND REPORT CARDS TO EDGE-TO-EDGE */
-  .w-full,
-  .max-w-5xl {
-    max-width: 100% !important;
-    width: 100% !important;
-    border: none !important;
-    box-shadow: none !important;
-    padding: 0 !important;
-    margin: 0 !important;
-  }
-}
-
-/* 🔥 THE BULLETPROOF PRINT OVERRIDE */
-body.is-printing aside,
-body.is-printing header,
-body.is-printing button,
-body.is-printing select,
-body.is-printing input[type="date"],
-body.is-printing #ledger-controls {
-  display: none !important;
-}
-
-body.is-printing,
-body.is-printing #app,
-body.is-printing #root,
-body.is-printing div.flex.h-screen,
-body.is-printing div.flex-1.flex.flex-col.overflow-hidden,
-body.is-printing main {
-  height: auto !important;
-  min-height: auto !important;
-  overflow: visible !important;
-  display: block !important;
-  position: static !important;
-  background-color: #ffffff !important;
-  padding: 0 !important;
-  margin: 0 !important;
-  color: #000000 !important;
-}
-
-body.is-printing .max-w-5xl,
-body.is-printing .w-full {
-  max-width: 100% !important;
-  width: 100% !important;
-  border: none !important;
-  box-shadow: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
-}
 }

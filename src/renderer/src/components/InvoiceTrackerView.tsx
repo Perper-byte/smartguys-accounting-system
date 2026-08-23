@@ -8,17 +8,23 @@ export function InvoiceTrackerView() {
     const [searchQuery, setSearchQuery] = useState('');
 
     const fetchInvoices = async () => {
-        setLoading(true);
-        try {
-            const api = (window as any).api || (window as any).electronAPI;
-            const data = await api.getInvoiceTracker();
-            setInvoices(data || []);
-        } catch (error) {
-            console.error("Failed to fetch invoice tracker:", error);
-        } finally {
-            setLoading(false);
-        }
-    };
+    setLoading(true);
+    try {
+      // FORCE IT to check both possible window variables!
+      const api = (window as any).electronAPI || (window as any).api;
+      
+      if (!api || typeof api.getInvoiceTracker !== 'function') {
+         throw new Error("Bridge connection failed!");
+      }
+
+      const data = await api.getInvoiceTracker();
+      setInvoices(data);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
     useEffect(() => { fetchInvoices(); }, []);
 

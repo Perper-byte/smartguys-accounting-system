@@ -6,8 +6,8 @@ const prisma = new PrismaClient();
 export const PayrollService = {
     
     async getEmployees() {
+        // 🔥 FIX: Removed "where: { is_active: true }" so archived employees stay in the directory!
         const employees = await prisma.employee.findMany({
-            where: { is_active: true },
             orderBy: { first_name: 'asc' }
         });
 
@@ -35,6 +35,18 @@ export const PayrollService = {
             return { success: true };
         } catch (error: any) {
             console.error(error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    async toggleEmployeeStatus(id: string, isActive: boolean) {
+        try {
+            await prisma.employee.update({
+                where: { id },
+                data: { is_active: isActive }
+            });
+            return { success: true };
+        } catch (error: any) {
             return { success: false, error: error.message };
         }
     },

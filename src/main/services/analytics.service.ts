@@ -3,146 +3,76 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-export class AnalyticsService {
-    static async getDashboardMetrics(timeframe: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' = 'monthly') {
-        const now = new Date();
+export const AnalyticsService = {
+  async getDashboardMetrics() {
+    try {
+        const today = new Date();
+        const startOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+        const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0, 23, 59, 59);
 
-        const trendLabels: string[] = [];
+        // 1. Fetch Month-to-Date (MTD) Lines for Revenue & Expenses
+        const mtdLines = await prisma.journalLine.findMany({
+            where: { entry: { date: { gte: startOfMonth, lte: endOfMonth }, status: 'ACTIVE' } },
+            include: { account: { include: { account_type: true } } }
+        });
+
+        let revenue = 0;
+        let expenses = 0;
+        const expenseBreakdownMap: Record<string, number> = {};
+
+        mtdLines.forEach(line => {
+            const type = line.account.account_type.name;
+            const debit = Number(line.debit);
+            const credit = Number(line.credit);
+
+            if (type === 'Revenue') {
+                revenue += (credit - debit);
+            } else if (type === 'Expense') {
+                const expAmount = (debit - credit);
+                expenses += expAmount;
+                // Accumulate for the Donut Chart! (This catches 5100 Salaries!)
+                if (expAmount > 0) {
+                    expenseBreakdownMap[line.account.name] = (expenseBreakdownMap[line.account.name] || 0) + expAmount;
+                }
+            }
+        });
+
+        // Calculate Operating Margin: (Revenue - Expenses) / Revenue * 100
+        let margin = 0;
+        if (revenue > 0) {
+            margin = ((revenue - expenses) / revenue) * 100;
+        }
+
+        // 2. Fetch Live Total Cash (Bank + Petty Cash)
+        const cashLines = await prisma.journalLine.findMany({
+            where: { account_id: { in: ['1010', '1020'] }, entry: { status: 'ACTIVE' } }
+        });
+        
+        let netCash = 0;
+        cashLines.forEach(line => {
+            netCash += (Number(line.debit) - Number(line.credit));
+        });
+
+        // 3. Format Expense Breakdown for ECharts Pie/Donut Chart
+        const expenseBreakdown = Object.entries(expenseBreakdownMap)
+            .map(([name, value]) => ({ name, value }))
+            .sort((a, b) => b.value - a.value); // Sort biggest expenses first
+
+        // 4. Generate 6-Month Trend Data for Bar Chart
+        const labels: string[] = [];
         const trendRevenue: number[] = [];
         const trendExpenses: number[] = [];
 
-        let currentPeriodRevenue = 0;
-        let currentPeriodExpenses = 0;
-        
-        // Retained from feature/POS-System to power the Donut Chart!
-        const expenseBreakdownMap: Record<string, number> = {};
-
-        let periods = 6;
-        if (timeframe === 'daily') periods = 7;     // 7 days
-        if (timeframe === 'weekly') periods = 4;    // 4 weeks
-        if (timeframe === 'quarterly') periods = 4; // 4 quarters
-        if (timeframe === 'yearly') periods = 5;    // 5 years
-
-        let overallStartOfTrend: Date | null = null;
-
-        // 1. GENERATE THE DYNAMIC HISTORICAL TREND
-        for (let i = periods - 1; i >= 0; i--) {
-            let startOfPeriod: Date, endOfPeriod: Date, label: string;
-
-            if (timeframe === 'daily') {
-                startOfPeriod = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-                endOfPeriod = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i, 23, 59, 59);
-                label = startOfPeriod.toLocaleString('default', { weekday: 'short', day: 'numeric' });
-            }
-            else if (timeframe === 'weekly') {
-                startOfPeriod = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (i * 7) - 6);
-                endOfPeriod = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (i * 7), 23, 59, 59);
-                label = `${startOfPeriod.getMonth() + 1}/${startOfPeriod.getDate()} - ${endOfPeriod.getMonth() + 1}/${endOfPeriod.getDate()}`;
-            }
-            else if (timeframe === 'quarterly') {
-                const currentQ = Math.floor(now.getMonth() / 3);
-                const targetQ = currentQ - i;
-                const yearAdjust = Math.floor(targetQ / 4);
-                const normalizedQ = ((targetQ % 4) + 4) % 4;
-                const targetYear = now.getFullYear() + yearAdjust;
-                startOfPeriod = new Date(targetYear, normalizedQ * 3, 1);
-                endOfPeriod = new Date(targetYear, normalizedQ * 3 + 3, 0, 23, 59, 59);
-                label = `Q${normalizedQ + 1} ${targetYear}`;
-            }
-            else if (timeframe === 'yearly') {
-                startOfPeriod = new Date(now.getFullYear() - i, 0, 1);
-                endOfPeriod = new Date(now.getFullYear() - i, 11, 31, 23, 59, 59);
-                label = `${now.getFullYear() - i}`;
-            }
-            else { // 'monthly'
-                startOfPeriod = new Date(now.getFullYear(), now.getMonth() - i, 1);
-                endOfPeriod = new Date(now.getFullYear(), now.getMonth() - i + 1, 0, 23, 59, 59);
-                label = startOfPeriod.toLocaleString('default', { month: 'short', year: '2-digit' });
-            }
-
-            // Capture the earliest date boundary for the selected timeframe
-            if (i === periods - 1) {
-                overallStartOfTrend = startOfPeriod;
-            }
-        });
-
-trendLabels.push(label);
-
-            // Fetch Revenue precisely for this interval (Filters by ACTIVE status)
-            const revLines = await prisma.journalLine.findMany({
-                where: { account: { account_type: { name: 'Revenue' } }, entry: { date: { gte: startOfPeriod, lte: endOfPeriod }, status: 'ACTIVE' } }
+        // Loop backward 5 months + current month
+        for (let i = 5; i >= 0; i--) {
+            const mStart = new Date(today.getFullYear(), today.getMonth() - i, 1);
+            const mEnd = new Date(today.getFullYear(), today.getMonth() - i + 1, 0, 23, 59, 59);
+            const monthName = mStart.toLocaleString('default', { month: 'short' }); // e.g. "Aug"
+            
+            const mLines = await prisma.journalLine.findMany({
+                where: { entry: { date: { gte: mStart, lte: mEnd }, status: 'ACTIVE' } },
+                include: { account: { include: { account_type: true } } }
             });
-            const intervalRev = revLines.reduce((sum, ln) => sum + Number(ln.credit) - Number(ln.debit), 0);
-            trendRevenue.push(Number(intervalRev.toFixed(2)));
-
-            // Fetch Expenses precisely for this interval (Filters by ACTIVE status)
-            const expLines = await prisma.journalLine.findMany({
-                where: { account: { account_type: { name: 'Expense' } }, entry: { date: { gte: startOfPeriod, lte: endOfPeriod }, status: 'ACTIVE' } }
-            });
-            const intervalExp = expLines.reduce((sum, ln) => sum + Number(ln.debit) - Number(ln.credit), 0);
-            trendExpenses.push(Number(intervalExp.toFixed(2)));
-
-            // Save the most recent period for KPIs
-            if (i === 0) {
-                currentPeriodRevenue = intervalRev;
-                currentPeriodExpenses = intervalExp;
-            }
-        }
-
-        // 2. GENERATE DYNAMIC EXPENSE BREAKDOWN (Matched to timeframe!)
-        const expenseAccounts = await prisma.account.findMany({ where: { account_type: { name: 'Expense' } } });
-        const expenseBreakdown: { name: string; value: number }[] = [];
-
-        for (const acc of expenseAccounts) {
-            const lines = await prisma.journalLine.findMany({
-                where: {
-                    account_id: acc.code,
-                    entry: { date: { gte: overallStartOfTrend || new Date(0) }, status: 'ACTIVE' }
-                }
-            });
-            const netBalance = lines.reduce((sum, ln) => sum + Number(ln.debit) - Number(ln.credit), 0);
-            if (netBalance > 0) {
-                expenseBreakdown.push({ name: acc.name, value: Number(netBalance.toFixed(2)) });
-            }
-        }
-
-        // Sort biggest expenses first for the Donut Chart (Kept from feature branch!)
-        expenseBreakdown.sort((a, b) => b.value - a.value);
-
-        // 3. CALCULATE LIQUIDITY (Total All-Time Cash)
-        // Kept BOTH 1010 (Bank) and 1020 (Petty Cash) from feature branch
-        const cashLines = await prisma.journalLine.findMany({ 
-            where: { account_id: { in: ['1010', '1020'] }, entry: { status: 'ACTIVE' } } 
-        });
-        const netCash = cashLines.reduce((sum, ln) => sum + Number(ln.debit) - Number(ln.credit), 0);
-
-        // Calculate Operating Margin KPI
-        const margin = currentPeriodRevenue > 0
-            ? ((currentPeriodRevenue - currentPeriodExpenses) / currentPeriodRevenue) * 100
-            : 0;
-
-        // 4. GENERATE NARRATIVE
-        let narrative = `For the current ${timeframe} reporting period, the clinic has generated ₱${currentPeriodRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })} in revenue and incurred ₱${currentPeriodExpenses.toLocaleString(undefined, { minimumFractionDigits: 2 })} in operating expenses. `;
-        if (margin > 0) narrative += `This yields a healthy positive margin of ${margin.toFixed(1)}%. `;
-        else if (margin < 0) narrative += `This results in a negative margin (loss) of ${Math.abs(margin).toFixed(1)}%. `;
-        else narrative += `The clinic is currently breaking even. `;
-
-        // 5. FETCH RECENT TRANSACTIONS
-        const recentEntries = await prisma.journalEntry.findMany({
-            orderBy: { date: 'desc' }, take: 5,
-            include: { payee: true, lines: { include: { account: { include: { account_type: true } } } } }
-        });
-
-        const recentTransactions = recentEntries.map(entry => {
-            const primaryLine = entry.lines.find(l => l.account.account_type.name === 'Revenue' || l.account.account_type.name === 'Expense') || entry.lines[0];
-            const amount = Math.max(...entry.lines.map(l => Number(l.debit)));
-            return {
-                id: entry.id, date: entry.date,
-                category: primaryLine ? primaryLine.account.name : 'General Transfer',
-                payee: entry.payee?.name || 'Walk-in / General',
-                amount: Number(amount.toFixed(2))
-            };
-        });
 
             let mRev = 0; let mExp = 0;
             mLines.forEach(l => {
@@ -157,21 +87,18 @@ trendLabels.push(label);
 
         // Return the exact structure DashboardView.tsx is expecting!
         return {
-kpi: { 
-                revenue: currentPeriodRevenue, 
-                expenses: currentPeriodExpenses, 
-                netCash, 
-                margin: Number(margin.toFixed(1)) // 1 decimal place (Kept from feature branch!)
+            kpi: {
+                revenue,
+                expenses,
+                netCash,
+                margin: Number(margin.toFixed(1)) // 1 decimal place (e.g., 65.5)
             },
-            trendData: { 
-                labels: trendLabels, 
-                revenue: trendRevenue, 
-                expenses: trendExpenses 
+            trendData: {
+                labels,
+                revenue: trendRevenue,
+                expenses: trendExpenses
             },
-            expenseBreakdown,
-            narrative,
-            recentTransactions
-        };
+            expenseBreakdown
         };
 
     } catch (error) {

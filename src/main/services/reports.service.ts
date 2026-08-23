@@ -4,7 +4,8 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export class ReportsService {
-    static async getTrialBalance(startDate?: Date, endDate?: Date) {
+    
+    static async getTrialBalance(startDateStr?: string, endDateStr?: string) {
         const accounts = await prisma.account.findMany({
             include: { account_type: true },
         });
@@ -25,7 +26,7 @@ export class ReportsService {
 
         const tbMap: any = {};
         for (const acc of accounts) {
-tbMap[acc.code] = { ...acc, sumDebits: 0, sumCredits: 0 };
+            tbMap[acc.code] = { ...acc, sumDebits: 0, sumCredits: 0 };
         }
 
         for (const line of lines) {
@@ -33,8 +34,7 @@ tbMap[acc.code] = { ...acc, sumDebits: 0, sumCredits: 0 };
             if (!acc) continue;
             
             const txDate = new Date(line.entry.date);
-            // Safely check if txDate is before startDate (if a startDate was provided)
-            const isPrior = startDate ? (txDate < startDate) : false;
+            const isPrior = txDate < startDate;
             const isRevenue = acc.account_type.name === 'Revenue';
             const isExpense = acc.account_type.name === 'Expense';
             
@@ -106,18 +106,8 @@ tbMap[acc.code] = { ...acc, sumDebits: 0, sumCredits: 0 };
         };
     }
 
-/**
-     * Income Statement: Revenue - Expenses (Strictly for the selected month)
-     */
-    static async getIncomeStatement(year?: number, month?: number) {
-        let startDate, endDate;
-        if (year && month) {
-            startDate = new Date(year, month - 1, 1);
-            endDate = new Date(year, month, 0, 23, 59, 59);
-        }
-
-        // Get balances ONLY for the selected month
-        const trialBalance = await this.getTrialBalance(startDate, endDate);
+    static async getIncomeStatement(startDateStr?: string, endDateStr?: string) {
+        const trialBalance = await this.getTrialBalance(startDateStr, endDateStr);
         const revenueLines: any[] = [];
         const expenseLines: any[] = [];
         let totalRevenue = 0;
@@ -125,7 +115,7 @@ tbMap[acc.code] = { ...acc, sumDebits: 0, sumCredits: 0 };
 
         for (const line of trialBalance.lines) {
             if (line.accountType === 'Revenue') {
-const amount = line.credit - line.debit;
+                const amount = line.credit - line.debit;
                 revenueLines.push({ name: line.accountName, amount });
                 totalRevenue += amount;
             } else if (line.accountType === 'Expense') {
@@ -144,24 +134,14 @@ const amount = line.credit - line.debit;
         };
     }
 
-
-    static async getBalanceSheet(year?: number, month?: number) {
-        let endDate;
-        if (year && month) {
-            endDate = new Date(year, month, 0, 23, 59, 59);
-        }
-
-        // Balance Sheet relies on ALL historical data up to the selected date
-        const trialBalance = await this.getTrialBalance(undefined, endDate);
-        
-        // Fetch Income Statement to calculate Net Income / Retained Earnings
-        const incomeStatement = await this.getIncomeStatement(year, month);
+    static async getBalanceSheet(startDateStr?: string, endDateStr?: string) {
+        const trialBalance = await this.getTrialBalance(startDateStr, endDateStr);
+        const incomeStatement = await this.getIncomeStatement(startDateStr, endDateStr);
 
         const assetLines: any[] = [];
         const liabilityLines: any[] = [];
         const equityLines: any[] = [];
         let totalAssets = 0, totalLiabilities = 0, totalEquity = 0;
-        let cumulativeRevenue = 0, cumulativeExpenses = 0;
 
         for (const line of trialBalance.lines) {
             if (line.accountType === 'Asset') {
@@ -176,21 +156,11 @@ const amount = line.credit - line.debit;
                 const amount = line.credit - line.debit;
                 equityLines.push({ name: line.accountName, amount });
                 totalEquity += amount;
-            } else if (line.accountType === 'Revenue') {
-                cumulativeRevenue += line.credit;
-            } else if (line.accountType === 'Expense') {
-                cumulativeExpenses += line.debit;
             }
         }
 
-// 1. Current period's Net Income (Kept from feature branch for the UI)
         const netIncome = incomeStatement.netIncome;
-
-        // 2. All-time Retained Earnings (From main branch, needed to balance the sheet!)
-        const cumulativeNetIncome = cumulativeRevenue - cumulativeExpenses;
-
-        // 3. Calculate the grand total
-        const totalLiabilitiesAndEquity = totalLiabilities + totalEquity + cumulativeNetIncome;
+        const totalLiabilitiesAndEquity = totalLiabilities + totalEquity + netIncome;
 
         return {
             assets: assetLines,
@@ -199,7 +169,7 @@ const amount = line.credit - line.debit;
             totalAssets: Number(totalAssets.toFixed(2)),
             totalLiabilities: Number(totalLiabilities.toFixed(2)),
             totalEquity: Number(totalEquity.toFixed(2)),
-            netIncome: Number(cumulativeNetIncome.toFixed(2)),
+            netIncome: Number(netIncome.toFixed(2)),
             totalLiabilitiesAndEquity: Number(totalLiabilitiesAndEquity.toFixed(2)),
             isEquationBalanced: totalAssets.toFixed(2) === totalLiabilitiesAndEquity.toFixed(2),
         };
@@ -400,66 +370,5 @@ static async getShiftReport(userId: string) {
         }
 
         return results.sort((a,b) => b.date.getTime() - a.date.getTime());
-    } // <--- THE MISSING CLOSING BRACE HAS BEEN RESTORED HERE!
-
-    /**
-     * Cash Flow Statement (Strictly for the selected month)
-     */
-    static async getCashFlowStatement(year?: number, month?: number) {
-        let startDate, endDate;
-        if (year && month) {
-            startDate = new Date(year, month - 1, 1);
-            endDate = new Date(year, month, 0, 23, 59, 59);
-        }
-
-        const whereClause: any = { lines: { some: { account_id: '1010' } } };
-        if (startDate || endDate) {
-            whereClause.date = {};
-            if (startDate) whereClause.date.gte = startDate;
-            if (endDate) whereClause.date.lte = endDate;
-        }
-
-        const cashEntries = await prisma.journalEntry.findMany({
-            where: whereClause,
-            include: { lines: { include: { account: { include: { account_type: true } } } } },
-            orderBy: { date: 'asc' }
-        });
-
-        let operatingNet = 0, investingNet = 0, financingNet = 0;
-        const operatingDetails: any[] = [], investingDetails: any[] = [], financingDetails: any[] = [];
-
-        for (const entry of cashEntries) {
-            const cashLine = entry.lines.find(l => l.account_id === '1010');
-            if (!cashLine) continue;
-
-            const netCashChange = Number(cashLine.debit) - Number(cashLine.credit);
-            if (netCashChange === 0) continue;
-
-            const offsetLine = entry.lines.find(l => l.account_id !== '1010' && (Number(l.debit) > 0 || Number(l.credit) > 0)) || entry.lines[0];
-            const offsetAccount = offsetLine.account;
-
-            const detail = { id: entry.id, date: entry.date, description: entry.description, amount: netCashChange };
-
-            if (offsetAccount.code === '1500' || offsetAccount.name.includes('Equipment')) {
-                investingDetails.push(detail);
-                investingNet += netCashChange;
-            } else if (offsetAccount.account_type.name === 'Equity' || offsetAccount.name.includes('Capital')) {
-                financingDetails.push(detail);
-                financingNet += netCashChange;
-            } else {
-                operatingDetails.push(detail);
-                operatingNet += netCashChange;
-            }
-        }
-
-        const netIncreaseInCash = operatingNet + investingNet + financingNet;
-
-        return {
-            operating: { details: operatingDetails, net: Number(operatingNet.toFixed(2)) },
-            investing: { details: investingDetails, net: Number(investingNet.toFixed(2)) },
-            financing: { details: financingDetails, net: Number(financingNet.toFixed(2)) },
-            netIncreaseInCash: Number(netIncreaseInCash.toFixed(2)),
-        };
-    }
     }
 }

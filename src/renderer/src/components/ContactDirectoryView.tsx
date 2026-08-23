@@ -1,3 +1,4 @@
+// src/renderer/src/components/ContactDirectoryView.tsx
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { NewContactModal } from './NewContactModal';
@@ -7,8 +8,9 @@ export function ContactDirectoryView() {
     const [loading, setLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Modal States
+    // Modal & UI States
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
     
     const fetchContacts = async () => {
         setLoading(true);
@@ -81,9 +83,7 @@ export function ContactDirectoryView() {
                         <table className="w-full text-left text-sm">
                             <thead className="bg-[#121214] sticky top-0 z-10 border-b border-[#29292e] shadow-sm">
                                 <tr className="text-[#8d8d99] uppercase tracking-wider text-[10px]">
-                                    <th className="p-4 font-bold w-12 text-center">
-                                        <input type="checkbox" className="rounded bg-transparent border-gray-600" disabled />
-                                    </th>
+                                    {/* Removed Checkbox Column Header */}
                                     <th className="p-4 font-bold">Contact Name</th>
                                     <th className="p-4 font-bold">Type</th>
                                     <th className="p-4 font-bold">Phone / Email</th>
@@ -93,34 +93,67 @@ export function ContactDirectoryView() {
                             </thead>
                             <tbody className="divide-y divide-[#29292e]/50">
                                 {filteredContacts.length === 0 ? (
-                                    <tr><td colSpan={6} className="p-8 text-center text-gray-500 italic">No contacts found.</td></tr>
+                                    <tr><td colSpan={5} className="p-8 text-center text-gray-500 italic">No contacts found.</td></tr>
                                 ) : (
                                     filteredContacts.map(c => (
-                                        <tr key={c.id} className="hover:bg-[#2a2a2f] transition-colors group">
-                                            <td className="p-4 text-center">
-                                                <input type="checkbox" className="rounded bg-transparent border-gray-600 cursor-pointer" />
-                                            </td>
-                                            <td className="p-4 flex items-center space-x-4">
-                                                <div className="h-8 w-8 rounded-full bg-[#4f46e5]/20 text-[#4f46e5] flex items-center justify-center font-bold text-xs border border-[#4f46e5]/50 shrink-0">
-                                                    {getInitials(c.name)}
-                                                </div>
-                                                <span className="font-bold text-white text-base">{c.name}</span>
-                                            </td>
-                                            <td className="p-4">
-                                                <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${getTypeStyle(c.type)}`}>
-                                                    {c.type}
-                                                </span>
-                                            </td>
-                                            <td className="p-4 text-xs text-gray-400">
-                                                {c.email ? c.email : c.phone ? c.phone : '-'}
-                                            </td>
-                                            <td className="p-4 text-right font-mono font-bold text-orange-400">
-                                                {formatCurrency(c.youOwe)}
-                                            </td>
-                                            <td className="p-4 text-right font-mono font-bold text-emerald-400">
-                                                {formatCurrency(c.theyOwe)}
-                                            </td>
-                                        </tr>
+                                        <React.Fragment key={c.id}>
+                                            {/* MAIN CLICKABLE ROW */}
+                                            <tr 
+                                                onClick={() => setExpandedContactId(expandedContactId === c.id ? null : c.id)}
+                                                className={`cursor-pointer transition-colors group ${expandedContactId === c.id ? 'bg-[#2a2a2f]' : 'hover:bg-[#2a2a2f]'}`}
+                                            >
+                                                <td className="p-4 flex items-center space-x-4">
+                                                    <div className="h-8 w-8 rounded-full bg-[#4f46e5]/20 text-[#4f46e5] flex items-center justify-center font-bold text-xs border border-[#4f46e5]/50 shrink-0">
+                                                        {getInitials(c.name)}
+                                                    </div>
+                                                    <span className="font-bold text-white text-base">{c.name}</span>
+                                                </td>
+                                                <td className="p-4">
+                                                    <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${getTypeStyle(c.type)}`}>
+                                                        {c.type}
+                                                    </span>
+                                                </td>
+                                                <td className="p-4 text-xs text-gray-400">
+                                                    {c.email ? c.email : c.phone ? c.phone : '-'}
+                                                </td>
+                                                <td className="p-4 text-right font-mono font-bold text-orange-400">
+                                                    {formatCurrency(c.youOwe)}
+                                                </td>
+                                                <td className="p-4 text-right font-mono font-bold text-emerald-400">
+                                                    {formatCurrency(c.theyOwe)}
+                                                </td>
+                                            </tr>
+
+                                            {/* EXPANDED DETAILS ROW */}
+                                            {expandedContactId === c.id && (
+                                                <tr className="bg-[#1a1a1e] border-b border-[#29292e]">
+                                                    <td colSpan={5} className="p-6 border-l-4 border-l-[#4f46e5]">
+                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                                            <div>
+                                                                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2">Contact Information</p>
+                                                                <div className="space-y-1.5">
+                                                                    <p className="text-sm text-gray-300"><span className="text-gray-500 mr-2 inline-block w-12">Email:</span> {c.email || <span className="italic text-gray-600">Not provided</span>}</p>
+                                                                    <p className="text-sm text-gray-300"><span className="text-gray-500 mr-2 inline-block w-12">Phone:</span> {c.phone || <span className="italic text-gray-600">Not provided</span>}</p>
+                                                                    <p className="text-sm text-gray-300"><span className="text-gray-500 mr-2 inline-block w-12">TIN:</span> <span className="font-mono">{c.tin || <span className="italic text-gray-600 font-sans">Not provided</span>}</span></p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-[#202024] p-4 rounded-lg border border-[#29292e]">
+                                                                <p className="text-[10px] text-orange-400 font-bold uppercase tracking-wider mb-1">Accounts Payable (Clinic Owes)</p>
+                                                                <p className="text-2xl font-mono font-bold text-orange-400 mt-2">
+                                                                    ₱ {c.youOwe ? c.youOwe.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00'}
+                                                                </p>
+                                                            </div>
+                                                            <div className="bg-[#202024] p-4 rounded-lg border border-[#29292e]">
+                                                                <p className="text-[10px] text-emerald-400 font-bold uppercase tracking-wider mb-1">Accounts Receivable (They Owe)</p>
+                                                                <p className="text-2xl font-mono font-bold text-emerald-400 mt-2">
+                                                                    ₱ {c.theyOwe ? c.theyOwe.toLocaleString('en-US', { minimumFractionDigits: 2 }) : '0.00'}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </React.Fragment>
                                     ))
                                 )}
                             </tbody>
@@ -129,7 +162,6 @@ export function ContactDirectoryView() {
                 </div>
             </div>
 
-            {/* Reusing the exact same NewContactModal from the POS! */}
             <NewContactModal 
                 isOpen={isModalOpen} 
                 onClose={() => setIsModalOpen(false)} 
