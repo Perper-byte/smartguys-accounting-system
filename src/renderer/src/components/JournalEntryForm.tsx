@@ -1,40 +1,33 @@
 // src/renderer/src/components/JournalEntryForm.tsx
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
-import { AddPatientForm } from './AddPatientForm';
+import { NewContactModal } from './NewContactModal';
 
-// Prevents timezone bugs when selecting dates (From feature branch)
+// Prevents timezone bugs when selecting dates
 const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
 export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean }> = ({ userId, isAdjusting = false }) => {
     const [accounts, setAccounts] = useState<any[]>([]);
-    const [pastEntries, setPastEntries] = useState<any[]>([]); // 🔥 NEW: Store past entries for correction (From main branch)
+    const [pastEntries, setPastEntries] = useState<any[]>([]); 
 
     const [date, setDate] = useState(getLocalDateString());
     
-    // Prefix and Sequence States (From feature branch)
     const [refPrefix, setRefPrefix] = useState(isAdjusting ? 'ADJ-' : 'JV-');
     const [refSequence, setRefSequence] = useState('');
     const [description, setDescription] = useState(isAdjusting ? 'Adjusting Entry: ' : '');
 
     const [vatType, setVatType] = useState(isAdjusting ? 'EXEMPT' : 'VATABLE');
     const [payees, setPayees] = useState<any[]>([]);
-const [payeeId, setPayeeId] = useState(''); 
+    const [payeeId, setPayeeId] = useState(''); 
     
-    // Modal & Form Toggles
-    const [showAddPayee, setShowAddPayee] = useState(false); // Generic Payee (From feature)
-    const [showAddPatient, setShowAddPatient] = useState(false); // Patient Form (From main)
+    const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false);
     
-    // Inline Add-Payee States (From feature)
-    const [newPayeeName, setNewPayeeName] = useState('');
-    const [isSubmittingPayee, setIsSubmittingPayee] = useState(false);
-    
-    // Dropdown Search States (Combined)
+    // Dropdown Search States
     const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
     const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
-    const [isRefDropdownOpen, setIsRefDropdownOpen] = useState(false); // From main
-    const [activeAccountRow, setActiveAccountRow] = useState<number | null>(null); // From main
-    const [accountSearchQuery, setAccountSearchQuery] = useState(''); // From main
+    const [isRefDropdownOpen, setIsRefDropdownOpen] = useState(false); 
+    const [activeAccountRow, setActiveAccountRow] = useState<number | null>(null); 
+    const [accountSearchQuery, setAccountSearchQuery] = useState(''); 
     
     const [payeeBalance, setPayeeBalance] = useState<{receivable: number, payable: number} | null>(null);
     const [lines, setLines] = useState([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
@@ -46,12 +39,11 @@ const [payeeId, setPayeeId] = useState('');
         if (api) {
             if (api.getAccounts) api.getAccounts().then(setAccounts).catch(() => setAccounts([]));
             if (api.getPayees) api.getPayees().then(setPayees).catch(() => setPayees([]));
-            // 🔥 Fetch past entries for the Ref search
             if (api.getAllJournalEntries) api.getAllJournalEntries().then(setPastEntries).catch(() => setPastEntries([]));
         }
     }, []);
 
-    // ---> NEW: Auto-Fetch the next Sequence Number <---
+    // Auto-Fetch the next Sequence Number
     useEffect(() => {
         const fetchNextSeq = async () => {
             try {
@@ -63,7 +55,7 @@ const [payeeId, setPayeeId] = useState('');
             }
         };
         fetchNextSeq();
-    }, [refPrefix, status]); // Re-runs when Prefix changes, or after a successful submit!
+    }, [refPrefix, status]); 
 
     useEffect(() => {
         if (!payeeId) {
@@ -83,52 +75,29 @@ const [payeeId, setPayeeId] = useState('');
     const groupedAccounts = useMemo(() => {
         return accounts.reduce((groups: any, acc: any) => {
             const categoryName = acc.account_type?.name || 'Other';
-            if (!groups[categoryName]) {
-                groups[categoryName] = [];
-            }
+            if (!groups[categoryName]) groups[categoryName] = [];
             groups[categoryName].push(acc);
             return groups;
         }, {});
     }, [accounts]);
 
-// 🔥 INLINE PAYEE CREATION (From feature branch)
-    const handleCreatePayee = async () => {
-        if (!newPayeeName.trim()) return;
-        setIsSubmittingPayee(true);
-        try {
-            const api = (window as any).electronAPI || (window as any).api;
-            await api.createPayee(newPayeeName);
-            
+    const handleContactSaved = async (newId: string, newName: string) => {
+        const api = (window as any).electronAPI || (window as any).api;
+        if (api?.getPayees) {
             const updatedPayees = await api.getPayees();
             setPayees(updatedPayees);
-            
-            const newRecord = updatedPayees.find((p: any) => p.name.toLowerCase() === newPayeeName.toLowerCase());
-            if (newRecord) setPayeeId(newRecord.id);
-
-            setShowAddPayee(false);
-            setNewPayeeName('');
-            setStatus({ type: 'success', msg: `Successfully added ${newPayeeName} to the database!` });
-        } catch (error) {
-            console.error(error);
-            setStatus({ type: 'error', msg: "Failed to create new record." });
-        } finally {
-            setIsSubmittingPayee(false);
         }
-    };
-
-    // 🔥 PATIENT MODAL CALLBACK (From main branch)
-    const handlePatientAdded = () => {
-        setShowAddPatient(false);
-        const api = (window as any).electronAPI || (window as any).api;
-        if (api && api.getPayees) api.getPayees().then(setPayees).catch(() => setPayees([]));
-    };
+        setPayeeId(newId);
+        setIsNewContactModalOpen(false);
+        setStatus({ type: 'success', msg: `${newName} was added and selected.` });
+        setTimeout(() => setStatus(null), 3000);
     };
 
     const addLine = () => setLines([...lines, { accountId: '', debit: 0, credit: 0 }]);
 
     const updateLine = (index: number, field: string, value: any) => {
         const newLines = [...lines];
-        newLines[index][field] = value;
+        newLines[index][field as keyof typeof newLines[0]] = value;
         if (field === 'debit' && value > 0) newLines[index].credit = 0;
         if (field === 'credit' && value > 0) newLines[index].debit = 0;
         setLines(newLines);
@@ -154,7 +123,6 @@ const [payeeId, setPayeeId] = useState('');
             const validLines = lines.filter(l => l.accountId !== '' && (l.debit > 0 || l.credit > 0));
             const api = (window as any).electronAPI || (window as any).api;
             
-            // Format sequence to always be padded (e.g. typing '5' turns into '005')
             const paddedSequence = refSequence.padStart(3, '0');
             const fullReferenceNo = `${refPrefix}${paddedSequence}`;
 
@@ -170,15 +138,12 @@ const [payeeId, setPayeeId] = useState('');
 
             if (result.success) {
                 setStatus({ type: 'success', msg: `Entry ${result.referenceNo} posted successfully!` });
-setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
+                setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                 setVatType(isAdjusting ? 'EXEMPT' : 'VATABLE'); 
                 setPayeeId(''); 
                 setPayeeSearchQuery(''); 
                 setLines([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
                 
-                // NOTE: We don't need to setRefSequence here, the useEffect automatically fetches the next one!
-
-                // Refresh past entries list (From main branch)
                 if (api.getAllJournalEntries) api.getAllJournalEntries().then(setPastEntries);
             } else {
                 setStatus({ type: 'error', msg: result.error });
@@ -194,7 +159,8 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
     const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- No Sub-Account Tagged --';
 
     return (
-<div className="max-w-4xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
+        <>
+        <div className="max-w-4xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm mb-12">
 
             {/* HEADER */}
             <div className="flex justify-between items-center mb-6 border-b border-[#B0DCDA] pb-4">
@@ -208,12 +174,12 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
 
             {/* STATUS MESSAGE */}
             {status && (
-                <div className={`mb-6 p-4 rounded-md text-sm font-bold ${status.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
+                <div className={`mb-6 p-4 rounded-md text-sm font-bold ${status.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border border-[#B0DCDA]' : 'bg-red-50 text-red-600 border border-red-200'}`}>
                     {status.type === 'success' ? '✅ ' : '⚠️ '}{status.msg}
                 </div>
             )}
 
-{/* TOP ROW: Date, Ref, VAT */}
+            {/* TOP ROW: Date, Ref, VAT */}
             <div className={`grid gap-6 mb-6 ${isAdjusting ? 'grid-cols-2' : 'grid-cols-3'}`}>
                 
                 <div>
@@ -221,7 +187,7 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                     <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition cursor-pointer" />
                 </div>
 
-                {/* 🔥 HYBRID REFERENCE NO. (Prefix + Sequence + Search Dropdown) */}
+                {/* HYBRID REFERENCE NO. */}
                 <div className="relative">
                     <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
                         {isAdjusting ? 'Reference No. (Correction)' : 'Reference No.'}
@@ -263,7 +229,6 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                         )}
                     </div>
 
-                    {/* Past Transactions Dropdown (Only opens when adjusting!) */}
                     {isAdjusting && isRefDropdownOpen && (
                         <ul className="absolute z-50 w-full mt-1 bg-white border border-[#B0DCDA] rounded-md shadow-xl max-h-48 overflow-y-auto">
                             <li className="p-2 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider sticky top-0">Recent Database Entries</li>
@@ -273,12 +238,9 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                                     <li
                                         key={entry.id}
                                         onMouseDown={() => {
-                                            // Extract sequence by removing ADJ- if it's there
                                             const cleanRef = entry.reference_no.replace('ADJ-', '');
                                             setRefSequence(cleanRef);
-                                            
-                                            // Safely auto-fill the description if it hasn't been changed yet
-                                            if (typeof description !== 'undefined' && description === 'Adjusting Entry: ' && typeof setDescription !== 'undefined') {
+                                            if (description === 'Adjusting Entry: ') {
                                                 setDescription(`Adjusting Entry to correct ${entry.reference_no}: ${entry.description}`);
                                             }
                                         }}
@@ -292,7 +254,6 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                     )}
                 </div>
 
-                {/* Hide VAT Type entirely if we are adjusting */}
                 {!isAdjusting && (
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">VAT Type</label>
@@ -309,52 +270,21 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                     </div>
                 )}
             </div>
-                        </div>
-                    </div>
-                )}
-            </div>
 
-{/* PAYEE & DESCRIPTION */}
+            {/* PAYEE & DESCRIPTION */}
             <div className="mb-6 border-b border-[#B0DCDA] pb-6 relative">
                 {!isAdjusting && (
                     <div className="mb-6">
-                        
                         <div className="flex justify-between items-end mb-2">
                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Contact / Subsidiary (For AR/AP)</label>
-                            <div className="flex space-x-4">
-                                <button type="button" onClick={() => { setShowAddPatient(!showAddPatient); setShowAddPayee(false); }} className="text-xs font-bold text-[#1B9387] hover:text-[#28958B] transition hover:underline">
-                                    {showAddPatient ? 'Cancel Patient' : '+ Add Patient'}
-                                </button>
-                                <button type="button" onClick={() => { setShowAddPayee(!showAddPayee); setShowAddPatient(false); }} className="text-xs font-bold text-[#1B9387] hover:text-[#28958B] transition hover:underline">
-                                    {showAddPayee ? 'Cancel Vendor' : '+ Add Vendor/Other'}
-                                </button>
-                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsNewContactModalOpen(true)}
+                                className="bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-bold px-4 py-2 rounded-md transition shadow-sm cursor-pointer"
+                            >
+                                + New Contact
+                            </button>
                         </div>
-
-                        {/* Patient Modal (From main branch) */}
-                        {showAddPatient && <AddPatientForm onPatientAdded={handlePatientAdded} />}
-
-                        {/* Inline Vendor Adder (From feature branch, restyled to light mode) */}
-                        {showAddPayee && (
-                            <div className="mb-3 p-3 bg-[#E9FAFA] border border-[#B0DCDA] rounded-md flex gap-3 shadow-inner">
-                                <input 
-                                    type="text" 
-                                    placeholder="Enter Name (e.g., Metro Drug, Dr. Smith)"
-                                    value={newPayeeName}
-                                    onChange={e => setNewPayeeName(e.target.value)}
-                                    className="flex-1 bg-white border border-[#B0DCDA] rounded px-3 text-sm text-gray-800 outline-none focus:border-[#1B9387]"
-                                    autoFocus
-                                />
-                                <button 
-                                    type="button"
-                                    onClick={handleCreatePayee}
-                                    disabled={isSubmittingPayee || !newPayeeName.trim()}
-                                    className="bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-bold px-4 py-2 rounded transition disabled:opacity-50"
-                                >
-                                    {isSubmittingPayee ? 'Saving...' : 'Save to DB'}
-                                </button>
-                            </div>
-                        )}
 
                         <div className="relative mt-2">
                             <div
@@ -387,7 +317,6 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                                         >
                                             -- No Sub-Account Tagged --
                                         </li>
-                                        {/* Restored the missing map logic that Git deleted! */}
                                         {filteredPayees && filteredPayees.length > 0 ? (
                                             filteredPayees.map((p: any) => (
                                                 <li
@@ -407,15 +336,8 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                                 </div>
                             )}
                         </div>
-                    </div>
-                )}
-                                        >
-                                            -- No Patient Tagged --
-                                        </li>
 
-                        </div>
-
-{payeeBalance && (
+                        {payeeBalance && (
                             <div className="mt-3 flex gap-3 text-xs">
                                 {payeeBalance.receivable > 0 && (
                                     <span className="text-red-600 font-bold bg-red-50 px-3 py-1.5 rounded border border-red-200 flex items-center shadow-sm">
@@ -434,7 +356,6 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                                 )}
                             </div>
                         )}
-                        )}
                     </div>
                 )}
 
@@ -444,8 +365,8 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                 </div>
             </div>
 
-            {/* 🔥 RESTORED: SEARCHABLE ACCOUNT TABLE */}
-            <div className="border border-[#B0DCDA] rounded-md bg-white overflow-hidden mb-6 shadow-sm">
+            {/* SEARCHABLE ACCOUNT TABLE */}
+            <div className="border border-[#B0DCDA] rounded-md bg-white overflow-visible mb-6 shadow-sm">
                 <table className="w-full">
                     <thead className="bg-gray-50 border-b border-[#B0DCDA]">
                         <tr className="text-left text-gray-500 text-xs uppercase tracking-wider">
@@ -457,9 +378,9 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                         {lines.map((line, idx) => (
-<tr key={idx} className="even:bg-gray-50 odd:bg-white hover:bg-[#E9FAFA]/50 transition">
-
-                                {/* SEARCHABLE ACCOUNT CELL (Fixed the missing inactive state!) */}
+                            <tr key={idx} className="even:bg-gray-50 odd:bg-white hover:bg-[#E9FAFA]/50 transition">
+                                
+                                {/* SEARCHABLE ACCOUNT CELL */}
                                 <td className="p-0 border-r border-[#B0DCDA] relative align-top">
                                     {activeAccountRow === idx ? (
                                         <div className="absolute z-50 left-0 top-0 w-full min-w-[350px] bg-white border border-[#1B9387] shadow-xl rounded-md overflow-hidden">
@@ -497,26 +418,12 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                                             </ul>
                                         </div>
                                     ) : (
-                                        <div 
-                                            onClick={() => { setActiveAccountRow(idx); setAccountSearchQuery(''); }}
-                                            className="p-3 text-sm text-gray-800 font-medium cursor-pointer flex justify-between items-center h-full w-full min-h-[44px]"
-                                        >
-                                            <span className={line.accountId ? 'text-gray-800' : 'text-gray-400'}>
-                                                {line.accountId ? `${line.accountId} - ${accounts.find(a => a.code === line.accountId)?.name || ''}` : 'Select Account...'}
-                                            </span>
-                                            <svg className="w-4 h-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                                <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                                            </svg>
-                                        </div>
-                                    )}
-                                        </div>
-                                    ) : (
                                         <div
                                             onClick={() => {
                                                 setActiveAccountRow(idx);
                                                 setAccountSearchQuery('');
                                             }}
-                                            className="w-full h-full p-3.5 pl-5 text-sm text-gray-800 cursor-text flex justify-between items-center group"
+                                            className="w-full h-full min-h-[44px] p-3.5 pl-5 text-sm text-gray-800 cursor-text flex justify-between items-center group"
                                         >
                                             {line.accountId ? (
                                                 <span>
@@ -531,45 +438,39 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                                     )}
                                 </td>
 
-                                <td className="p-2 border-r border-[#B0DCDA]">
-                                    <div className="relative flex items-center">
-                                        <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
-                                        <input type="number" min="0" step="0.01" value={line.debit === 0 ? '' : line.debit} placeholder="0.00" onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)} className="w-full bg-transparent pl-8 pr-2 py-1.5 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-400 focus:ring-2 focus:ring-[#1B9387]/30 focus:border-[#1B9387] focus:bg-white rounded transition-all" />
-                                    </div>
-                                </td>
-                                <td className="p-2 border-r border-[#B0DCDA]">
-                                    <div className="relative flex items-center">
-                                        <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
-                                        <input type="number" min="0" step="0.01" value={line.credit === 0 ? '' : line.credit} placeholder="0.00" onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} className="w-full bg-transparent pl-8 pr-2 py-1.5 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-400 focus:ring-2 focus:ring-[#1B9387]/30 focus:border-[#1B9387] focus:bg-white rounded transition-all" />
-                                    </div>
-                                </td>
-{/* DEBIT INPUT */}
+                                {/* DEBIT INPUT */}
                                 <td className="p-0 border-r border-[#B0DCDA] align-top">
-                                    <input 
-                                        type="number" 
-                                        min="0" 
-                                        step="0.01" 
-                                        value={line.debit === 0 ? '' : line.debit} 
-                                        placeholder="0.00" 
-                                        onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)} 
-                                        className="w-full h-full min-h-[44px] bg-transparent p-3 text-sm text-right text-gray-800 font-mono font-medium outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" 
-                                    />
+                                    <div className="relative flex items-center h-full">
+                                        <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
+                                        <input 
+                                            type="number" 
+                                            min="0" 
+                                            step="0.01" 
+                                            value={line.debit === 0 ? '' : line.debit} 
+                                            placeholder="0.00" 
+                                            onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)} 
+                                            className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" 
+                                        />
+                                    </div>
                                 </td>
                                 
                                 {/* CREDIT INPUT */}
                                 <td className="p-0 border-r border-[#B0DCDA] align-top">
-                                    <input 
-                                        type="number" 
-                                        min="0" 
-                                        step="0.01" 
-                                        value={line.credit === 0 ? '' : line.credit} 
-                                        placeholder="0.00" 
-                                        onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} 
-                                        className="w-full h-full min-h-[44px] bg-transparent p-3 text-sm text-right text-gray-800 font-mono font-medium outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" 
-                                    />
+                                    <div className="relative flex items-center h-full">
+                                        <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
+                                        <input 
+                                            type="number" 
+                                            min="0" 
+                                            step="0.01" 
+                                            value={line.credit === 0 ? '' : line.credit} 
+                                            placeholder="0.00" 
+                                            onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} 
+                                            className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" 
+                                        />
+                                    </div>
                                 </td>
                                 
-                                {/* REMOVE BUTTON (From main branch) */}
+                                {/* REMOVE BUTTON */}
                                 <td className="p-2 text-center align-middle">
                                     <button 
                                         type="button" 
@@ -589,7 +490,7 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
 
             {/* FOOTER & MATH VALIDATION */}
             <div className="flex justify-between items-end mt-6">
-<button type="button" onClick={addLine} className="text-[#1B9387] text-sm font-bold hover:bg-[#E9FAFA] px-5 py-2.5 rounded-md transition border border-transparent hover:border-[#B0DCDA] shadow-sm cursor-pointer">
+                <button type="button" onClick={addLine} className="text-[#1B9387] text-sm font-bold hover:bg-[#E9FAFA] px-5 py-2.5 rounded-md transition border border-transparent hover:border-[#B0DCDA] shadow-sm cursor-pointer">
                     + Add Line
                 </button>
 
@@ -612,7 +513,7 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                 </div>
             </div>
 
-<button
+            <button
                 type="button"
                 disabled={!isBalanced || !refSequence || loading}
                 onClick={handleSubmit}
@@ -621,5 +522,12 @@ setDescription(isAdjusting ? 'Adjusting Entry: ' : '');
                 {loading ? 'Processing...' : (isAdjusting ? 'Post Adjusting Entry' : 'Post Journal Entry')}
             </button>
         </div>
+        <NewContactModal
+            isOpen={isNewContactModalOpen}
+            onClose={() => setIsNewContactModalOpen(false)}
+            onSaveSuccess={handleContactSaved}
+            defaultType="PATIENT"
+        />
+        </>
     );
 };

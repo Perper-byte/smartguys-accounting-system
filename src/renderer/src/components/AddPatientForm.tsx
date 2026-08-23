@@ -15,16 +15,17 @@ export const AddPatientForm: React.FC<{ onPatientAdded: () => void }> = ({ onPat
         setStatus(null);
 
         try {
-            const api = (window as any).electronAPI;
+            // Added the (window as any).api fallback we've been using to prevent crashes
+            const api = (window as any).electronAPI || (window as any).api;
             
-            // Check if the API exists to prevent crashes
             if (!api || !api.createPayee) {
                 setStatus({ type: 'error', msg: "Backend API not found. Please restart the app." });
                 setLoading(false);
                 return;
             }
 
-            const result = await api.createPayee(name);
+            // 🔥 FIX: Explicitly pass 'PATIENT' so the database tags it correctly!
+            const result = await api.createPayee(name, 'PATIENT');
 
             if (result.success) {
                 setStatus({ type: 'success', msg: `${name} saved!` });
@@ -33,7 +34,7 @@ export const AddPatientForm: React.FC<{ onPatientAdded: () => void }> = ({ onPat
                 
                 setTimeout(() => setStatus(null), 3000);
             } else {
-                setStatus({ type: 'error', msg: "Failed to add patient." });
+                setStatus({ type: 'error', msg: result.error || "Failed to add patient." });
             }
         } catch (error) {
             setStatus({ type: 'error', msg: "Connection error." });
@@ -43,12 +44,12 @@ export const AddPatientForm: React.FC<{ onPatientAdded: () => void }> = ({ onPat
     };
 
     return (
-        // Changed to a dashed border and darker background so it doesn't blend into the main form
-        <div className="bg-[#121214] border-2 border-dashed border-[#29292e] rounded-lg p-5 mb-4">
-            <h3 className="text-sm font-bold text-white mb-3">Register New Patient</h3>
+        // 🔥 FIX: Completely upgraded to the new Light Mode (Teal & White) UI!
+        <div className="bg-[#E9FAFA] border border-[#B0DCDA] rounded-lg p-5 mb-4 shadow-inner">
+            <h3 className="text-sm font-extrabold text-[#1B9387] mb-3 uppercase tracking-wider">Register New Patient</h3>
             
             {status && (
-                <div className={`mb-3 p-2 rounded-md text-xs font-medium ${status.type === 'success' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                <div className={`mb-3 p-2 rounded-md text-xs font-bold ${status.type === 'success' ? 'bg-white text-[#1B9387] border border-[#B0DCDA]' : 'bg-red-50 text-red-500 border border-red-200'}`}>
                     {status.type === 'success' ? '✅ ' : '⚠️ '}{status.msg}
                 </div>
             )}
@@ -60,14 +61,14 @@ export const AddPatientForm: React.FC<{ onPatientAdded: () => void }> = ({ onPat
                         value={name} 
                         onChange={e => setName(e.target.value)} 
                         placeholder="Type Patient Name..." 
-                        className="w-full bg-[#202024] border border-[#29292e] rounded-md p-2 text-sm text-white focus:border-[#4f46e5] outline-none transition"
+                        className="w-full bg-white border border-[#B0DCDA] rounded-md p-2.5 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition"
                         required
                     />
                 </div>
                 <button 
                     type="submit" 
                     disabled={loading || !name}
-                    className="bg-[#4f46e5] disabled:bg-[#29292e] disabled:text-[#8d8d99] text-white text-sm font-bold py-2 px-4 rounded-md transition hover:bg-[#5b54f6] shadow-lg"
+                    className="bg-[#1B9387] disabled:bg-gray-200 disabled:text-gray-400 text-white text-sm font-bold py-2.5 px-5 rounded-md transition hover:bg-[#28958B] shadow-sm cursor-pointer disabled:cursor-not-allowed"
                 >
                     {loading ? 'Saving...' : 'Save'}
                 </button>

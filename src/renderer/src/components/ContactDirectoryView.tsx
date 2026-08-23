@@ -9,6 +9,7 @@ export function ContactDirectoryView() {
 
     // Modal States
     const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedContact, setSelectedContact] = useState<any | null>(null);
     
     const fetchContacts = async () => {
         setLoading(true);
@@ -51,39 +52,36 @@ export function ContactDirectoryView() {
     };
 
     return (
-        <div className="max-w-7xl mx-auto h-full flex flex-col font-sans text-gray-200 relative">
+        <div className="max-w-7xl mx-auto h-full flex flex-col font-sans text-gray-800 relative">
             <div className="flex justify-between items-end mb-6">
                 <div>
-                    <h2 className="text-2xl font-bold text-white tracking-wide">Contacts & Entities</h2>
-                    <p className="text-sm text-gray-400 mt-1">Manage Patients, Doctors, HMOs, and view outstanding balances.</p>
+                    <h2 className="text-2xl font-bold text-gray-900 tracking-wide">Contacts & Entities</h2>
+                    <p className="text-sm text-gray-500 mt-1">Manage patients, doctors, HMOs, and outstanding balances.</p>
                 </div>
             </div>
 
-            <div className="bg-[#202024] border border-[#29292e] rounded-lg shadow-xl flex-1 flex flex-col overflow-hidden">
-                <div className="p-4 border-b border-[#29292e] bg-[#1a1a1e] flex space-x-4 items-center">
+            <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden">
+                <div className="p-4 border-b border-[#B0DCDA] bg-[#E9FAFA]/70 flex space-x-4 items-center">
                     <input 
                         type="text" 
                         placeholder="🔍 Search by name or TIN..." 
                         value={searchQuery} 
                         onChange={(e) => setSearchQuery(e.target.value)} 
-                        className="w-96 bg-[#121214] border border-[#29292e] rounded-md px-4 py-2 text-sm focus:outline-none focus:border-[#4f46e5] text-white transition-colors" 
+                        className="w-96 bg-white border border-[#B0DCDA] rounded-lg px-4 py-2 text-sm text-gray-800 shadow-sm focus:outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] transition-colors" 
                     />
                     <div className="flex-1"></div>
-                    <button onClick={() => setIsModalOpen(true)} className="bg-[#29292e] hover:bg-[#323238] border border-[#3e3e44] text-white px-5 py-2 rounded-md text-sm font-bold shadow transition-colors flex items-center space-x-2 cursor-pointer">
+                    <button onClick={() => setIsModalOpen(true)} className="bg-[#1B9387] hover:bg-[#167c73] text-white px-5 py-2 rounded-lg text-sm font-bold shadow-sm transition-colors flex items-center space-x-2 cursor-pointer">
                         <span>+ New Contact</span>
                     </button>
                 </div>
 
                 <div className="flex-1 overflow-auto">
                     {loading ? (
-                        <div className="flex justify-center items-center h-full text-[#4f46e5] animate-pulse font-bold">Loading Directory...</div>
+                        <div className="flex justify-center items-center h-full text-[#1B9387] animate-pulse font-bold">Loading Directory...</div>
                     ) : (
                         <table className="w-full text-left text-sm">
-                            <thead className="bg-[#121214] sticky top-0 z-10 border-b border-[#29292e] shadow-sm">
-                                <tr className="text-[#8d8d99] uppercase tracking-wider text-[10px]">
-                                    <th className="p-4 font-bold w-12 text-center">
-                                        <input type="checkbox" className="rounded bg-transparent border-gray-600" disabled />
-                                    </th>
+                            <thead className="bg-[#FBF8F8] sticky top-0 z-10 border-b border-[#B0DCDA]">
+                                <tr className="text-gray-500 uppercase tracking-wider text-[10px]">
                                     <th className="p-4 font-bold">Contact Name</th>
                                     <th className="p-4 font-bold">Type</th>
                                     <th className="p-4 font-bold">Phone / Email</th>
@@ -91,33 +89,37 @@ export function ContactDirectoryView() {
                                     <th className="p-4 font-bold text-right text-emerald-400">They Owe (₱)</th>
                                 </tr>
                             </thead>
-                            <tbody className="divide-y divide-[#29292e]/50">
+                            <tbody className="divide-y divide-[#E9FAFA]">
                                 {filteredContacts.length === 0 ? (
-                                    <tr><td colSpan={6} className="p-8 text-center text-gray-500 italic">No contacts found.</td></tr>
+                                    <tr><td colSpan={5} className="p-8 text-center text-gray-400 italic">No contacts found.</td></tr>
                                 ) : (
                                     filteredContacts.map(c => (
-                                        <tr key={c.id} className="hover:bg-[#2a2a2f] transition-colors group">
-                                            <td className="p-4 text-center">
-                                                <input type="checkbox" className="rounded bg-transparent border-gray-600 cursor-pointer" />
-                                            </td>
+                                        <tr key={c.id} className="hover:bg-[#E9FAFA]/70 transition-colors group">
                                             <td className="p-4 flex items-center space-x-4">
-                                                <div className="h-8 w-8 rounded-full bg-[#4f46e5]/20 text-[#4f46e5] flex items-center justify-center font-bold text-xs border border-[#4f46e5]/50 shrink-0">
+                                                <div className="h-8 w-8 rounded-full bg-[#E9FAFA] text-[#1B9387] flex items-center justify-center font-bold text-xs border border-[#B0DCDA] shrink-0">
                                                     {getInitials(c.name)}
                                                 </div>
-                                                <span className="font-bold text-white text-base">{c.name}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setSelectedContact(c)}
+                                                    className="font-bold text-gray-900 text-base hover:text-[#1B9387] hover:underline underline-offset-4 transition-colors cursor-pointer text-left"
+                                                    title={`View ${c.name}'s details`}
+                                                >
+                                                    {c.name}
+                                                </button>
                                             </td>
                                             <td className="p-4">
                                                 <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider border ${getTypeStyle(c.type)}`}>
                                                     {c.type}
                                                 </span>
                                             </td>
-                                            <td className="p-4 text-xs text-gray-400">
+                                            <td className="p-4 text-xs text-gray-500">
                                                 {c.email ? c.email : c.phone ? c.phone : '-'}
                                             </td>
-                                            <td className="p-4 text-right font-mono font-bold text-orange-400">
+                                            <td className="p-4 text-right font-mono font-bold text-orange-600">
                                                 {formatCurrency(c.youOwe)}
                                             </td>
-                                            <td className="p-4 text-right font-mono font-bold text-emerald-400">
+                                            <td className="p-4 text-right font-mono font-bold text-[#1B9387]">
                                                 {formatCurrency(c.theyOwe)}
                                             </td>
                                         </tr>
@@ -136,6 +138,57 @@ export function ContactDirectoryView() {
                 onSaveSuccess={() => fetchContacts()} 
                 defaultType="PATIENT"
             />
+
+            {selectedContact && (
+                <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 print:hidden">
+                    <div className="w-full max-w-lg overflow-hidden rounded-xl border border-[#B0DCDA] bg-white shadow-2xl">
+                        <div className="flex items-start justify-between border-b border-[#B0DCDA] bg-[#FBF8F8] px-7 py-5">
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-11 w-11 items-center justify-center rounded-full border border-[#B0DCDA] bg-[#E9FAFA] text-sm font-bold text-[#1B9387]">
+                                    {getInitials(selectedContact.name)}
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-bold text-gray-900">{selectedContact.name}</h3>
+                                    <span className={`mt-1 inline-block rounded-md border px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${getTypeStyle(selectedContact.type)}`}>
+                                        {selectedContact.type}
+                                    </span>
+                                </div>
+                            </div>
+                            <button type="button" onClick={() => setSelectedContact(null)} className="text-2xl font-bold leading-none text-gray-400 transition hover:text-gray-700" aria-label="Close contact details">×</button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-x-8 gap-y-6 px-7 py-6 text-sm">
+                            <div>
+                                <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Email</p>
+                                <p className="mt-1 break-words font-medium text-gray-800">{selectedContact.email || 'Not provided'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Phone</p>
+                                <p className="mt-1 font-medium text-gray-800">{selectedContact.phone || 'Not provided'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold uppercase tracking-wider text-gray-400">TIN</p>
+                                <p className="mt-1 font-mono font-medium text-gray-800">{selectedContact.tin || 'Not provided'}</p>
+                            </div>
+                            <div>
+                                <p className="text-xs font-bold uppercase tracking-wider text-gray-400">Address</p>
+                                <p className="mt-1 break-words font-medium text-gray-800">{selectedContact.address || 'Not provided'}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 border-t border-[#B0DCDA] bg-[#E9FAFA]/50 px-7 py-5">
+                            <div className="rounded-lg border border-orange-200 bg-white px-4 py-3">
+                                <p className="text-xs font-bold uppercase tracking-wider text-orange-600">You Owe</p>
+                                <p className="mt-1 font-mono text-lg font-bold text-orange-700">{selectedContact.youOwe ? `₱ ${formatCurrency(selectedContact.youOwe)}` : '—'}</p>
+                            </div>
+                            <div className="rounded-lg border border-[#B0DCDA] bg-white px-4 py-3">
+                                <p className="text-xs font-bold uppercase tracking-wider text-[#1B9387]">They Owe</p>
+                                <p className="mt-1 font-mono text-lg font-bold text-[#1B9387]">{selectedContact.theyOwe ? `₱ ${formatCurrency(selectedContact.theyOwe)}` : '—'}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

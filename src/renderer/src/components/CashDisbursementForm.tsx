@@ -1,16 +1,17 @@
+// src/renderer/src/components/CashDisbursementForm.tsx
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 
- const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
+const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
 export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) => {
     const [expenseAccounts, setExpenseAccounts] = useState<any[]>([]);
-     const [date, setDate] = useState(getLocalDateString());
+    const [date, setDate] = useState(getLocalDateString());
     const [amount, setAmount] = useState<number | ''>('');
     const [expenseAccount, setExpenseAccount] = useState('');
     const [remarks, setRemarks] = useState('');
 
-    // ---> NEW: Auto-Sequence States <---
+    // Auto-Sequence States
     const [refPrefix] = useState('CV-');
     const [refSequence, setRefSequence] = useState('');
 
@@ -49,7 +50,6 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
         loadData();
     }, []);
 
-    // ---> NEW: Fetch Sequence <---
     useEffect(() => {
         const fetchNextSeq = async () => {
             try {
@@ -66,7 +66,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
         setIsSubmittingPayee(true);
         try {
             const api = (window as any).api || (window as any).electronAPI;
-            await api.createPayee(newPayeeName);
+            await api.createPayee(newPayeeName, 'VENDOR');
             const updatedPayees = await api.getPayees();
             setPayees(updatedPayees);
             const newRecord = updatedPayees.find((p: any) => p.name.toLowerCase() === newPayeeName.toLowerCase());
@@ -74,6 +74,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
             setShowAddPayee(false);
             setNewPayeeName('');
             setStatus({ type: 'success', msg: `Successfully added ${newPayeeName} to the database!` });
+            setTimeout(() => setStatus(null), 3000);
         } catch (error) {
             console.error(error);
             setStatus({ type: 'error', msg: "Failed to create new record." });
@@ -146,7 +147,9 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
     const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- Select Vendor / Supplier --';
 
     return (
-<div className="max-w-3xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
+        <div className="max-w-3xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
+            
+            {/* HEADER */}
             <div className="flex justify-between items-center mb-6 border-b border-[#B0DCDA] pb-4">
                 <h2 className="text-xl font-extrabold text-gray-800 tracking-wide">New Disbursement</h2>
                 <span className="bg-red-50 text-red-500 text-xs px-4 py-1.5 rounded-full font-bold uppercase tracking-widest border border-red-200">
@@ -154,13 +157,16 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                 </span>
             </div>
 
+            {/* STATUS MESSAGE */}
             {status && (
-                <div className={`mb-6 p-4 rounded-md text-sm font-bold ${status.type === 'success' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-red-50 text-red-600 border border-red-200'}`}>
+                <div className={`mb-6 p-4 rounded-md text-sm font-bold ${status.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border border-[#B0DCDA]' : 'bg-red-50 text-red-600 border border-red-200'}`}>
                     {status.type === 'success' ? '✅ ' : '⚠️ '}{status.msg}
                 </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
+                
+                {/* ROW 1: Date & Vendor */}
                 <div className="grid grid-cols-2 gap-6">
                     <div>
                         <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Date</label>
@@ -169,35 +175,37 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                     
                     <div className="relative">
                         <div className="flex justify-between items-end mb-2">
-                            <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider">Vendor / Supplier</label>
-                            <button type="button" onClick={() => setShowAddPayee(!showAddPayee)} className="text-xs font-bold text-[#4f46e5] hover:text-[#5b54f6] transition hover:underline">
+                            <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">Vendor / Supplier</label>
+                            <button type="button" onClick={() => setShowAddPayee(!showAddPayee)} className="text-xs font-bold text-[#1B9387] hover:text-[#28958B] transition hover:underline">
                                 {showAddPayee ? 'Cancel' : '+ Add New'}
                             </button>
                         </div>
+                        
                         {showAddPayee && (
-                            <div className="mb-3 p-3 bg-[#121214] border border-[#4f46e5]/50 rounded-md flex gap-3 shadow-inner">
-                                <input type="text" placeholder="e.g. Metro Drug Inc." value={newPayeeName} onChange={e => setNewPayeeName(e.target.value)} className="flex-1 bg-transparent text-sm text-white outline-none placeholder-[#3f3f46]" autoFocus />
-                                <button type="button" onClick={handleCreatePayee} disabled={isSubmittingPayee || !newPayeeName.trim()} className="bg-[#4f46e5] hover:bg-[#5b54f6] text-white text-xs font-bold px-4 py-2 rounded transition disabled:opacity-50">Save</button>
+                            <div className="mb-3 p-3 bg-[#E9FAFA] border border-[#B0DCDA] rounded-md flex gap-3 shadow-inner">
+                                <input type="text" placeholder="e.g. Metro Drug Inc." value={newPayeeName} onChange={e => setNewPayeeName(e.target.value)} className="flex-1 bg-white border border-[#B0DCDA] rounded px-3 text-sm text-gray-800 outline-none focus:border-[#1B9387] transition" autoFocus />
+                                <button type="button" onClick={handleCreatePayee} disabled={isSubmittingPayee || !newPayeeName.trim()} className="bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-bold px-4 py-2 rounded transition disabled:opacity-50">Save</button>
                             </div>
                         )}
+
                         <div className="relative">
-                            <div onClick={() => setIsPayeeDropdownOpen(!isPayeeDropdownOpen)} className={`w-full bg-[#121214] border ${isPayeeDropdownOpen ? 'border-[#4f46e5]' : 'border-[#29292e]'} rounded-md p-3 text-sm text-white transition cursor-pointer flex justify-between items-center`}>
-                                <span className={payeeId ? 'text-white' : 'text-gray-500'}>{selectedPayeeName}</span>
-                                <svg className="w-4 h-4 text-[#8d8d99]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                            <div onClick={() => setIsPayeeDropdownOpen(!isPayeeDropdownOpen)} className={`w-full bg-[#FBF8F8] border ${isPayeeDropdownOpen ? 'border-[#1B9387] ring-2 ring-[#E9FAFA]' : 'border-[#B0DCDA]'} rounded-md p-3 text-sm transition cursor-pointer flex justify-between items-center`}>
+                                <span className={payeeId ? 'text-gray-800 font-medium' : 'text-gray-400 font-medium'}>{selectedPayeeName}</span>
+                                <svg className="w-4 h-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
                             </div>
                             {isPayeeDropdownOpen && (
-                                <div className="absolute z-20 w-full mt-1 bg-[#202024] border border-[#29292e] rounded-md shadow-2xl overflow-hidden">
-                                    <div className="p-2 border-b border-[#29292e] bg-[#121214]">
-                                        <input type="text" autoFocus placeholder="🔍 Search vendor..." value={payeeSearchQuery} onChange={(e) => setPayeeSearchQuery(e.target.value)} className="w-full bg-transparent p-2 text-sm text-white outline-none placeholder-[#3f3f46]" />
+                                <div className="absolute z-20 w-full mt-1 bg-white border border-[#B0DCDA] rounded-md shadow-xl overflow-hidden">
+                                    <div className="p-2 border-b border-[#B0DCDA] bg-gray-50">
+                                        <input type="text" autoFocus placeholder="🔍 Search vendor..." value={payeeSearchQuery} onChange={(e) => setPayeeSearchQuery(e.target.value)} className="w-full bg-transparent p-2 text-sm text-gray-800 outline-none placeholder-gray-400" />
                                     </div>
                                     <ul className="max-h-48 overflow-y-auto">
-                                        <li onClick={() => { setPayeeId(''); setPayeeTin(''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }} className="p-3 text-sm text-[#8d8d99] hover:bg-[#4f46e5] hover:text-white cursor-pointer transition">-- Clear Selection --</li>
+                                        <li onClick={() => { setPayeeId(''); setPayeeTin(''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }} className="p-3 text-sm text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition font-medium">-- Clear Selection --</li>
                                         {filteredPayees.length > 0 ? (
                                             filteredPayees.map(p => (
-                                                <li key={p.id} onClick={() => { setPayeeId(p.id); setPayeeTin(p.tin || ''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }} className="p-3 text-sm text-white hover:bg-[#4f46e5] cursor-pointer transition border-t border-[#29292e]/50">{p.name}</li>
+                                                <li key={p.id} onClick={() => { setPayeeId(p.id); setPayeeTin(p.tin || ''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }} className="p-3 text-sm text-gray-800 font-medium hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-t border-gray-50">{p.name}</li>
                                             ))
                                         ) : (
-                                            <li className="p-3 text-sm text-gray-500 text-center border-t border-[#29292e]/50">No vendors found.</li>
+                                            <li className="p-3 text-sm text-gray-500 text-center border-t border-gray-50 italic">No vendors found.</li>
                                         )}
                                     </ul>
                                 </div>
@@ -206,52 +214,38 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                     </div>
                 </div>
 
+                {/* ROW 2: Source of Funds & Voucher No */}
                 <div className="grid grid-cols-2 gap-6">
                     <div>
-                        <label className="block text-xs font-bold text-[#8d8d99] uppercase tracking-wider mb-2">Source of Funds (Credit)</label>
-                        <select required value={sourceAccount} onChange={e => setSourceAccount(e.target.value)} className="w-full bg-[#121214] border border-[#29292e] rounded-md p-3 text-sm text-white focus:border-[#4f46e5] outline-none transition cursor-pointer">
-                            <option value="1010" className="bg-[#202024]">1010 - Cash in Bank (Checking)</option>
-                            <option value="1020" className="bg-[#202024]">1020 - Petty Cash Fund (On Hand)</option>
+                        <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Source of Funds (Credit)</label>
+                        <select required value={sourceAccount} onChange={e => setSourceAccount(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition cursor-pointer">
+                            <option value="1010">1010 - Cash in Bank (Checking)</option>
+                            <option value="1020">1020 - Petty Cash Fund (On Hand)</option>
                         </select>
                     </div>
-                    {/* ---> UPDATED: AUTO-SEQUENCE INPUT <--- */}
+                    
                     <div>
-{/* 1. Reference / Voucher Field (From feature branch, restyled to light mode) */}
-                        <div>
-                            <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Check / Voucher No.</label>
-                            <div className="flex">
-                                <span className="bg-gray-50 border border-[#B0DCDA] border-r-0 rounded-l-md px-4 py-3 text-sm font-bold text-gray-500 select-none">
-                                    {refPrefix}
-                                </span>
-                                <input 
-                                    type="text" 
-                                    required 
-                                    value={refSequence} 
-                                    onChange={e => setRefSequence(e.target.value)} 
-                                    placeholder="001" 
-                                    className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-r-md p-3 text-sm font-mono text-gray-800 focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" 
-                                />
-                            </div>
-                        </div>
-
-                        {/* 2. Payee Field (From main branch) */}
-                        <div>
-                            <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Payee</label>
+                        <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Check / Voucher No.</label>
+                        <div className="flex">
+                            <span className="bg-gray-50 border border-[#B0DCDA] border-r-0 rounded-l-md px-4 py-3 text-sm font-bold text-gray-500 select-none">
+                                {refPrefix}
+                            </span>
                             <input 
                                 type="text" 
                                 required 
-                                value={payee} 
-                                onChange={e => setPayee(e.target.value)} 
-                                placeholder="e.g. Meralco, Supplier Inc." 
-                                className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" 
+                                value={refSequence} 
+                                onChange={e => setRefSequence(e.target.value)} 
+                                placeholder="001" 
+                                className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-r-md p-3 text-sm font-mono text-gray-800 focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" 
                             />
                         </div>
                     </div>
                 </div>
 
+                {/* ROW 3: Amount & Expense Account */}
                 <div className="grid grid-cols-2 gap-6">
                     <div>
-<label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Amount (₱)</label>
+                        <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Amount (₱)</label>
                         <div className="relative flex items-center">
                             <span className="absolute left-3 text-gray-400 font-mono text-sm">₱</span>
                             <input 
@@ -267,7 +261,6 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                         </div>
                     </div>
                     
-                    {/* ACCOUNT DROPDOWN (From main branch) */}
                     <div>
                         <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Expense Account (Debit)</label>
                         <div className="relative">
@@ -284,7 +277,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                     </div>
                 </div>
 
-                {/* VAT SECTION (From Feature Branch, completely re-styled to match light mode!) */}
+                {/* VAT SECTION */}
                 <div className="p-5 bg-[#E9FAFA] border border-[#B0DCDA] rounded-xl mt-6">
                     <div className="flex items-center">
                         <input 
@@ -299,7 +292,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                         </label>
                     </div>
                     {isVatable && (
-                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-lg border border-[#B0DCDA]/50">
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-6 bg-white p-4 rounded-lg border border-[#B0DCDA]/50 shadow-sm">
                             <div>
                                 <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">
                                     Supplier TIN (Required to claim VAT)
@@ -308,7 +301,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                                     type="text" 
                                     required 
                                     placeholder="e.g. 123-456-789-000" 
-                                    className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" 
+                                    className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" 
                                     value={payeeTin} 
                                     onChange={e => setPayeeTin(e.target.value)} 
                                 />
@@ -320,12 +313,13 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                     )}
                 </div>
 
+                {/* REMARKS */}
                 <div>
                     <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Remarks</label>
                     <input type="text" value={remarks} onChange={e => setRemarks(e.target.value)} placeholder="Optional details..." className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
                 </div>
 
-<{/* SUBMIT BUTTON */}
+                {/* SUBMIT BUTTON */}
                 <button
                     type="submit"
                     disabled={loading}

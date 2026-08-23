@@ -12,19 +12,34 @@ export const BIRReportsView: React.FC = () => {
     const [taxData, setTaxData] = useState<any>(null);
     const [reliefData, setReliefData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
+    const [errorMessage, setErrorMessage] = useState('');
     const [view, setView] = useState<'2550Q' | '1601EQ' | 'relief'>('2550Q');
 
     const fetchTaxData = async () => {
         setLoading(true);
+        setErrorMessage('');
         try {
             const api = (window as any).electronAPI || (window as any).api;
-            const data2550 = await api.generate2550Q(year, quarter);
-            const dataRelief = await api.generateRelief(year, quarter);
+            if (!api?.generate2550Q || !api?.generateRelief) {
+                throw new Error('The tax-report service is unavailable. Please restart the application.');
+            }
 
-            setTaxData(data2550.error ? null : data2550);
-            setReliefData(dataRelief.error ? null : dataRelief);
-        } catch (err) {
+            const [data2550, dataRelief] = await Promise.all([
+                api.generate2550Q(year, quarter),
+                api.generateRelief(year, quarter)
+            ]);
+
+            if (data2550?.error || dataRelief?.error) {
+                throw new Error(data2550?.error || dataRelief?.error);
+            }
+
+            setTaxData(data2550);
+            setReliefData(dataRelief);
+        } catch (err: any) {
             console.error(err);
+            setTaxData(null);
+            setReliefData(null);
+            setErrorMessage(err?.message || 'Unable to retrieve the tax report for this period.');
         } finally {
             setLoading(false);
         }
@@ -122,7 +137,23 @@ export const BIRReportsView: React.FC = () => {
                 </button>
             </div>
 
-            {loading && <div className="flex-1 flex justify-center items-center text-[#4f46e5] animate-pulse">Computing Tax Data...</div>}
+            {loading && (
+                <div className="flex-1 flex flex-col justify-center items-center text-center">
+                    <div className="h-9 w-9 rounded-full border-4 border-[#B0DCDA] border-t-[#1B9387] animate-spin" />
+                    <p className="mt-4 font-bold text-gray-700">Preparing your tax report…</p>
+                    <p className="mt-1 text-sm text-gray-500">This may take a moment for a period with many transactions.</p>
+                </div>
+            )}
+
+            {!loading && errorMessage && (
+                <div className="flex-1 flex flex-col justify-center items-center text-center">
+                    <div className="max-w-md rounded-xl border border-red-200 bg-red-50 p-6">
+                        <p className="font-bold text-red-700">Could not load the BIR report</p>
+                        <p className="mt-2 text-sm text-red-600">{errorMessage}</p>
+                        <button onClick={fetchTaxData} className="mt-4 rounded-md bg-[#1B9387] px-4 py-2 text-sm font-bold text-white transition hover:bg-[#28958B]">Try again</button>
+                    </div>
+                </div>
+            )}
 
             {/* ============================================================ */}
             {/* 1. FORM 2550Q (VAT) VIEW */}

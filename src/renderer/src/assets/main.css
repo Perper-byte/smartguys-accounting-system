@@ -8,6 +8,56 @@ body {
   font-family: system-ui, -apple-system, sans-serif;
 }
 
+/* Light palette for the older feature views. Scoped to the workspace so it
+   cannot interfere with dialogs or controls outside the app content. */
+#app-main [class*="bg-[#0d0d0f]"],
+#app-main [class*="bg-[#121214]"],
+#app-main [class*="bg-[#202024]"] {
+  background-color: #ffffff !important;
+}
+
+#app-main [class*="bg-[#1a1a1e]"],
+#app-main [class*="bg-[#29292e]"],
+#app-main [class*="bg-[#2b2b2f]"],
+#app-main [class*="bg-[#323238]"] {
+  background-color: #f8fafc !important;
+}
+
+#app-main [class*="bg-[#2a2a2f]"] {
+  background-color: #e9fafa !important;
+}
+
+#app-main [class*="border-[#121214]"],
+#app-main [class*="border-[#202024]"],
+#app-main [class*="border-[#29292e]"],
+#app-main [class*="border-[#323238]"],
+#app-main [class*="border-[#3e3e44]"] {
+  border-color: #b0dcda !important;
+}
+
+#app-main [class*="text-[#8d8d99]"],
+#app-main [class*="text-[#c4c4cc]"],
+#app-main [class*="text-[#e1e1e6]"] {
+  color: #6b7280 !important;
+}
+
+#app-main [class~="text-gray-200"],
+#app-main [class~="text-gray-300"],
+#app-main [class~="text-white"] {
+  color: #1f2937 !important;
+}
+
+/* Keep labels readable on colored action buttons and badges. */
+#app-main button[class*="bg-[#4f46e5]"],
+#app-main button[class*="bg-[#1B9387]"],
+#app-main button[class*="bg-[#f75a68]"],
+#app-main button[class*="bg-red"],
+#app-main [class*="bg-[#4f46e5]"] [class~="text-white"],
+#app-main [class*="bg-[#1B9387]"] [class~="text-white"],
+#app-main [class*="bg-[#f75a68]"] [class~="text-white"] {
+  color: #ffffff !important;
+}
+
 @layer components {
   .field {
     @apply rounded-md border border-[#3a3a42] bg-[#16161a] px-3 py-2 text-sm text-white outline-none transition-colors placeholder:text-[#6f6f7c] focus:border-[#4f46e5] focus:ring-1 focus:ring-[#4f46e5]/40;
@@ -117,5 +167,4 @@ body.is-printing .w-full {
   box-shadow: none !important;
   padding: 0 !important;
   margin: 0 !important;
-}
 }

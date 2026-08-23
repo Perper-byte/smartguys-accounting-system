@@ -37,13 +37,15 @@ export function ReconciliationView({ userId }: { userId: string }) {
   const api = (window as any).api || (window as any).electronAPI;
   const selectedTransaction = transactions.find(transaction => transaction.id === selectedTransactionId);
 
+  // Added setAccounts, setLedgerAccounts, and setAccountId to the dependencies
   const loadAccounts = useCallback(async () => {
     const [bankData, accountData] = await Promise.all([api.getBankAccounts(), api.getAccounts()]);
     setAccounts(Array.isArray(bankData) ? bankData : []);
     setLedgerAccounts(Array.isArray(accountData) ? accountData : []);
     if (!accountId && bankData?.[0]) setAccountId(bankData[0].id);
-  }, [api, accountId]);
+  }, [api, accountId, setAccounts, setLedgerAccounts, setAccountId]);
 
+  // Added setLoading, setStatus, setTransactions, and setEntries to the dependencies
   const loadData = useCallback(async () => {
     if (!accountId) return;
     const requestId = ++loadRequestRef.current;
@@ -58,7 +60,7 @@ export function ReconciliationView({ userId }: { userId: string }) {
     } finally {
       if (requestId === loadRequestRef.current) setLoading(false);
     }
-  }, [api, accountId, startDate, endDate]);
+  }, [api, accountId, startDate, endDate, setLoading, setStatus, setTransactions, setEntries]);
 
   useEffect(() => { loadAccounts().catch(() => setStatus({ type: 'error', message: 'Could not load bank accounts.' })); }, [loadAccounts]);
   useEffect(() => { loadData(); }, [loadData]);

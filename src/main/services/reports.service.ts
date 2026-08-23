@@ -9,14 +9,11 @@ export class ReportsService {
             include: { account_type: true },
         });
 
-        const startDate = startDateStr ? new Date(startDateStr) : new Date(0);
-        if (startDateStr) startDate.setHours(0, 0, 0, 0);
-
-        const endDate = endDateStr ? new Date(endDateStr) : new Date();
-        if (endDateStr) endDate.setHours(23, 59, 59, 999);
+        // Use the passed endDate, or default to right now if not provided
+        const effectiveEndDate = endDate || new Date();
 
         const lines = await prisma.journalLine.findMany({
-            where: { entry: { date: { lte: endDate } } },
+            where: { entry: { date: { lte: effectiveEndDate } } },
             include: { entry: true }
         });
 
@@ -25,7 +22,7 @@ export class ReportsService {
 
         const tbMap: any = {};
         for (const acc of accounts) {
-tbMap[acc.code] = { ...acc, sumDebits: 0, sumCredits: 0 };
+            tbMap[acc.code] = { ...acc, sumDebits: 0, sumCredits: 0 };
         }
 
         for (const line of lines) {
@@ -106,7 +103,7 @@ tbMap[acc.code] = { ...acc, sumDebits: 0, sumCredits: 0 };
         };
     }
 
-/**
+    /**
      * Income Statement: Revenue - Expenses (Strictly for the selected month)
      */
     static async getIncomeStatement(year?: number, month?: number) {
@@ -125,7 +122,7 @@ tbMap[acc.code] = { ...acc, sumDebits: 0, sumCredits: 0 };
 
         for (const line of trialBalance.lines) {
             if (line.accountType === 'Revenue') {
-const amount = line.credit - line.debit;
+                const amount = line.credit - line.debit;
                 revenueLines.push({ name: line.accountName, amount });
                 totalRevenue += amount;
             } else if (line.accountType === 'Expense') {
@@ -183,7 +180,7 @@ const amount = line.credit - line.debit;
             }
         }
 
-// 1. Current period's Net Income (Kept from feature branch for the UI)
+        // 1. Current period's Net Income (Kept from feature branch for the UI)
         const netIncome = incomeStatement.netIncome;
 
         // 2. All-time Retained Earnings (From main branch, needed to balance the sheet!)
@@ -205,7 +202,7 @@ const amount = line.credit - line.debit;
         };
     }
 
-static async getShiftReport(userId: string) {
+    static async getShiftReport(userId: string) {
         const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
         
@@ -400,7 +397,7 @@ static async getShiftReport(userId: string) {
         }
 
         return results.sort((a,b) => b.date.getTime() - a.date.getTime());
-    } // <--- THE MISSING CLOSING BRACE HAS BEEN RESTORED HERE!
+    } 
 
     /**
      * Cash Flow Statement (Strictly for the selected month)
@@ -460,6 +457,5 @@ static async getShiftReport(userId: string) {
             financing: { details: financingDetails, net: Number(financingNet.toFixed(2)) },
             netIncreaseInCash: Number(netIncreaseInCash.toFixed(2)),
         };
-    }
     }
 }

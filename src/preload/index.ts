@@ -1,5 +1,5 @@
-// src/preload/index.ts
 import { contextBridge, ipcRenderer } from 'electron';
+import { IPC_CHANNELS } from '../shared/ipc-channels'; 
 
 export const api = {
   // Authentication
@@ -48,7 +48,7 @@ export const api = {
   getBooksOfAccounts: (bookType: string, startDate: string, endDate: string) => ipcRenderer.invoke('get-books-of-accounts', bookType, startDate, endDate),
   getAgedReceivables: () => ipcRenderer.invoke('get-aged-receivables'),
 
-  // 🔥 Financial Reports (Fixed to use year/month and match the backend IPC handlers)
+  // Financial Reports
   getTrialBalance: (year?: number, month?: number) => ipcRenderer.invoke('reports:getTrialBalance', year, month),
   getIncomeStatement: (year?: number, month?: number) => ipcRenderer.invoke('reports:getIncomeStatement', year, month),
   getBalanceSheet: (year?: number, month?: number) => ipcRenderer.invoke('reports:getBalanceSheet', year, month),
@@ -87,10 +87,8 @@ export const api = {
   pingDatabase: () => ipcRenderer.invoke('system:ping'),
 };
 
-// Expose the API safely to React window object
 try {
   contextBridge.exposeInMainWorld('electronAPI', api);
-  // Kept from feature branch for backward compatibility with frontend components
   contextBridge.exposeInMainWorld('api', api); 
 } catch (error) {
   console.error('Failed to expose electronAPI in preload:', error);
