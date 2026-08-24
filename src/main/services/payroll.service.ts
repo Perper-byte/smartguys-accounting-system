@@ -6,12 +6,10 @@ const prisma = new PrismaClient();
 export const PayrollService = {
     
     async getEmployees() {
+       
         const employees = await prisma.employee.findMany({
-            where: { is_active: true },
             orderBy: { first_name: 'asc' }
         });
-
-        // ---> THE FIX: Convert Prisma Decimal to normal Number so Electron doesn't crash! <---
         return employees.map(emp => ({
             ...emp,
             monthly_salary: Number(emp.monthly_salary)
@@ -35,6 +33,20 @@ export const PayrollService = {
             return { success: true };
         } catch (error: any) {
             console.error(error);
+            return { success: false, error: error.message };
+        }
+    },
+
+   async toggleEmployeeStatus(id: string, isActive: boolean) {
+        try {
+            await prisma.employee.update({
+                where: { id },
+                // 🔥 THE FIX: Tell Prisma to use the boolean 'is_active' column!
+                data: { is_active: isActive }
+            });
+            return { success: true };
+        } catch (error: any) {
+            console.error("Failed to toggle status:", error);
             return { success: false, error: error.message };
         }
     },

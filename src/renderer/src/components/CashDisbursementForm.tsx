@@ -1,6 +1,7 @@
 // src/renderer/src/components/CashDisbursementForm.tsx
 import * as React from 'react';
 import { useState, useEffect } from 'react';
+import { NewContactModal } from './NewContactModal'; // 🔥 IMPORTED THE MODAL
 
 const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
@@ -20,9 +21,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
     const [payeeId, setPayeeId] = useState('');
     const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
     const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
-    const [showAddPayee, setShowAddPayee] = useState(false);
-    const [newPayeeName, setNewPayeeName] = useState('');
-    const [isSubmittingPayee, setIsSubmittingPayee] = useState(false);
+    const [showAddPayee, setShowAddPayee] = useState(false); // 🔥 Controls the Modal now!
 
     // VAT & Source States
     const [sourceAccount, setSourceAccount] = useState('1010'); 
@@ -31,6 +30,17 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
 
     const [status, setStatus] = useState<{ type: 'error' | 'success', msg: string } | null>(null);
     const [loading, setLoading] = useState(false);
+
+    // 🔥 Separated this so the Modal can trigger a refresh after saving!
+    const loadPayees = async () => {
+        const api = (window as any).api || (window as any).electronAPI;
+        if (api && api.getPayees) {
+            try {
+                const payeeData = await api.getPayees();
+                setPayees(payeeData);
+            } catch (e) { console.error(e); }
+        }
+    };
 
     useEffect(() => {
         const loadData = async () => {
@@ -42,8 +52,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                         acc.account_type.name === 'Expense' || acc.account_type.name === 'Liability'
                     );
                     setExpenseAccounts(filtered);
-                    const payeeData = await api.getPayees();
-                    setPayees(payeeData);
+                    loadPayees();
                 } catch (e) { console.error(e); }
             }
         };
@@ -60,28 +69,6 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
         };
         fetchNextSeq();
     }, [refPrefix, status]);
-
-    const handleCreatePayee = async () => {
-        if (!newPayeeName.trim()) return;
-        setIsSubmittingPayee(true);
-        try {
-            const api = (window as any).api || (window as any).electronAPI;
-            await api.createPayee(newPayeeName, 'VENDOR');
-            const updatedPayees = await api.getPayees();
-            setPayees(updatedPayees);
-            const newRecord = updatedPayees.find((p: any) => p.name.toLowerCase() === newPayeeName.toLowerCase());
-            if (newRecord) setPayeeId(newRecord.id);
-            setShowAddPayee(false);
-            setNewPayeeName('');
-            setStatus({ type: 'success', msg: `Successfully added ${newPayeeName} to the database!` });
-            setTimeout(() => setStatus(null), 3000);
-        } catch (error) {
-            console.error(error);
-            setStatus({ type: 'error', msg: "Failed to create new record." });
-        } finally {
-            setIsSubmittingPayee(false);
-        }
-    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -147,7 +134,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
     const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- Select Vendor / Supplier --';
 
     return (
-        <div className="max-w-3xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
+        <div className="max-w-3xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm relative">
             
             {/* HEADER */}
             <div className="flex justify-between items-center mb-6 border-b border-[#B0DCDA] pb-4">
@@ -176,18 +163,12 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                     <div className="relative">
                         <div className="flex justify-between items-end mb-2">
                             <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">Vendor / Supplier</label>
-                            <button type="button" onClick={() => setShowAddPayee(!showAddPayee)} className="text-xs font-bold text-[#1B9387] hover:text-[#28958B] transition hover:underline">
-                                {showAddPayee ? 'Cancel' : '+ Add New'}
+                            {/* 🔥 MODAL TRIGGER BUTTON */}
+                            <button type="button" onClick={() => setShowAddPayee(true)} className="text-[10px] font-extrabold text-[#1B9387] hover:text-[#28958B] transition uppercase tracking-wider cursor-pointer border border-[#1B9387] px-2 py-0.5 rounded hover:bg-[#E9FAFA] shadow-sm">
+                                + Add New
                             </button>
                         </div>
                         
-                        {showAddPayee && (
-                            <div className="mb-3 p-3 bg-[#E9FAFA] border border-[#B0DCDA] rounded-md flex gap-3 shadow-inner">
-                                <input type="text" placeholder="e.g. Metro Drug Inc." value={newPayeeName} onChange={e => setNewPayeeName(e.target.value)} className="flex-1 bg-white border border-[#B0DCDA] rounded px-3 text-sm text-gray-800 outline-none focus:border-[#1B9387] transition" autoFocus />
-                                <button type="button" onClick={handleCreatePayee} disabled={isSubmittingPayee || !newPayeeName.trim()} className="bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-bold px-4 py-2 rounded transition disabled:opacity-50">Save</button>
-                            </div>
-                        )}
-
                         <div className="relative">
                             <div onClick={() => setIsPayeeDropdownOpen(!isPayeeDropdownOpen)} className={`w-full bg-[#FBF8F8] border ${isPayeeDropdownOpen ? 'border-[#1B9387] ring-2 ring-[#E9FAFA]' : 'border-[#B0DCDA]'} rounded-md p-3 text-sm transition cursor-pointer flex justify-between items-center`}>
                                 <span className={payeeId ? 'text-gray-800 font-medium' : 'text-gray-400 font-medium'}>{selectedPayeeName}</span>
@@ -202,7 +183,10 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                                         <li onClick={() => { setPayeeId(''); setPayeeTin(''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }} className="p-3 text-sm text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition font-medium">-- Clear Selection --</li>
                                         {filteredPayees.length > 0 ? (
                                             filteredPayees.map(p => (
-                                                <li key={p.id} onClick={() => { setPayeeId(p.id); setPayeeTin(p.tin || ''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }} className="p-3 text-sm text-gray-800 font-medium hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-t border-gray-50">{p.name}</li>
+                                                <li key={p.id} onClick={() => { setPayeeId(p.id); setPayeeTin(p.tin || ''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }} className="p-3 text-sm text-gray-800 font-medium hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-t border-gray-50">
+                                                    <span className="block">{p.name}</span>
+                                                    {p.tin && <span className="block text-[10px] text-gray-400 font-mono mt-0.5">TIN: {p.tin}</span>}
+                                                </li>
                                             ))
                                         ) : (
                                             <li className="p-3 text-sm text-gray-500 text-center border-t border-gray-50 italic">No vendors found.</li>
@@ -328,6 +312,17 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                     {loading ? 'Processing...' : 'Issue Disbursement'}
                 </button>
             </form>
+
+            {/* 🔥 NEW CONTACT MODAL COMPONENT */}
+            <NewContactModal 
+                isOpen={showAddPayee} 
+                onClose={() => setShowAddPayee(false)} 
+                onSaveSuccess={() => {
+                    loadPayees(); // Refresh the list
+                    setStatus({ type: 'success', msg: 'Vendor successfully added to directory!' });
+                }} 
+                defaultType="SUPPLIER"
+            />
         </div>
     );
 };

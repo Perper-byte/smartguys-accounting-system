@@ -1,14 +1,13 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { IPC_CHANNELS } from '../shared/ipc-channels'; 
 
 export const api = {
   // Authentication
-  login: (username: string, password: string) => ipcRenderer.invoke(IPC_CHANNELS.AUTH.LOGIN, username, password),
+  login: (username: string, password: string) => ipcRenderer.invoke('auth:login', username, password),
 
   // Ledger & Accounts
-  getAccounts: () => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.GET_ACCOUNTS),
-  submitJournalEntry: (entryData: any) => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.SUBMIT_ENTRY, entryData),
-  getAccountLedger: (accountId: string) => ipcRenderer.invoke(IPC_CHANNELS.LEDGER.GET_LEDGER, accountId),
+  getAccounts: () => ipcRenderer.invoke('ledger:getAccounts'),
+  submitJournalEntry: (entryData: any) => ipcRenderer.invoke('ledger:submitEntry', entryData),
+  getAccountLedger: (accountId: string) => ipcRenderer.invoke('ledger:getAccountLedger', accountId),
   getAllJournalEntries: () => ipcRenderer.invoke('ledger:getAllJournalEntries'),
   getFullLedgerReport: (startDate: string, endDate: string) => ipcRenderer.invoke('get-full-ledger-report', startDate, endDate),
 
@@ -47,6 +46,7 @@ export const api = {
   // Custom Reports
   getBooksOfAccounts: (bookType: string, startDate: string, endDate: string) => ipcRenderer.invoke('get-books-of-accounts', bookType, startDate, endDate),
   getAgedReceivables: () => ipcRenderer.invoke('get-aged-receivables'),
+  getInvoiceTracker: () => ipcRenderer.invoke('get-invoice-tracker'), 
 
   // Financial Reports
   getTrialBalance: (year?: number, month?: number) => ipcRenderer.invoke('reports:getTrialBalance', year, month),
@@ -55,25 +55,26 @@ export const api = {
   getCashFlowStatement: (year?: number, month?: number) => ipcRenderer.invoke('reports:getCashFlowStatement', year, month),
 
   // Exporters
-  exportTrialBalanceExcel: (year?: number, month?: number) => ipcRenderer.invoke(IPC_CHANNELS.EXPORT.TRIAL_BALANCE_EXCEL, year, month),
-  exportPDF: (filename: string) => ipcRenderer.invoke(IPC_CHANNELS.EXPORT.PRINT_PDF, filename),
+  exportTrialBalanceExcel: (year?: number, month?: number) => ipcRenderer.invoke('export:trialBalanceExcel', year, month),
+  exportPDF: (filename: string) => ipcRenderer.invoke('export:printToPDF', filename),
 
   // Employees & Payroll
   getEmployees: () => ipcRenderer.invoke('get-employees'),
   createEmployee: (data: any) => ipcRenderer.invoke('create-employee', data),
   processPayroll: (data: any) => ipcRenderer.invoke('process-payroll', data),
+  toggleEmployeeStatus: (id: string, isActive: boolean) => ipcRenderer.invoke('toggle-employee-status', id, isActive),
 
   // Audit Logs
   logAction: (userId: string, action: string, details: string) => ipcRenderer.invoke('log-action', userId, action, details),
   getAuditLogs: (startDate: string, endDate: string) => ipcRenderer.invoke('get-audit-logs', startDate, endDate),
 
   // Backups & Tax
-  triggerBackup: () => ipcRenderer.invoke(IPC_CHANNELS.BACKUP.TRIGGER),
-  generate2550Q: (year: number, quarter: number) => ipcRenderer.invoke(IPC_CHANNELS.TAX.GENERATE_2550Q, year, quarter),
-  generateRelief: (year: number, quarter: number) => ipcRenderer.invoke(IPC_CHANNELS.TAX.GENERATE_RELIEF, year, quarter),
+  triggerBackup: () => ipcRenderer.invoke('backup:triggerBackup'),
+  generate2550Q: (year: number, quarter: number) => ipcRenderer.invoke('tax:generate2550Q', year, quarter),
+  generateRelief: (year: number, quarter: number) => ipcRenderer.invoke('tax:generateRelief', year, quarter),
 
   // Analytics
-  getAnalyticsMetrics: (timeframe: string) => ipcRenderer.invoke(IPC_CHANNELS.ANALYTICS.GET_METRICS, timeframe),
+  getAnalyticsMetrics: (timeframe: string) => ipcRenderer.invoke('analytics:getMetrics', timeframe),
 
   // Users
   getUsers: () => ipcRenderer.invoke('get-users'),
