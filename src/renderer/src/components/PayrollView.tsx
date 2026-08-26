@@ -1,6 +1,7 @@
 // src/renderer/src/components/PayrollView.tsx
 import * as React from 'react';
 import { useState, useEffect } from 'react';
+import * as XLSX from 'xlsx'; // 🔥 EXCEL EXPORT LIBRARY
 
 export function PayrollView({ userId }: { userId: string }) {
     const [view, setView] = useState<'RUN' | 'DIRECTORY'>('RUN');
@@ -27,19 +28,30 @@ export function PayrollView({ userId }: { userId: string }) {
             const data = await api.getEmployees();
             setEmployees(data || []);
             
-            // 🔥 THE FIX: Check 'is_active' boolean
             const activeEmployees = (data || []).filter((emp: any) => emp.is_active !== false);
 
-            const initialItems = activeEmployees.map((emp: any) => ({
-                id: emp.id, 
-                name: `${emp.first_name} ${emp.last_name}`,
-                gross: emp.monthly_salary ? (Number(emp.monthly_salary) / 2) : 0, 
-                deductions: 0, 
-                tax: 0, 
-                net: 0
-            }));
+            const initialItems = activeEmployees.map((emp: any) => {
+                const base = emp.monthly_salary ? (Number(emp.monthly_salary) / 2) : 0;
+                return {
+                    id: emp.id, 
+                    name: `${emp.first_name} ${emp.last_name}`,
+                    basePay: base,
+                    overtime: 0,
+                    nightDiff: 0,
+                    otherEarnings: 0,
+                    gross: base, 
+                    sss: 0,
+                    philhealth: 0,
+                    pagibig: 0,
+                    cashAdvance: 0,
+                    licenseFee: 0,
+                    otherDeductions: 0,
+                    deductions: 0, 
+                    tax: 0, 
+                    net: base
+                };
+            });
             
-            initialItems.forEach((item: any) => item.net = item.gross - item.deductions - item.tax);
             setPayrollItems(initialItems);
         } catch (error) { 
             console.error(error); 
@@ -67,7 +79,11 @@ export function PayrollView({ userId }: { userId: string }) {
         setPayrollItems(prev => prev.map(item => {
             if (item.id === id) {
                 const updated = { ...item, [field]: value };
-                updated.net = updated.gross - updated.deductions - updated.tax;
+                
+                updated.gross = (updated.basePay || 0) + (updated.overtime || 0) + (updated.nightDiff || 0) + (updated.otherEarnings || 0);
+                updated.deductions = (updated.sss || 0) + (updated.philhealth || 0) + (updated.pagibig || 0) + (updated.cashAdvance || 0) + (updated.licenseFee || 0) + (updated.otherDeductions || 0);
+                updated.net = updated.gross - updated.deductions - (updated.tax || 0);
+                
                 return updated;
             }
             return item;
@@ -132,7 +148,7 @@ export function PayrollView({ userId }: { userId: string }) {
                 referenceNo: `PY-${refSequence.padStart(3, '0')}`,
                 description,
                 userId,
-                employees: payrollItems
+                employees: payrollItems 
             };
 
             const response = await api.processPayroll(payload);
@@ -150,6 +166,45 @@ export function PayrollView({ userId }: { userId: string }) {
         }
     };
 
+    // 🔥 HANDLE EXCEL EXPORT FOR PAYROLL
+    const handleExportExcel = () => {
+        if (payrollItems.length === 0) return alert("No active employees to export.");
+
+        const exportData = payrollItems.map(emp => ({
+            'Employee Name': emp.name,
+            'Base Pay': emp.basePay || 0,
+            'Overtime': emp.overtime || 0,
+            'Night Diff': emp.nightDiff || 0,
+            'Other Earnings': emp.otherEarnings || 0,
+            'Total Gross': emp.gross || 0,
+            'SSS': emp.sss || 0,
+            'PhilHealth': emp.philhealth || 0,
+            'Pag-IBIG': emp.pagibig || 0,
+            'Cash Advance': emp.cashAdvance || 0,
+            'License Fee': emp.licenseFee || 0,
+            'Other Deductions': emp.otherDeductions || 0,
+            'Total Deductions': emp.deductions || 0,
+            'Tax Withheld': emp.tax || 0,
+            'Net Pay': emp.net || 0
+        }));
+
+        // Add Grand Totals
+        exportData.push({
+            'Employee Name': 'GRAND TOTALS',
+            'Base Pay': '', 'Overtime': '', 'Night Diff': '', 'Other Earnings': '',
+            'Total Gross': totalGross,
+            'SSS': '', 'PhilHealth': '', 'Pag-IBIG': '', 'Cash Advance': '', 'License Fee': '', 'Other Deductions': '',
+            'Total Deductions': totalDeductions,
+            'Tax Withheld': totalTax,
+            'Net Pay': totalNet
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Payroll Run");
+        XLSX.writeFile(workbook, `Payroll_Run_${date}.xlsx`);
+    };
+
     const formatCurrency = (val: number) => `₱ ${val.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 
     const totalGross = payrollItems.reduce((sum, item) => sum + item.gross, 0);
@@ -157,8 +212,20 @@ export function PayrollView({ userId }: { userId: string }) {
     const totalTax = payrollItems.reduce((sum, item) => sum + item.tax, 0);
     const totalNet = payrollItems.reduce((sum, item) => sum + item.net, 0);
 
+    const renderInput = (id: number, value: number, field: string, textColor: string, focusBg: string) => (
+        <td className="p-0 border-r border-gray-200">
+            <input 
+                type="number" min="0" step="0.01"
+                value={value === 0 ? '' : value} 
+                placeholder="0.00" 
+                onChange={e => handleUpdateItem(id, field, Number(e.target.value))} 
+                className={`w-28 h-full min-h-[48px] bg-transparent px-3 text-right font-mono font-bold ${textColor} outline-none focus:${focusBg} transition-colors`} 
+            />
+        </td>
+    );
+
     return (
-        <div className="max-w-6xl mx-auto h-full flex flex-col font-sans text-gray-800">
+        <div className="max-w-7xl mx-auto h-full flex flex-col font-sans text-gray-800">
             
             {/* HEADER */}
             <div className="flex justify-between items-end mb-6 border-b border-[#B0DCDA] pb-4">
@@ -187,8 +254,8 @@ export function PayrollView({ userId }: { userId: string }) {
             {/* RUN PAYROLL TAB                            */}
             {/* ========================================== */}
             {view === 'RUN' && (
-                <div className="flex-1 flex flex-col animate-in fade-in duration-300">
-                    <div className="grid grid-cols-3 gap-6 mb-6">
+                <div className="flex-1 flex flex-col animate-in fade-in duration-300 min-h-0">
+                    <div className="grid grid-cols-4 gap-6 mb-4">
                         <div>
                             <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Payroll Date</label>
                             <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
@@ -200,61 +267,102 @@ export function PayrollView({ userId }: { userId: string }) {
                                 <input type="text" required value={refSequence} onChange={e => setRefSequence(e.target.value)} placeholder="001" className="w-full bg-white border border-[#B0DCDA] rounded-r-md p-3 text-sm font-mono font-bold text-gray-800 focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Description / Memo</label>
-                            <input type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
+                        <div className="col-span-2 flex items-end justify-between">
+                            <div className="flex-1 mr-4">
+                                <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Description / Memo</label>
+                                <input type="text" value={description} onChange={e => setDescription(e.target.value)} className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" />
+                            </div>
+                            
+                            {/* 🔥 EXCEL EXPORT BUTTON FOR PAYROLL */}
+                            <button onClick={handleExportExcel} disabled={payrollItems.length === 0} className="px-5 py-3 h-12 bg-white hover:bg-[#E9FAFA] border border-[#B0DCDA] text-xs font-extrabold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center justify-center space-x-2 cursor-pointer disabled:opacity-50">
+                                <span>📊</span> <span>Export to Excel</span>
+                            </button>
                         </div>
                     </div>
 
-                    <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-sm flex-1 flex flex-col overflow-hidden">
-                        <div className="flex-1 overflow-auto">
-                            <table className="w-full text-left text-sm">
-                                <thead className="bg-[#FBF8F8] sticky top-0 z-10 shadow-sm">
-                                    <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold border-b border-[#B0DCDA]">
-                                        <th className="p-4 border-r border-[#B0DCDA]">Employee Name</th>
-                                        <th className="p-4 text-right border-r border-[#B0DCDA]">Gross Pay</th>
-                                        <th className="p-4 text-right text-orange-500 border-r border-[#B0DCDA]">Gov. Deductions (SSS/PH)</th>
-                                        <th className="p-4 text-right text-red-500 border-r border-[#B0DCDA]">Tax Withheld</th>
-                                        <th className="p-4 text-right text-[#1B9387]">Net Pay</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-100">
-                                    {payrollItems.length === 0 ? (
-                                        <tr><td colSpan={5} className="p-8 text-center text-gray-500 italic font-medium">No active employees found. Go to the Directory tab to add them.</td></tr>
-                                    ) : (
-                                        payrollItems.map((emp) => (
-                                            <tr key={emp.id} className="hover:bg-[#E9FAFA]/50 transition-colors even:bg-gray-50 odd:bg-white">
-                                                <td className="p-4 font-bold text-gray-800 border-r border-[#B0DCDA]">{emp.name}</td>
-                                                <td className="p-0 border-r border-[#B0DCDA]">
-                                                    <input type="number" min="0" value={emp.gross === 0 ? '' : emp.gross} placeholder="0.00" onChange={e => handleUpdateItem(emp.id, 'gross', Number(e.target.value))} className="w-full h-full min-h-[50px] bg-transparent px-4 py-2 text-right font-mono font-bold text-gray-800 outline-none focus:bg-[#E9FAFA]" />
-                                                </td>
-                                                <td className="p-0 border-r border-[#B0DCDA]">
-                                                    <input type="number" min="0" value={emp.deductions === 0 ? '' : emp.deductions} placeholder="0.00" onChange={e => handleUpdateItem(emp.id, 'deductions', Number(e.target.value))} className="w-full h-full min-h-[50px] bg-transparent px-4 py-2 text-right font-mono font-bold text-orange-500 outline-none focus:bg-orange-50" />
-                                                </td>
-                                                <td className="p-0 border-r border-[#B0DCDA]">
-                                                    <input type="number" min="0" value={emp.tax === 0 ? '' : emp.tax} placeholder="0.00" onChange={e => handleUpdateItem(emp.id, 'tax', Number(e.target.value))} className="w-full h-full min-h-[50px] bg-transparent px-4 py-2 text-right font-mono font-bold text-red-500 outline-none focus:bg-red-50" />
-                                                </td>
-                                                <td className="p-4 text-right font-black font-mono text-[#1B9387] text-base bg-[#FBF8F8]/50">
-                                                    {formatCurrency(emp.net)}
-                                                </td>
-                                            </tr>
-                                        ))
-                                    )}
-                                </tbody>
-                            </table>
-                        </div>
+                    <div className="flex-1 overflow-x-auto bg-white border border-[#B0DCDA] rounded-xl shadow-sm mb-6 relative">
+                        <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
+                            <thead className="bg-[#FBF8F8] sticky top-0 z-30 shadow-sm">
+                                {/* SUPER HEADER (GROUPING) */}
+                                <tr className="border-b border-gray-200 text-center text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
+                                    <th className="p-2 border-r border-[#B0DCDA] sticky left-0 z-40 bg-[#FBF8F8]"></th>
+                                    <th colSpan={4} className="p-2 border-r border-[#B0DCDA] text-blue-600 bg-blue-50/50">Earnings</th>
+                                    <th colSpan={7} className="p-2 border-r border-[#B0DCDA] text-orange-500 bg-orange-50/50">Deductions & Taxes</th>
+                                    <th className="p-2 text-[#1B9387] bg-[#E9FAFA]/50">Payout</th>
+                                </tr>
 
-                        <div className="bg-[#FBF8F8] border-t border-[#B0DCDA] p-6 flex justify-between items-center shadow-inner">
-                            <div className="grid grid-cols-4 gap-8 text-sm w-3/4">
-                                <div><p className="text-gray-500 uppercase text-[10px] font-extrabold tracking-widest">Total Gross</p><p className="font-mono text-gray-800 font-bold text-lg mt-1">{formatCurrency(totalGross)}</p></div>
-                                <div><p className="text-orange-500 uppercase text-[10px] font-extrabold tracking-widest">Total Deductions</p><p className="font-mono text-orange-500 font-bold text-lg mt-1">{formatCurrency(totalDeductions)}</p></div>
-                                <div><p className="text-red-500 uppercase text-[10px] font-extrabold tracking-widest">Total Tax W/H</p><p className="font-mono text-red-500 font-bold text-lg mt-1">{formatCurrency(totalTax)}</p></div>
-                                <div><p className="text-[#1B9387] uppercase text-[10px] font-extrabold tracking-widest">Total Net Payout</p><p className="font-mono text-[#1B9387] font-black text-xl mt-1">{formatCurrency(totalNet)}</p></div>
-                            </div>
-                            <button onClick={handleProcessPayroll} disabled={loading || payrollItems.length === 0} className="px-8 py-3.5 bg-[#1B9387] hover:bg-[#28958B] disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-lg font-bold transition shadow-md tracking-wide cursor-pointer uppercase text-sm">
-                                {loading ? 'Processing...' : 'Post Payroll'}
-                            </button>
+                                {/* COLUMN HEADERS */}
+                                <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold border-b border-[#B0DCDA]">
+                                    <th className="p-3 border-r border-[#B0DCDA] sticky left-0 z-40 bg-[#FBF8F8] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">Employee Name</th>
+                                    
+                                    <th className="p-3 text-right border-r border-gray-200">Base Pay</th>
+                                    <th className="p-3 text-right border-r border-gray-200">Overtime</th>
+                                    <th className="p-3 text-right border-r border-gray-200">Night Diff</th>
+                                    <th className="p-3 text-right border-r border-gray-200">Other Earn.</th>
+                                    <th className="p-3 text-right border-r border-[#B0DCDA] text-blue-600 bg-blue-50/50">Total Gross</th>
+
+                                    <th className="p-3 text-right border-r border-gray-200">SSS</th>
+                                    <th className="p-3 text-right border-r border-gray-200">PhilHealth</th>
+                                    <th className="p-3 text-right border-r border-gray-200">Pag-IBIG</th>
+                                    <th className="p-3 text-right border-r border-gray-200">Cash Adv.</th>
+                                    <th className="p-3 text-right border-r border-gray-200">Lic. Fee</th>
+                                    <th className="p-3 text-right border-r border-gray-200">Other Ded.</th>
+                                    <th className="p-3 text-right border-r border-[#B0DCDA] text-red-500 bg-red-50/50">Tax W/H</th>
+                                    
+                                    <th className="p-3 text-right text-[#1B9387] bg-[#E9FAFA]/50 pr-5">Net Pay</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {payrollItems.length === 0 ? (
+                                    <tr><td colSpan={14} className="p-8 text-center text-gray-500 italic font-medium">No active employees found. Go to the Directory tab to add them.</td></tr>
+                                ) : (
+                                    payrollItems.map((emp) => (
+                                        <tr key={emp.id} className="hover:bg-[#E9FAFA]/30 transition-colors group">
+                                            {/* STICKY LEFT COLUMN */}
+                                            <td className="p-3 font-bold text-gray-800 border-r border-[#B0DCDA] sticky left-0 z-10 bg-white group-hover:bg-[#FBF8F8] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
+                                                {emp.name}
+                                            </td>
+
+                                            {/* EARNINGS */}
+                                            {renderInput(emp.id, emp.basePay, 'basePay', 'text-gray-800', 'bg-blue-50')}
+                                            {renderInput(emp.id, emp.overtime, 'overtime', 'text-blue-600', 'bg-blue-50')}
+                                            {renderInput(emp.id, emp.nightDiff, 'nightDiff', 'text-blue-600', 'bg-blue-50')}
+                                            {renderInput(emp.id, emp.otherEarnings, 'otherEarnings', 'text-blue-600', 'bg-blue-50')}
+                                            
+                                            <td className="p-3 text-right font-black font-mono text-blue-600 border-r border-[#B0DCDA] bg-blue-50/30">
+                                                {formatCurrency(emp.gross)}
+                                            </td>
+
+                                            {/* DEDUCTIONS */}
+                                            {renderInput(emp.id, emp.sss, 'sss', 'text-orange-500', 'bg-orange-50')}
+                                            {renderInput(emp.id, emp.philhealth, 'philhealth', 'text-rose-500', 'bg-rose-50')}
+                                            {renderInput(emp.id, emp.pagibig, 'pagibig', 'text-amber-500', 'bg-amber-50')}
+                                            {renderInput(emp.id, emp.cashAdvance, 'cashAdvance', 'text-red-500', 'bg-red-50')}
+                                            {renderInput(emp.id, emp.licenseFee, 'licenseFee', 'text-red-500', 'bg-red-50')}
+                                            {renderInput(emp.id, emp.otherDeductions, 'otherDeductions', 'text-red-500', 'bg-red-50')}
+                                            {renderInput(emp.id, emp.tax, 'tax', 'text-red-600', 'bg-red-50')}
+
+                                            {/* NET PAY */}
+                                            <td className="p-3 pr-5 text-right font-black font-mono text-[#1B9387] text-base bg-[#FBF8F8]/50">
+                                                {formatCurrency(emp.net)}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="bg-[#FBF8F8] border border-[#B0DCDA] rounded-xl p-6 flex justify-between items-center shadow-sm shrink-0">
+                        <div className="grid grid-cols-4 gap-8 text-sm w-3/4">
+                            <div><p className="text-gray-500 uppercase text-[10px] font-extrabold tracking-widest">Total Gross</p><p className="font-mono text-gray-800 font-bold text-lg mt-1">{formatCurrency(totalGross)}</p></div>
+                            <div><p className="text-orange-500 uppercase text-[10px] font-extrabold tracking-widest">Total Deductions</p><p className="font-mono text-orange-500 font-bold text-lg mt-1">{formatCurrency(totalDeductions)}</p></div>
+                            <div><p className="text-red-500 uppercase text-[10px] font-extrabold tracking-widest">Total Tax W/H</p><p className="font-mono text-red-500 font-bold text-lg mt-1">{formatCurrency(totalTax)}</p></div>
+                            <div><p className="text-[#1B9387] uppercase text-[10px] font-extrabold tracking-widest">Total Net Payout</p><p className="font-mono text-[#1B9387] font-black text-xl mt-1">{formatCurrency(totalNet)}</p></div>
                         </div>
+                        <button onClick={handleProcessPayroll} disabled={loading || payrollItems.length === 0} className="px-8 py-3.5 bg-[#1B9387] hover:bg-[#28958B] disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-lg font-bold transition shadow-md tracking-wide cursor-pointer uppercase text-sm">
+                            {loading ? 'Processing...' : 'Post Payroll'}
+                        </button>
                     </div>
                 </div>
             )}
@@ -308,7 +416,6 @@ export function PayrollView({ userId }: { userId: string }) {
                                     <tr><td colSpan={5} className="p-12 text-center text-gray-500 italic font-medium">No employees found.</td></tr>
                                 ) : (
                                     employees.map((emp) => {
-                                        // 🔥 THE FIX: Check 'is_active' boolean
                                         const isActive = emp.is_active !== false; 
                                         
                                         return (

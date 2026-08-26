@@ -57,6 +57,18 @@ export const api = {
   // Exporters
   exportTrialBalanceExcel: (year?: number, month?: number) => ipcRenderer.invoke('export:trialBalanceExcel', year, month),
   exportPDF: (filename: string) => ipcRenderer.invoke('export:printToPDF', filename),
+  getAllServiceItems: () => ipcRenderer.invoke('get-all-service-items'),
+  createServiceItem: (data: any) => ipcRenderer.invoke('create-service-item', data),
+  updateServiceItem: (id: number, data: any) => ipcRenderer.invoke('update-service-item', id, data),
+  getAccountTypes: () => ipcRenderer.invoke('ledger:getAccountTypes'),
+  createAccount: (data: any) => ipcRenderer.invoke('ledger:createAccount', data),
+  importPayees: (data: any[]) => ipcRenderer.invoke('import-payees', data),
+  // Inventory
+getInventoryItems: () => ipcRenderer.invoke('get-inventory-items'),
+createInventoryItem: (data: any) => ipcRenderer.invoke('create-inventory-item', data),
+getInventoryLogs: (itemId: string) => ipcRenderer.invoke('get-inventory-logs', itemId),
+addInventoryLog: (data: any) => ipcRenderer.invoke('add-inventory-log', data),
+updateUserPermissions: (id: string, perms: string[]) => ipcRenderer.invoke('update-user-permissions', id, perms),
 
   // Employees & Payroll
   getEmployees: () => ipcRenderer.invoke('get-employees'),
@@ -67,6 +79,8 @@ export const api = {
   // Audit Logs
   logAction: (userId: string, action: string, details: string) => ipcRenderer.invoke('log-action', userId, action, details),
   getAuditLogs: (startDate: string, endDate: string) => ipcRenderer.invoke('get-audit-logs', startDate, endDate),
+  getServiceItems: () => ipcRenderer.invoke('get-service-items'),
+  
 
   // Backups & Tax
   triggerBackup: () => ipcRenderer.invoke('backup:triggerBackup'),

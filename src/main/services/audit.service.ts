@@ -7,17 +7,26 @@ export const AuditService = {
     // 1. Function to secretly record actions
     async logAction(userId: string, action: string, details: string) {
         try {
+            // First, verify the user actually exists in the DB to prevent Foreign Key crashes!
+            const userExists = await prisma.user.findUnique({ where: { id: userId } });
+            
+            // If the user doesn't exist, we look for the SYSTEM user we just created.
+            let validUserId = userId;
+            if (!userExists) {
+                const sysUser = await prisma.user.findUnique({ where: { username: 'SYSTEM' } });
+                if (!sysUser) return; // If there is no SYSTEM user either, just quietly abort.
+                validUserId = sysUser.id;
+            }
+
             await prisma.auditLog.create({
                 data: {
-                    user_id: userId,
-                    action: action,
-                    details: details
+                    user_id: validUserId,
+                    action,
+                    details
                 }
             });
-            return { success: true };
-        } catch (error: any) {
+        } catch (error) {
             console.error("Failed to write to audit log:", error);
-            return { success: false, error: error.message };
         }
     },
 

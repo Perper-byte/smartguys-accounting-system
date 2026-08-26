@@ -498,6 +498,101 @@ export const LedgerService = {
         return { success: true };
     },
 
+    async getServiceItems() {
+        const items = await prisma.serviceItem.findMany({
+            where: { is_active: true },
+            orderBy: [{ category: 'asc' }, { name: 'asc' }]
+        });
+        return items.map(item => ({ ...item, price: Number(item.price) }));
+    },
+
+    async getAllServiceItems() {
+        const items = await prisma.serviceItem.findMany({
+            orderBy: [{ category: 'asc' }, { name: 'asc' }]
+        });
+        return items.map(item => ({ ...item, price: Number(item.price) }));
+    },
+
+    async createServiceItem(data: { category: string, name: string, price: number }) {
+        try {
+            const item = await prisma.serviceItem.create({
+                data: {
+                    category: data.category,
+                    name: data.name,
+                    price: data.price,
+                    is_active: true
+                }
+            });
+            // 🔥 THE FIX: Cast the Decimal price to a normal Number!
+            return { success: true, data: { ...item, price: Number(item.price) } };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    },
+
+    async updateServiceItem(id: number, data: { price?: number, is_active?: boolean, name?: string }) {
+        try {
+            const item = await prisma.serviceItem.update({
+                where: { id },
+                data: data
+            });
+            // 🔥 THE FIX: Cast the Decimal price to a normal Number!
+            return { success: true, data: { ...item, price: Number(item.price) } };
+        } catch(error: any) {
+            return { success: false, error: error.message };
+        }
+    },
+
+    async getAccountTypes() {
+        return await prisma.accountType.findMany({ orderBy: { name: 'asc' } });
+    },
+
+    async importPayees(payees: Array<{ name: string, type: string, tin?: string, email?: string, phone?: string, address?: string }>) {
+        try {
+            let count = 0;
+            for (const p of payees) {
+                // Prevent duplicate names
+                const exists = await prisma.payee.findFirst({ where: { name: p.name } });
+                if (!exists) {
+                    await prisma.payee.create({
+                        data: {
+                            name: p.name,
+                            type: p.type || 'PATIENT',
+                            tin: p.tin || null,
+                            email: p.email || null,
+                            phone_number: p.phone || null,
+                            address: p.address || null
+                        }
+                    });
+                    count++;
+                }
+            }
+            return { success: true, count };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    },
+
+    async createAccount(data: { code: string, name: string, type_id: string, tax_category?: string }) {
+        try {
+            // Check if account code already exists to prevent crashes
+            const existing = await prisma.account.findUnique({ where: { code: data.code } });
+            if (existing) throw new Error(`Account code ${data.code} already exists.`);
+
+            const account = await prisma.account.create({
+                data: {
+                    code: data.code,
+                    name: data.name,
+                    type_id: data.type_id,
+                    tax_category: data.tax_category || null
+                }
+            });
+            return { success: true, data: account };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    },
+
     async getUserSalesHistory(userId: string) {
         const entries = await prisma.journalEntry.findMany({
             where: {
@@ -517,5 +612,6 @@ export const LedgerService = {
                 lines: entry.lines.map(l => ({ accountCode: l.account.code, accountName: l.account.name, debit: Number(l.debit), credit: Number(l.credit) }))
             };
         });
+        
     }
 };

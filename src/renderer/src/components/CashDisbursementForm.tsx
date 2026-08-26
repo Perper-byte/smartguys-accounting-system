@@ -1,7 +1,7 @@
 // src/renderer/src/components/CashDisbursementForm.tsx
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { NewContactModal } from './NewContactModal'; // 🔥 IMPORTED THE MODAL
+import { NewContactModal } from './NewContactModal'; 
 
 const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
@@ -21,7 +21,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
     const [payeeId, setPayeeId] = useState('');
     const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
     const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
-    const [showAddPayee, setShowAddPayee] = useState(false); // 🔥 Controls the Modal now!
+    const [showAddPayee, setShowAddPayee] = useState(false);
 
     // VAT & Source States
     const [sourceAccount, setSourceAccount] = useState('1010'); 
@@ -31,7 +31,6 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
     const [status, setStatus] = useState<{ type: 'error' | 'success', msg: string } | null>(null);
     const [loading, setLoading] = useState(false);
 
-    // 🔥 Separated this so the Modal can trigger a refresh after saving!
     const loadPayees = async () => {
         const api = (window as any).api || (window as any).electronAPI;
         if (api && api.getPayees) {
@@ -134,7 +133,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
     const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- Select Vendor / Supplier --';
 
     return (
-        <div className="max-w-3xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm relative">
+        <div className="max-w-3xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm relative mb-12">
             
             {/* HEADER */}
             <div className="flex justify-between items-center mb-6 border-b border-[#B0DCDA] pb-4">
@@ -146,7 +145,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
 
             {/* STATUS MESSAGE */}
             {status && (
-                <div className={`mb-6 p-4 rounded-md text-sm font-bold ${status.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border border-[#B0DCDA]' : 'bg-red-50 text-red-600 border border-red-200'}`}>
+                <div className={`mb-6 p-4 rounded-md text-sm font-bold shadow-sm border ${status.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]' : 'bg-red-50 text-red-600 border-red-200'}`}>
                     {status.type === 'success' ? '✅ ' : '⚠️ '}{status.msg}
                 </div>
             )}
@@ -163,7 +162,6 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                     <div className="relative">
                         <div className="flex justify-between items-end mb-2">
                             <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">Vendor / Supplier</label>
-                            {/* 🔥 MODAL TRIGGER BUTTON */}
                             <button type="button" onClick={() => setShowAddPayee(true)} className="text-[10px] font-extrabold text-[#1B9387] hover:text-[#28958B] transition uppercase tracking-wider cursor-pointer border border-[#1B9387] px-2 py-0.5 rounded hover:bg-[#E9FAFA] shadow-sm">
                                 + Add New
                             </button>
@@ -204,7 +202,9 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                         <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Source of Funds (Credit)</label>
                         <select required value={sourceAccount} onChange={e => setSourceAccount(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition cursor-pointer">
                             <option value="1010">1010 - Cash in Bank (Checking)</option>
-                            <option value="1020">1020 - Petty Cash Fund (On Hand)</option>
+                            <option value="1020">1020 - Petty Cash Fund</option>
+                            {/* 🔥 FIX: Added the new 1030 Cash in Hand Option! */}
+                            <option value="1030">1030 - Cash in Hand</option>
                         </select>
                     </div>
                     
@@ -313,12 +313,12 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                 </button>
             </form>
 
-            {/* 🔥 NEW CONTACT MODAL COMPONENT */}
+            {/* NEW CONTACT MODAL COMPONENT */}
             <NewContactModal 
                 isOpen={showAddPayee} 
                 onClose={() => setShowAddPayee(false)} 
                 onSaveSuccess={() => {
-                    loadPayees(); // Refresh the list
+                    loadPayees(); 
                     setStatus({ type: 'success', msg: 'Vendor successfully added to directory!' });
                 }} 
                 defaultType="SUPPLIER"

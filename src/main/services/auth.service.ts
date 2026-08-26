@@ -4,43 +4,32 @@ import * as crypto from 'crypto'; // Native Node module for basic hashing
 
 const prisma = new PrismaClient();
 
-export class AuthService {
-  // Simple hashing function for password (in a real app, use bcrypt, but crypto is fine for local-first)
-  static hashPassword(password: string): string {
-    return crypto.createHash('sha256').update(password).digest('hex')
-  }
+export const AuthService = {
+    async login(username: string, passwordInput: string) {
+        const user = await prisma.user.findUnique({ where: { username } });
+        if (!user) throw new Error("Invalid username or password.");
+        if (!user.is_active) throw new Error("This account has been disabled.");
 
-  static async login(username: string, password: string) {
-    const hashedPassword = this.hashPassword(password)
+        const hash = crypto.createHash('sha256').update(passwordInput).digest('hex');
+        if (user.password_hash !== hash) throw new Error("Invalid username or password.");
 
-    const user = await prisma.user.findUnique({
-      where: { username: username }
-    });
+        let parsedPerms = [];
+        if (user.permissions) {
+            try {
+                parsedPerms = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
+            } catch (e) { parsedPerms = []; }
+        }
 
-    if (!user) {
-      throw new Error("Invalid Credentials: User not found");
-    }
+        // 🔥 CRITICAL FIX: Send the custom permissions back to the frontend on login!
+        return {
+            id: user.id,
+            username: user.username,
+            role: user.role,
+            permissions: parsedPerms 
+        };
+    },
 
-    // ==========================================
-    // ---> ADDED THIS SECURITY CHECK HERE <---
-    // ==========================================
-    if (user.is_active === false) {
-      throw new Error("Access Denied: This account has been disabled. Please contact the IT Admin.");
-    }
-
-    if (user.password_hash !== hashedPassword) {
-      throw new Error("Invalid Credentials: Password incorrect");
-    }
-
-    // Return user data WITHOUT the password hash for security
-    return {
-      id: user.id,
-      username: user.username,
-      role: user.role, // e.g. "CASHIER", "ACCOUNTANT", "MANAGER"
-    };
-  }
-
-  static async pingDatabase(): Promise<boolean> {
+   async pingDatabase(): Promise<boolean> {
     try {
       // A tiny, fast query just to prove the connection is alive
       await prisma.user.findFirst();

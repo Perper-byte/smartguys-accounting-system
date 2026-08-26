@@ -15,6 +15,7 @@ import { AuthService } from './services/auth.service';
 import { UserService } from './services/user.service'; 
 import { AuditService } from './services/audit.service'; 
 import { PayrollService } from './services/payroll.service'; 
+import { InventoryService } from './services/inventory.service';
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -69,6 +70,18 @@ app.whenReady().then(() => {
           return { success: true }; 
       } catch (err: any) { return { success: false, error: err.message }; } 
   });
+  // Inventory
+  ipcMain.handle('update-user-permissions', async (e, id, perms) => { try { await UserService.updateUserPermissions(id, perms); return { success: true }; } catch(err:any) { return { success: false, error: err.message }; } });
+ipcMain.handle('get-inventory-items', async () => { try { return await InventoryService.getItems(); } catch (err) { return []; } });
+ipcMain.handle('create-inventory-item', async (e, data) => { try { return await InventoryService.createItem(data); } catch (err: any) { return { success: false, error: err.message }; } });
+ipcMain.handle('get-inventory-logs', async (e, itemId) => { try { return await InventoryService.getLogs(itemId); } catch (err) { return []; } });
+ipcMain.handle('add-inventory-log', async (e, data) => { 
+    try { 
+        const result = await InventoryService.addLog(data); 
+        if (result.success) await AuditService.logAction(data.userId, 'INVENTORY', `Updated stock for item ${data.itemId}`);
+        return result;
+    } catch (err: any) { return { success: false, error: err.message }; } 
+});
   
   ipcMain.handle('reset-user-password', async (e, userId, newPassword) => { 
       try { 
@@ -88,6 +101,14 @@ app.whenReady().then(() => {
       const result = await LedgerService.createPayee(name, type, tin, email, phone, address); 
       if (result.success) await AuditService.logAction('SYSTEM', 'CREATE CONTACT', `Added new ${type}: ${name}`);
       return result;
+  });
+
+  ipcMain.handle('import-payees', async (e, data) => { 
+      try { 
+          const result = typeof LedgerService.importPayees === 'function' ? await LedgerService.importPayees(data) : { success: false }; 
+          if (result.success) await AuditService.logAction('SYSTEM', 'IMPORT CONTACTS', `Imported ${result.count} contacts from Excel.`);
+          return result;
+      } catch (err: any) { return { success: false, error: err.message }; } 
   });
   
   ipcMain.handle('get-payee-balance', async (e, payeeId: string) => { return await LedgerService.getPayeeBalance(payeeId); });
@@ -308,6 +329,34 @@ app.whenReady().then(() => {
     return 'localhost';
   });
 
+  ipcMain.handle('get-all-service-items', async () => { try { return typeof LedgerService.getAllServiceItems === 'function' ? await LedgerService.getAllServiceItems() : []; } catch (err) { return []; } });
+  
+  ipcMain.handle('create-service-item', async (e, data) => { 
+      try { 
+          const result = typeof LedgerService.createServiceItem === 'function' ? await LedgerService.createServiceItem(data) : { success: false }; 
+          if (result.success) await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Added new clinic procedure: ${data.name}`);
+          return result;
+      } catch (err: any) { return { success: false, error: err.message }; } 
+  });
+  
+  ipcMain.handle('update-service-item', async (e, id, data) => { 
+      try { 
+          const result = typeof LedgerService.updateServiceItem === 'function' ? await LedgerService.updateServiceItem(id, data) : { success: false }; 
+          if (result.success) await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Updated pricing/status for procedure ID: ${id}`);
+          return result;
+      } catch (err: any) { return { success: false, error: err.message }; } 
+  });
+
+  ipcMain.handle('ledger:getAccountTypes', async () => { try { return typeof LedgerService.getAccountTypes === 'function' ? await LedgerService.getAccountTypes() : []; } catch (err) { return []; } });
+  
+  ipcMain.handle('ledger:createAccount', async (e, data) => { 
+      try { 
+          const result = typeof LedgerService.createAccount === 'function' ? await LedgerService.createAccount(data) : { success: false }; 
+          if (result.success) await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Added new account to Chart of Accounts: ${data.code} - ${data.name}`);
+          return result;
+      } catch (err: any) { return { success: false, error: err.message }; } 
+  });
+
   ipcMain.handle('config:setServerIp', async (event, ip: string) => {
     const configPath = path.join(app.getPath('userData'), 'server-config.json');
     fs.writeFileSync(configPath, JSON.stringify({ serverIp: ip }));
@@ -326,6 +375,7 @@ app.whenReady().then(() => {
   ipcMain.handle('system:ping', async () => {
     return await AuthService.pingDatabase();
   });
+  ipcMain.handle('get-service-items', async () => { try { return typeof LedgerService.getServiceItems === 'function' ? await LedgerService.getServiceItems() : []; } catch (err) { return []; } });
 
   console.log("✅ ALL HANDLERS REGISTERED SUCCESSFULLY");
 });

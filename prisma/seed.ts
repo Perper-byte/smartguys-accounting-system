@@ -14,6 +14,7 @@ async function main() {
     await prisma.journalEntry.deleteMany({});
     await prisma.employee.deleteMany({});
     await prisma.payee.deleteMany({});
+    await prisma.serviceItem.deleteMany({}); // 🔥 Wipe old services
     // -----------------------------------------------------------------------
 
     // 1. Seed Account Types with their Standard Normal Balances
@@ -28,6 +29,7 @@ async function main() {
     const accounts = [
         { code: '1010', name: 'Cash in Bank', type_id: 'type-asset' },
         { code: '1020', name: 'Petty Cash Fund', type_id: 'type-asset' },
+        { code: '1030', name: 'Cash in Hand', type_id: 'type-asset' },
         { code: '1200', name: 'Accounts Receivable', type_id: 'type-asset' },
         { code: '1300', name: 'Input VAT', type_id: 'type-asset' },
         { code: '1310', name: 'Creditable Withholding Tax (CWT)', type_id: 'type-asset' },
@@ -60,8 +62,11 @@ async function main() {
     const dummyAccountantPassword = 'password123';
     const passwordHash = crypto.createHash('sha256').update(dummyAccountantPassword).digest('hex');
     const users = [
-        { username: 'cashier', role: 'CASHIER' }, { username: 'accountant', role: 'ACCOUNTANT' },
-        { username: 'manager', role: 'MANAGER' }, { username: 'it_admin', role: 'IT_PERSONNEL' }
+        { username: 'SYSTEM', role: 'IT_PERSONNEL' }, // 🔥 Added the SYSTEM user!
+        { username: 'cashier', role: 'CASHIER' }, 
+        { username: 'accountant', role: 'ACCOUNTANT' }, 
+        { username: 'manager', role: 'MANAGER' }, 
+        { username: 'it_admin', role: 'IT_PERSONNEL' }
     ];
     for (const u of users) {
         await prisma.user.upsert({
@@ -73,7 +78,38 @@ async function main() {
     console.log('✅ Users seeded (Passwords: password123)');
 
     // =================================================================
-    // 4. DUMMY PAYEES, DOCTORS, AND EMPLOYEES
+    // 4. SEED ALL PROCEDURES INTO DATABASE
+    // =================================================================
+    console.log('💉 Injecting Lab Procedures & Prices into database...');
+    const LAB_TESTS = [
+      // Blood Chemistry
+      { category: 'Blood Chemistry', name: 'FBS/RBS/2 PPBS', price: 150 }, { category: 'Blood Chemistry', name: 'OGCT', price: 350 }, { category: 'Blood Chemistry', name: 'OGTT', price: 450 }, { category: 'Blood Chemistry', name: 'BUN', price: 180 }, { category: 'Blood Chemistry', name: 'CREATININE', price: 180 }, { category: 'Blood Chemistry', name: 'BUA', price: 150 }, { category: 'Blood Chemistry', name: 'CHOLESTEROL', price: 200 }, { category: 'Blood Chemistry', name: 'TRIGLYCERIDES', price: 250 }, { category: 'Blood Chemistry', name: 'HDL/LDL/VLDL (each)', price: 200 }, { category: 'Blood Chemistry', name: 'BILIRUBIN (TB, DB, IB)', price: 250 }, { category: 'Blood Chemistry', name: 'TOTAL PROTEIN', price: 200 }, { category: 'Blood Chemistry', name: 'Albumin', price: 200 }, { category: 'Blood Chemistry', name: 'TPAG', price: 350 }, { category: 'Blood Chemistry', name: 'HBA1 (with machine print out & graph)', price: 850 },
+      // Enzymes
+      { category: 'Enzymes', name: 'SGPT/ALT', price: 250 }, { category: 'Enzymes', name: 'SGOT/AST', price: 250 }, { category: 'Enzymes', name: 'GGTP', price: 350 }, { category: 'Enzymes', name: 'Alkaline Phosphatase', price: 250 }, { category: 'Enzymes', name: 'Acid Phosphatase', price: 350 }, { category: 'Enzymes', name: 'Amylase', price: 300 }, { category: 'Enzymes', name: 'Lipase', price: 350 }, { category: 'Enzymes', name: 'Total CPK', price: 450 }, { category: 'Enzymes', name: 'CPK-MB', price: 650 }, { category: 'Enzymes', name: 'CPK-MM', price: 650 }, { category: 'Enzymes', name: 'TROPONIN (serum) T (edta)', price: 1200 }, { category: 'Enzymes', name: 'LDH', price: 350 },
+      // Electrolytes & Packages
+      { category: 'Electrolytes', name: 'Sodium', price: 200 }, { category: 'Electrolytes', name: 'Potassium', price: 200 }, { category: 'Electrolytes', name: 'Chloride', price: 200 }, { category: 'Electrolytes', name: 'Magnesium', price: 250 }, { category: 'Electrolytes', name: 'Inorganic Phosphorus', price: 250 }, { category: 'Electrolytes', name: 'Total Iron', price: 350 }, { category: 'Electrolytes', name: 'TIBC + Total Iron', price: 450 }, { category: 'Electrolytes', name: 'Calcium', price: 250 }, { category: 'Electrolytes', name: 'Ionized Calcium', price: 450 }, { category: 'Electrolytes', name: 'ABG', price: 950 }, { category: 'Electrolytes', name: 'Lithium (serum) (3days)', price: 650 }, { category: 'Electrolytes', name: 'Ammonia (green top) (3days)', price: 850 },
+      { category: 'Chemistry Packages', name: 'Electrolytes (Na, K, Cl)', price: 550 }, { category: 'Chemistry Packages', name: 'Lipid Profile (TC, TG, HDL, LDL, VLDL)', price: 750 }, { category: 'Chemistry Packages', name: 'Liver Profile (OT, PT, ALP, BILI, TPAG)', price: 950 }, { category: 'Chemistry Packages', name: 'Kidney Profile (CREA, BUN, BUA)', price: 650 }, { category: 'Chemistry Packages', name: 'Chem 5 (FBS, BUN, CREA, BUA, TC)', price: 850 }, { category: 'Chemistry Packages', name: 'Chem 6 (FBS, BUN, CREA, BUA, TC, TG)', price: 1000 }, { category: 'Chemistry Packages', name: 'Chem 8 (Chem 5 + TG, HDL, LDL)', price: 1200 }, { category: 'Chemistry Packages', name: 'Chem 10 (Chem 8 + SGPT, SGOT)', price: 1500 }, { category: 'Chemistry Packages', name: 'Chem 12 (Chem 10 + L, NA)', price: 1800 },
+      // Hematology & Microscopy
+      { category: 'Hematology', name: 'Complete Blood Count', price: 150 }, { category: 'Hematology', name: 'Platelet Count', price: 150 }, { category: 'Hematology', name: 'Hgb & Hct', price: 150 }, { category: 'Hematology', name: 'Reticulocyte Count', price: 200 }, { category: 'Hematology', name: 'ESR', price: 150 }, { category: 'Hematology', name: 'ABO Typing', price: 250 }, { category: 'Hematology', name: 'Peripheral Blood Smear (PBS)', price: 350 }, { category: 'Hematology', name: 'Malarial Smear', price: 250 }, { category: 'Hematology', name: 'LE Preparation', price: 350 }, { category: 'Hematology', name: 'Protime', price: 450 }, { category: 'Hematology', name: 'APTT', price: 450 }, { category: 'Hematology', name: 'Coombs Test', price: 550 }, { category: 'Hematology', name: 'RH Factor', price: 200 },
+      { category: 'Clinical Microscopy', name: 'Urinalysis', price: 100 }, { category: 'Clinical Microscopy', name: 'Urobilinogen', price: 150 }, { category: 'Clinical Microscopy', name: 'Ketone/Acetone', price: 150 }, { category: 'Clinical Microscopy', name: 'Bile/Nitrates/Bilirubin', price: 150 }, { category: 'Clinical Microscopy', name: 'SUGAR', price: 150 }, { category: 'Clinical Microscopy', name: 'Micro-Albumin Test', price: 450 }, { category: 'Clinical Microscopy', name: 'Pregnancy Test (Urine)', price: 150 }, { category: 'Clinical Microscopy', name: 'Pregnancy Test (serum)', price: 450 }, { category: 'Clinical Microscopy', name: 'Fecalysis', price: 100 }, { category: 'Clinical Microscopy', name: 'Occult Blood', price: 200 }, { category: 'Clinical Microscopy', name: 'Concentration Technique', price: 250 }, { category: 'Clinical Microscopy', name: 'Body Fluids', price: 450 }, { category: 'Clinical Microscopy', name: 'Cell & Diff. Count', price: 350 },
+      { category: '24 Hour Urine Test', name: 'Creatinine Total', price: 350 }, { category: '24 Hour Urine Test', name: 'Creatinine Clearance', price: 450 }, { category: '24 Hour Urine Test', name: 'Protein', price: 350 },
+      // Serology
+      { category: 'Serology', name: 'VDRL/RPR', price: 250 }, { category: 'Serology', name: 'TPHA/SCREENING', price: 350 }, { category: 'Serology', name: 'TPHA w/titer', price: 450 }, { category: 'Serology', name: 'RPE w/titer', price: 450 }, { category: 'Serology', name: 'Widal Test', price: 350 }, { category: 'Serology', name: 'Typhidot', price: 850 }, { category: 'Serology', name: 'ASO titer', price: 350 }, { category: 'Serology', name: 'Chlamdial (cervical swab)', price: 650 }, { category: 'Serology', name: 'CRP', price: 450 }, { category: 'Serology', name: 'RA/RF Latex', price: 450 }, { category: 'Serology', name: 'C3', price: 550 }, { category: 'Serology', name: 'ANA w/titer', price: 750 }, { category: 'Serology', name: 'Dengue IgM & IgG', price: 1200 }, { category: 'Serology', name: 'Leptospiral Test (ELISA)', price: 1200 }, { category: 'Serology', name: 'H. Pylori Total', price: 850 }, { category: 'Serology', name: 'NS-1', price: 950 }, { category: 'Serology', name: 'Rubella IgM', price: 850 }, { category: 'Serology', name: 'Rubella IgG', price: 850 }, { category: 'Serology', name: 'CMV IgM', price: 850 }, { category: 'Serology', name: 'CMV IgG', price: 850 }, { category: 'Serology', name: 'Toxoplasma IgM', price: 850 }, { category: 'Serology', name: 'Toxoplasma IgG', price: 850 }, { category: 'Serology', name: 'HSV 1 & 2 ELISA IGM', price: 850 }, { category: 'Serology', name: 'HSV 1 & 2 ELISA IGG', price: 850 }, { category: 'Serology', name: 'VARICELLA IgG', price: 850 }, { category: 'Serology', name: 'VARICELLA IgM', price: 850 }, { category: 'Serology', name: 'TORCH TEST ELISA (IgG/IgM each)', price: 2500 }, { category: 'Serology', name: 'HIV TEST DOH ACCREDITED', price: 850 }, { category: 'Serology', name: 'HIV (AIDS) Screening', price: 850 }, { category: 'Serology', name: 'HIV (AIDS) w/titer (ELISA)', price: 1200 },
+      // Thyroid, Hepatitis, Hormones
+      { category: 'Thyroid Function', name: 'T3', price: 450 }, { category: 'Thyroid Function', name: 'T4', price: 450 }, { category: 'Thyroid Function', name: 'TSH', price: 450 }, { category: 'Thyroid Function', name: 'FT3', price: 650 }, { category: 'Thyroid Function', name: 'THS', price: 450 }, { category: 'Thyroid Function', name: 'TSH IRMA (AFTER 2 DAYS)', price: 850 }, { category: 'Thyroid Function', name: 'PARATHYROID HORMONE', price: 1200 }, { category: 'Thyroid Function', name: 'FT3 RIA (AFTER 2 DAYS)', price: 650 }, { category: 'Thyroid Function', name: 'FT4 RIA (AFTER 2 DAYS)', price: 650 }, { category: 'Thyroid Function', name: 'THYROGLOBULIN', price: 1200 },
+      { category: 'Hepatitis', name: 'HbsAg Screening', price: 350 }, { category: 'Hepatitis', name: 'HbsAg w/Titer', price: 550 }, { category: 'Hepatitis', name: 'Anti-HBS', price: 650 }, { category: 'Hepatitis', name: 'HbeAg', price: 650 }, { category: 'Hepatitis', name: 'Anti-Hbe', price: 650 }, { category: 'Hepatitis', name: 'Anti-HBC IgM', price: 650 }, { category: 'Hepatitis', name: 'Anti-HBC IgG', price: 650 }, { category: 'Hepatitis', name: 'Anti-HAV IgM', price: 650 }, { category: 'Hepatitis', name: 'Anti-HAV IgG', price: 650 }, { category: 'Hepatitis', name: 'Anti-HCV', price: 650 }, { category: 'Hepatitis', name: 'Hepatitis Profile', price: 1500 }, { category: 'Hepatitis', name: 'Hepatitis B Profile', price: 1200 }, { category: 'Hepatitis', name: 'Hepatitis A & B Profile', price: 2000 }, { category: 'Hepatitis', name: 'Hepatitis A,B,C Profile', price: 3000 },
+      { category: 'Hormones', name: 'FSH/LH (each)', price: 850 }, { category: 'Hormones', name: 'Prolactin', price: 850 }, { category: 'Hormones', name: 'Estrogen/Estradiol', price: 850 }, { category: 'Hormones', name: 'Progesterone', price: 850 }, { category: 'Hormones', name: 'Testosterone', price: 850 }, { category: 'Hormones', name: 'Cortisol', price: 850 }, { category: 'Hormones', name: 'Ferritin', price: 850 },
+      // Tumor Markers, Bacteriology, Histopathology
+      { category: 'Tumor Markers', name: 'AFP', price: 1200 }, { category: 'Tumor Markers', name: 'CEA (COLON)', price: 1200 }, { category: 'Tumor Markers', name: 'PSA (PROSTATE)', price: 1200 }, { category: 'Tumor Markers', name: 'B-HCG', price: 1200 }, { category: 'Tumor Markers', name: 'CA-125 (OVARY)', price: 1200 }, { category: 'Tumor Markers', name: 'CA-15-3 (BREAST)', price: 1200 }, { category: 'Tumor Markers', name: 'CA-19-9 (PANCREAS)', price: 1200 },
+      { category: 'Bacteriology', name: 'All Culture & Sensitivy', price: 1500 }, { category: 'Bacteriology', name: 'Culture only', price: 850 }, { category: 'Bacteriology', name: 'Gram Stain', price: 250 }, { category: 'Bacteriology', name: 'AFB', price: 250 }, { category: 'Bacteriology', name: 'KOH', price: 250 }, { category: 'Bacteriology', name: 'India Ink', price: 350 }, { category: 'Bacteriology', name: 'ARD (ADULT/PEDIA) BLOOD only', price: 1200 },
+      { category: 'Histopathology', name: 'Small', price: 1200 }, { category: 'Histopathology', name: 'Medium', price: 1800 }, { category: 'Histopathology', name: 'Large', price: 2500 }, { category: 'Histopathology', name: 'XL', price: 3500 }, { category: 'Histopathology', name: 'TAHBSO', price: 4500 }, { category: 'Histopathology', name: 'Cell Block', price: 1500 }, { category: 'Histopathology', name: 'FNAB', price: 2000 }, { category: 'Histopathology', name: 'PAPS SMEAR', price: 850 }, { category: 'Histopathology', name: 'Stone Analysis (urinary)', price: 850 }, { category: 'Histopathology', name: 'Semen Analysis', price: 550 },
+      { category: 'Others', name: 'ECG', price: 450 }, { category: 'Others', name: 'ACCUPUNCTURE', price: 1500 },
+    ];
+    await prisma.serviceItem.createMany({ data: LAB_TESTS });
+    console.log('✅ Procedures and Prices seeded successfully!');
+
+    // =================================================================
+    // 5. DUMMY PAYEES, DOCTORS, AND EMPLOYEES
     // =================================================================
     const hmo = await prisma.payee.create({ data: { name: 'Maxicare Healthcare', type: 'HMO', tin: '000-111-222-000' } });
     const vendor = await prisma.payee.create({ data: { name: 'MedSupplies Corp', type: 'SUPPLIER', tin: '999-888-777-000' } });
@@ -85,7 +121,7 @@ async function main() {
     console.log('✅ Payees and Employees seeded.');
 
     // =================================================================
-    // 5. REALISTIC DUMMY TRANSACTIONS
+    // 6. REALISTIC DUMMY TRANSACTIONS
     // =================================================================
     if (adminUser) {
         const today = new Date();

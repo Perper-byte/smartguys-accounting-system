@@ -16,10 +16,14 @@ model User {
   password_hash String   @db.VarChar(255)
   role          Role     @default(CASHIER) 
   is_active     Boolean  @default(true) 
+  
+  // 🔥 NEW: Custom Access Control List
+  permissions   Json?
 
   journal_entries JournalEntry[]
   audit_logs      AuditLog[]
   reconciliations Reconciliation[]
+  inventory_logs  InventoryLog[]
 
   @@map("users")
 }
@@ -29,6 +33,44 @@ enum Role {
   ACCOUNTANT
   MANAGER
   IT_PERSONNEL
+}
+
+// ------------------------------------------
+// 6. INVENTORY MANAGEMENT (Non-Financial)
+// ------------------------------------------
+model InventoryItem {
+  id          String   @id @default(uuid()) @db.VarChar(50)
+  code        String   @unique @db.VarChar(50)  // The "Item Code"
+  name        String   @db.VarChar(150)         // The "Product / Description"
+  location    String?  @db.VarChar(100)         // The "Location"
+  stock       Int      @default(0)              // The "Quantity On Hand"
+  is_active   Boolean  @default(true)
+
+  logs        InventoryLog[]
+
+  @@map("inventory_items")
+}
+
+model InventoryLog {
+  id          String   @id @default(uuid()) @db.VarChar(50)
+  item_id     String   @db.VarChar(50)
+  date        DateTime @default(now())
+  in_qty      Int      @default(0)
+  out_qty     Int      @default(0)
+  balance     Int      @default(0)
+  remarks     String?  @db.VarChar(255)
+  
+  // 🔥 NEW: Expiry Date tracking for deliveries
+  expiry_date DateTime? @db.Date 
+
+  user_id     String   @db.VarChar(50)
+
+  item        InventoryItem @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  user        User          @relation(fields: [user_id], references: [id])
+
+  @@index([item_id])
+  @@index([date])
+  @@map("inventory_logs")
 }
 
 model AuditLog {
@@ -182,6 +224,19 @@ model BankTransaction {
   @@index([bank_account_id, transaction_date])
   @@index([status])
   @@map("bank_transactions")
+}
+
+// ------------------------------------------
+// 5. SERVICES & PROCEDURES (POS Items)
+// ------------------------------------------
+model ServiceItem {
+  id          Int      @id @default(autoincrement())
+  category    String   @db.VarChar(100)
+  name        String   @db.VarChar(150)
+  price       Decimal  @default(0.00) @db.Decimal(15, 2)
+  is_active   Boolean  @default(true)
+
+  @@map("service_items")
 }
 
 model Reconciliation {

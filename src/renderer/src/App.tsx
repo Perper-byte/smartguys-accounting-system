@@ -1,129 +1,135 @@
 // src/renderer/src/App.tsx
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { DashboardView } from './components/DashboardView';
-import { BIRReportsView } from './components/BIRReportsView';
-import { DatabaseBackupView } from './components/DatabaseBackupView';
-import { FinancialStatementsView } from './components/FinancialStatementsView';
-import { GeneralLedgerView } from './components/GeneralLedgerView';
-import { CashDisbursementForm } from './components/CashDisbursementForm';
-import { JournalEntryForm } from './components/JournalEntryForm';
+
+// Screens
 import { LoginScreen } from "./components/LoginScreen";
-import { POSBillingView } from './components/POSBillingView';
-import { EWTPayoutView } from './components/EWTPayoutView';
-import UserManagementView from './components/UserManagementView';
-import { ReceivePaymentView } from './components/ReceivePaymentView';
-import { BooksOfAccountsView } from './components/BooksOfAccountsView';
-import { AgedReceivablesView } from './components/AgedReceivablesView';
-import { CashierHistoryView } from './components/CashierHistoryView';
-import { VoidApprovalsView } from './components/VoidApprovalsView'; 
 import { WelcomeView } from './components/WelcomeView';
-import { SystemAuditLogView } from './components/SystemAuditLogView';
+import { DashboardView } from './components/DashboardView';
+import { POSBillingView } from './components/POSBillingView';
+import { ReceivePaymentView } from './components/ReceivePaymentView';
+import { ContactDirectoryView } from './components/ContactDirectoryView';
+import { CashierHistoryView } from './components/CashierHistoryView';
+import { InventoryView } from './components/InventoryView';
+import { CashDisbursementForm } from './components/CashDisbursementForm';
+import { EWTPayoutView } from './components/EWTPayoutView';
+import { AgedReceivablesView } from './components/AgedReceivablesView';
 import { InvoiceTrackerView } from './components/InvoiceTrackerView';
 import { PayrollView } from './components/PayrollView';
-import { ContactDirectoryView } from './components/ContactDirectoryView';
+import { JournalEntryForm } from './components/JournalEntryForm';
+import { GeneralLedgerView } from './components/GeneralLedgerView';
 import { ReconciliationView } from './components/ReconciliationView';
+import { BooksOfAccountsView } from './components/BooksOfAccountsView';
+import { FinancialStatementsView } from './components/FinancialStatementsView';
+import { BIRReportsView } from './components/BIRReportsView';
+import { VoidApprovalsView } from './components/VoidApprovalsView'; 
+import { SystemAuditLogView } from './components/SystemAuditLogView';
+import UserManagementView from './components/UserManagementView';
+import { DatabaseBackupView } from './components/DatabaseBackupView';
+import { ChartOfAccountsView } from './components/ChartOfAccountsView';
+import { ServicesManagerView } from './components/ServicesManagerView';
 
-// Kept from main branch for the UI!
 import logoImage from './assets/smartguys_logo.jpg';
 
+// 🔥 THE FIX: Added 'permissions' to the User type so React doesn't delete it!
+type User = { id: string; username: string; role: string; permissions?: string[] };
 type Role = 'CASHIER' | 'ACCOUNTANT' | 'MANAGER' | 'IT_PERSONNEL';
 
-// Streamlined and strict role groupings
 const ROLES: Record<string, Role[]> = {
   ALL: ['CASHIER', 'ACCOUNTANT', 'MANAGER', 'IT_PERSONNEL'],
   CASHIER_ONLY: ['CASHIER'],
   ACCOUNTANT_ONLY: ['ACCOUNTANT'],
   MANAGER_ONLY: ['MANAGER'],
   IT_ONLY: ['IT_PERSONNEL'],
-  FINANCE_TEAM: ['ACCOUNTANT', 'MANAGER'], // Functions shared by Accounting and Management
-  OPS_FINANCE: ['CASHIER', 'ACCOUNTANT'], // Functions shared by Cashiers and Accounting
+  FINANCE_TEAM: ['ACCOUNTANT', 'MANAGER'], 
+  OPS_FINANCE: ['CASHIER', 'ACCOUNTANT'], 
 } as const;
 
+const GROUP_ORDER = ['Home', 'Clinic Operations', 'Accounting', 'Reports & Taxes', 'System Admin'];
+
 const ALL_TABS = [
-  // Home (Available to everyone)
+  // Home
   { id: 'home', label: 'Home', icon: '🏠', group: 'Home', allowedRoles: ROLES.ALL },
 
   // Clinic Operations
   { id: 'billing', label: 'Patient Billing (POS)', icon: '💳', group: 'Clinic Operations', allowedRoles: ROLES.CASHIER_ONLY },
   { id: 'collections', label: 'Receive Payments', icon: '💰', group: 'Clinic Operations', allowedRoles: ROLES.OPS_FINANCE },
   { id: 'directory', label: 'Contact Directory', icon: '📇', group: 'Clinic Operations', allowedRoles: ROLES.ALL },
-  { id: 'disbursement', label: 'Cash Disbursements', icon: '💸', group: 'Clinic Operations', allowedRoles: ROLES.ACCOUNTANT_ONLY },
-  { id: 'payouts', label: 'Doctor Payouts', icon: '🩺', group: 'Clinic Operations', allowedRoles: ROLES.ACCOUNTANT_ONLY },
-  { id: 'aging', label: 'Aged Receivables (HMO)', icon: '⏳', group: 'Clinic Operations', allowedRoles: ROLES.FINANCE_TEAM },
-  { id: 'tracker', label: 'Invoice Tracker', icon: '📋', group: 'Clinic Operations', allowedRoles: ROLES.ACCOUNTANT_ONLY },
   { id: 'history', label: 'My Sales History', icon: '🧾', group: 'Clinic Operations', allowedRoles: ROLES.CASHIER_ONLY },
-  { id: 'payroll', label: 'HR & Payroll', icon: '🧑‍🤝‍🧑', group: 'Clinic Operations', allowedRoles: ROLES.FINANCE_TEAM },
+  { id: 'inventory', label: 'Stock & Inventory', icon: '📦', group: 'Clinic Operations', allowedRoles: ['CASHIER', 'MANAGER'] },
 
   // Accounting
+  { id: 'disbursement', label: 'Cash Disbursements', icon: '💸', group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
+  { id: 'payouts', label: 'Doctor Payouts', icon: '🩺', group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
+  { id: 'aging', label: 'Aged Receivables (HMO)', icon: '⏳', group: 'Accounting', allowedRoles: ROLES.FINANCE_TEAM },
+  { id: 'tracker', label: 'Invoice Tracker', icon: '📋', group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
+  { id: 'payroll', label: 'HR & Payroll', icon: '🧑‍🤝‍🧑', group: 'Accounting', allowedRoles: ROLES.FINANCE_TEAM },
   { id: 'journal', label: 'Journal Entry', icon: '📝', group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
   { id: 'adjusting', label: 'Adjusting Entries', icon: '🔧', group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
   { id: 'ledger', label: 'General Ledger', icon: '📖', group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
   { id: 'reconciliation', label: 'Bank Reconciliation', icon: '🏦', group: 'Accounting', allowedRoles: ROLES.FINANCE_TEAM },
   { id: 'books', label: 'Books of Accounts', icon: '📚', group: 'Accounting', allowedRoles: ROLES.FINANCE_TEAM },
 
-  // Reports and Compliance
+  // Reports & Taxes
   { id: 'analytics', label: 'Analytics Dashboard', icon: '📈', group: 'Reports & Taxes', allowedRoles: ROLES.MANAGER_ONLY },
   { id: 'statements', label: 'Financial Statements', icon: '📄', group: 'Reports & Taxes', allowedRoles: ROLES.FINANCE_TEAM },
   { id: 'bir', label: 'BIR Tax Compliance', icon: '🏛️', group: 'Reports & Taxes', allowedRoles: ROLES.ACCOUNTANT_ONLY },
   { id: 'voids', label: 'Void Approvals', icon: '↩️', group: 'Reports & Taxes', allowedRoles: ROLES.MANAGER_ONLY },
 
-  // System Administration
+  // System Admin
   { id: 'audit', label: 'Audit Trails', icon: '⏳', group: 'System Admin', allowedRoles: ROLES.IT_ONLY },
   { id: 'users', label: 'User Management', icon: '👥', group: 'System Admin', allowedRoles: ROLES.IT_ONLY },
   { id: 'backup', label: 'Database Backup', icon: '💾', group: 'System Admin', allowedRoles: ROLES.IT_ONLY },
+  { id: 'coa', label: 'Chart of Accounts', icon: '🏦', group: 'System Admin', allowedRoles: ROLES.MANAGER_ONLY },
+  { id: 'services', label: 'Services & Pricing', icon: '🏷️', group: 'System Admin', allowedRoles: ROLES.MANAGER_ONLY }
 ];
 
-
-const GROUP_ORDER = ['Home', 'Clinic Operations', 'Accounting', 'Reports & Taxes', 'System Admin'];
-
-function App(): React.ReactElement {
-  const [currentUser, setCurrentUser] = useState<{ id: string; username: string; role: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<string>('');
+export default function App() {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [activeTab, setActiveTab] = useState('home');
   const [isOnline, setIsOnline] = useState(true);
 
-const permittedTabs = currentUser ? ALL_TABS.filter(tab => tab.allowedRoles.includes(currentUser.role)) : [];
-
   useEffect(() => {
-    if (currentUser && permittedTabs.length > 0) {
-      const isTabValid = permittedTabs.some(t => t.id === activeTab);
-      if (!isTabValid) {
-        setActiveTab(permittedTabs[0].id); // Auto-clicks 'Analytics Dashboard' for Accountant
-      }
-    }
-  }, [currentUser]); 
-
-  useEffect(() => {
-    // Only start pinging if the user is logged in
-    if (!currentUser) return;
-
     const checkConnection = async () => {
-      const api = (window as any).electronAPI;
+      const api = (window as any).electronAPI || (window as any).api;
       if (api && api.pingDatabase) {
-        const status = await api.pingDatabase();
-        setIsOnline(status);
+        const ok = await api.pingDatabase();
+        setIsOnline(ok);
       }
     };
+    checkConnection();
+    const interval = setInterval(checkConnection, 30000);
+    return () => clearInterval(interval);
+  }, []);
 
-    checkConnection(); // Check immediately
-    const interval = setInterval(checkConnection, 5000); // Ping every 5 seconds
-
-    return () => clearInterval(interval); // Cleanup on unmount
-  }, [currentUser]);
+  const handleLoginSuccess = (user: User) => {
+    setCurrentUser(user); // Now safely includes permissions!
+    setActiveTab('home');
+  };
 
   const handleLogout = () => {
     setCurrentUser(null);
-    setActiveTab('');
+    setActiveTab('home');
   };
 
+  // 🔥 SMART PERMISSIONS FILTER
+  const permittedTabs = currentUser
+    ? ALL_TABS.filter(tab => {
+        if (currentUser.permissions && currentUser.permissions.length > 0) {
+          return tab.id === 'home' || currentUser.permissions.includes(tab.id);
+        }
+        return tab.allowedRoles.includes(currentUser.role as Role);
+      })
+    : [];
+
   if (!currentUser) {
-    return <LoginScreen onLoginSuccess={(user) => setCurrentUser(user)} />;
+    return <LoginScreen onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
-<div id="app-wrapper" className="flex h-screen bg-[#FBF8F8] text-gray-800 overflow-hidden font-sans print:bg-white print:text-black print:h-auto print:overflow-visible">
+    <div id="app-wrapper" className="flex h-screen bg-[#FBF8F8] text-gray-800 overflow-hidden font-sans print:bg-white print:text-black print:h-auto print:overflow-visible">
 
-      {/* PERSISTENT LEFT SIDEBAR */}
+      {/* LEFT SIDEBAR */}
       <aside id="app-sidebar" className="w-64 bg-white border-r border-[#B0DCDA] flex flex-col justify-between shadow-sm z-20 flex-shrink-0 print:hidden">
         <div className="flex flex-col h-full overflow-hidden">
           
@@ -142,11 +148,10 @@ const permittedTabs = currentUser ? ALL_TABS.filter(tab => tab.allowedRoles.incl
               return (
                 <div key={groupName}>
                   {groupName !== 'Home' && (
-                    <h3 className="px-4 text-[10px] font-bold text-[#1B9387] uppercase tracking-widest mb-3">
+                    <h3 className="px-4 text-[10px] font-extrabold text-[#1B9387] uppercase tracking-widest mb-3">
                       {groupName}
                     </h3>
                   )}
-                  
                   <div className="space-y-1">
                     {tabsInGroup.map((tab) => (
                       <button
@@ -172,22 +177,19 @@ const permittedTabs = currentUser ? ALL_TABS.filter(tab => tab.allowedRoles.incl
         <div className="p-5 border-t border-[#B0DCDA] bg-gray-50 flex items-center justify-between shrink-0">
           <div className="min-w-0">
             <p className="text-sm font-bold text-gray-800 truncate">{currentUser.username}</p>
-            <p className="text-[10px] text-[#28958B] uppercase font-extrabold tracking-widest mt-0.5">{currentUser.role}</p>
+            <p className="text-[10px] text-[#28958B] uppercase font-extrabold tracking-widest mt-0.5">
+                {currentUser.permissions && currentUser.permissions.length > 0 ? 'CUSTOM ACCESS' : currentUser.role}
+            </p>
           </div>
-          <button
-            onClick={handleLogout}
-            title="Log out of system"
-            className="p-2.5 text-red-400 hover:text-white hover:bg-red-500 rounded-md transition-colors cursor-pointer"
-          >
+          <button onClick={handleLogout} title="Log out" className="p-2.5 text-red-400 hover:text-white hover:bg-red-500 rounded-md transition-colors cursor-pointer">
             🚪
           </button>
         </div>
       </aside>
 
-      {/* MAIN CONTAINER AREA */}
+      {/* MAIN CONTAINER */}
       <div className="flex-1 flex flex-col relative overflow-hidden print:overflow-visible bg-[#FBF8F8]">
         
-        {/* TOP STATUS BAR */}
         <header id="app-header" className="h-16 bg-white border-b border-[#B0DCDA] flex items-center justify-between px-8 shadow-sm z-10 flex-shrink-0 print:hidden">
           <h2 className="text-lg font-extrabold text-gray-800 tracking-wide capitalize">
             {permittedTabs.find(t => t.id === activeTab)?.label || 'Workspace'}
@@ -201,27 +203,20 @@ const permittedTabs = currentUser ? ALL_TABS.filter(tab => tab.allowedRoles.incl
           </div>
         </header>
 
-        {/* WORKSPACE CONTENT PANELS */}
         <main id="app-main" className="flex-1 p-8 overflow-y-auto print:p-0 print:bg-white print:overflow-visible relative">
           
           {!permittedTabs.find(t => t.id === activeTab) ? (
             <div className="p-6 bg-red-50 border border-red-200 rounded-lg text-center shadow-sm print:hidden">
               <h3 className="text-red-600 font-bold text-lg">⚠️ Access Denied</h3>
-              <p className="text-sm text-red-500 mt-2 font-medium">Your role ({currentUser.role}) does not have permission to view this module.</p>
+              <p className="text-sm text-red-500 mt-2 font-medium">Your role does not have permission to view this module.</p>
             </div>
           ) : (
             <div className="h-full animate-in fade-in duration-300">
               
-              {/* ---> RENDER THE NEW WELCOME SCREEN <--- */}
+              {/* SCREENS */}
               {activeTab === 'home' && <WelcomeView username={currentUser.username} role={currentUser.role} />}
-              
-              {/* ---> RENDER THE DASHBOARD (NOW ANALYTICS ONLY) <--- */}
               {activeTab === 'analytics' && <DashboardView />}
-              {activeTab === 'journal' && <JournalEntryForm userId={currentUser.id} />}
-              {activeTab === 'adjusting' && <JournalEntryForm userId={currentUser.id} isAdjusting={true} />}
-              {activeTab === 'disbursement' && <CashDisbursementForm userId={currentUser.id} />}
-              {activeTab === 'ledger' && <GeneralLedgerView />}
-{activeTab === 'reconciliation' && <ReconciliationView userId={currentUser.id} />}
+              {activeTab === 'reconciliation' && <ReconciliationView userId={currentUser.id} />}
               {activeTab === 'books' && <BooksOfAccountsView />}
               {activeTab === 'statements' && <FinancialStatementsView />}
               {activeTab === 'bir' && <BIRReportsView />}
@@ -237,6 +232,15 @@ const permittedTabs = currentUser ? ALL_TABS.filter(tab => tab.allowedRoles.incl
               {activeTab === 'tracker' && <InvoiceTrackerView />}
               {activeTab === 'payroll' && <PayrollView userId={currentUser.id} />}
               {activeTab === 'directory' && <ContactDirectoryView />}
+              {activeTab === 'coa' && <ChartOfAccountsView />}
+              {activeTab === 'services' && <ServicesManagerView />}
+              
+              {/* FORMS */}
+              {activeTab === 'journal' && <JournalEntryForm userId={currentUser.id} isAdjusting={false} />}
+              {activeTab === 'adjusting' && <JournalEntryForm userId={currentUser.id} isAdjusting={true} />}
+              {activeTab === 'disbursement' && <CashDisbursementForm userId={currentUser.id} />}
+              {activeTab === 'ledger' && <GeneralLedgerView />}
+              
             </div>
           )}
         </main>
@@ -244,5 +248,3 @@ const permittedTabs = currentUser ? ALL_TABS.filter(tab => tab.allowedRoles.incl
     </div>
   );
 }
-
-export default App;
