@@ -7,24 +7,25 @@ const getLocalDateString = () => new Date(new Date().getTime() - (new Date().get
 
 export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) => {
     const [expenseAccounts, setExpenseAccounts] = useState<any[]>([]);
+    
+    // 🔥 NEW: Dynamic Cash Accounts State
+    const [cashAccounts, setCashAccounts] = useState<any[]>([]);
+
     const [date, setDate] = useState(getLocalDateString());
     const [amount, setAmount] = useState<number | ''>('');
     const [expenseAccount, setExpenseAccount] = useState('');
     const [remarks, setRemarks] = useState('');
 
-    // Auto-Sequence States
     const [refPrefix] = useState('CV-');
     const [refSequence, setRefSequence] = useState('');
 
-    // Payee States
     const [payees, setPayees] = useState<any[]>([]);
     const [payeeId, setPayeeId] = useState('');
     const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
     const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
     const [showAddPayee, setShowAddPayee] = useState(false);
 
-    // VAT & Source States
-    const [sourceAccount, setSourceAccount] = useState('1010'); 
+    const [sourceAccount, setSourceAccount] = useState(''); 
     const [isVatable, setIsVatable] = useState(false);
     const [payeeTin, setPayeeTin] = useState('');
 
@@ -47,10 +48,21 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
             if (api) {
                 try {
                     const accData = await api.getAccounts();
-                    const filtered = accData.filter((acc: any) =>
-                        acc.account_type.name === 'Expense' || acc.account_type.name === 'Liability'
-                    );
-                    setExpenseAccounts(filtered);
+                    
+                    // 🔥 DYNAMIC FILTER: Pull Expenses & Liabilities for the Destination
+                    const expenses = accData.filter((acc: any) => acc.account_type?.name === 'Expense' || acc.account_type?.name === 'Liability');
+                    setExpenseAccounts(expenses);
+                    
+                    // 🔥 DYNAMIC FILTER: Pull Assets (Cash/Bank) for the Source
+                    const assets = accData.filter((acc: any) => acc.account_type?.name === 'Asset');
+                    setCashAccounts(assets);
+
+                    // Auto-select '1010' if it exists, otherwise pick the first asset
+                    if (assets.length > 0) {
+                        const defaultAsset = assets.find((a: any) => a.code === '1010') || assets[0];
+                        setSourceAccount(defaultAsset.code);
+                    }
+
                     loadPayees();
                 } catch (e) { console.error(e); }
             }
@@ -118,7 +130,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
             if (result.success) {
                 setStatus({ type: 'success', msg: `Voucher ${fullReferenceNo} issued successfully!` });
                 setAmount(''); setExpenseAccount(''); setRemarks('');
-                setIsVatable(false); setPayeeTin(''); setSourceAccount('1010'); setPayeeId('');
+                setIsVatable(false); setPayeeTin(''); setPayeeId('');
             } else {
                 setStatus({ type: 'error', msg: result.error });
             }
@@ -133,9 +145,8 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
     const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- Select Vendor / Supplier --';
 
     return (
-        <div className="max-w-3xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm relative mb-12">
+        <div className="max-w-3xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm relative mb-12 animate-in fade-in duration-300">
             
-            {/* HEADER */}
             <div className="flex justify-between items-center mb-6 border-b border-[#B0DCDA] pb-4">
                 <h2 className="text-xl font-extrabold text-gray-800 tracking-wide">New Disbursement</h2>
                 <span className="bg-red-50 text-red-500 text-xs px-4 py-1.5 rounded-full font-bold uppercase tracking-widest border border-red-200">
@@ -143,7 +154,6 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                 </span>
             </div>
 
-            {/* STATUS MESSAGE */}
             {status && (
                 <div className={`mb-6 p-4 rounded-md text-sm font-bold shadow-sm border ${status.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]' : 'bg-red-50 text-red-600 border-red-200'}`}>
                     {status.type === 'success' ? '✅ ' : '⚠️ '}{status.msg}
@@ -152,7 +162,6 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 
-                {/* ROW 1: Date & Vendor */}
                 <div className="grid grid-cols-2 gap-6">
                     <div>
                         <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Date</label>
@@ -196,15 +205,15 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                     </div>
                 </div>
 
-                {/* ROW 2: Source of Funds & Voucher No */}
                 <div className="grid grid-cols-2 gap-6">
                     <div>
                         <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Source of Funds (Credit)</label>
+                        
+                        {/* 🔥 DYNAMIC: Reads directly from DB Assets */}
                         <select required value={sourceAccount} onChange={e => setSourceAccount(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition cursor-pointer">
-                            <option value="1010">1010 - Cash in Bank (Checking)</option>
-                            <option value="1020">1020 - Petty Cash Fund</option>
-                            {/* 🔥 FIX: Added the new 1030 Cash in Hand Option! */}
-                            <option value="1030">1030 - Cash in Hand</option>
+                            {cashAccounts.map(acc => (
+                                <option key={acc.code} value={acc.code}>{acc.code} - {acc.name}</option>
+                            ))}
                         </select>
                     </div>
                     
@@ -226,7 +235,6 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                     </div>
                 </div>
 
-                {/* ROW 3: Amount & Expense Account */}
                 <div className="grid grid-cols-2 gap-6">
                     <div>
                         <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Amount (₱)</label>
@@ -285,7 +293,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                                     type="text" 
                                     required 
                                     placeholder="e.g. 123-456-789-000" 
-                                    className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" 
+                                    className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition" 
                                     value={payeeTin} 
                                     onChange={e => setPayeeTin(e.target.value)} 
                                 />
@@ -313,7 +321,6 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                 </button>
             </form>
 
-            {/* NEW CONTACT MODAL COMPONENT */}
             <NewContactModal 
                 isOpen={showAddPayee} 
                 onClose={() => setShowAddPayee(false)} 

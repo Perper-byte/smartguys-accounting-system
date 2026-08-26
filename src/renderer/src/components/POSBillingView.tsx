@@ -2,14 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { NewContactModal } from './NewContactModal'; 
 
-const CATEGORIES = {
-  '4010': { label: '👨‍⚕️ Consultation', isVatable: false },
-  '4020': { label: '🔬 Laboratory / X-Ray', isVatable: false },
-  '4040': { label: '📄 Medical Certificate', isVatable: false },
-};
-
 export function POSBillingView({ userId }: { userId: string }) {
-  
   const [patients, setPatients] = useState<any[]>([]);
   const [patientId, setPatientId] = useState('');
   const [isPatientDropdownOpen, setIsPatientDropdownOpen] = useState(false);
@@ -26,15 +19,17 @@ export function POSBillingView({ userId }: { userId: string }) {
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [hmoProvider, setHmoProvider] = useState('Maxicare');
   const [loaNumber, setLoaNumber] = useState('');
-
+  const [manualInvoiceNo, setManualInvoiceNo] = useState('');
   const [isSCPWD, setIsSCPWD] = useState(false);
   const [scPwdId, setScPwdId] = useState('');
 
-  // 🔥 Database driven Lab Tests!
   const [labTests, setLabTests] = useState<any[]>([]);
+  
+  // 🔥 NEW: Dynamic Revenue Categories State
+  const [revenueAccounts, setRevenueAccounts] = useState<any[]>([]);
 
   const [items, setItems] = useState([
-    { id: 1, accountCode: '4010', description: '', quantity: 1, price: 500, isVatable: false }
+    { id: 1, accountCode: '', description: '', quantity: 1, price: 500, isVatable: false }
   ]);
   
   const [activeLabRow, setActiveLabRow] = useState<number | null>(null);
@@ -57,6 +52,18 @@ export function POSBillingView({ userId }: { userId: string }) {
           const itemsData = await api.getServiceItems();
           setLabTests(itemsData || []);
       }
+
+      // 🔥 DYNAMIC FILTER: Pull Revenue Accounts from DB for the Categories
+      if (api.getAccounts) {
+          const accData = await api.getAccounts();
+          const revAccounts = accData.filter((a: any) => a.account_type?.name === 'Revenue');
+          setRevenueAccounts(revAccounts);
+          
+          // Auto-set the first row to the default Consultation (4010) if available
+          if (revAccounts.length > 0) {
+              setItems([{ id: 1, accountCode: revAccounts.find(a => a.code === '4010')?.code || revAccounts[0].code, description: '', quantity: 1, price: 500, isVatable: false }]);
+          }
+      }
     } catch (error) { 
         console.error("Failed to load initial data:", error); 
     }
@@ -73,7 +80,8 @@ export function POSBillingView({ userId }: { userId: string }) {
   };
 
   const handleAddItem = () => {
-      setItems([...items, { id: Date.now(), accountCode: '4010', description: '', quantity: 1, price: 500, isVatable: false }]);
+      const defaultCode = revenueAccounts.find(a => a.code === '4010')?.code || (revenueAccounts.length > 0 ? revenueAccounts[0].code : '');
+      setItems([...items, { id: Date.now(), accountCode: defaultCode, description: '', quantity: 1, price: 500, isVatable: false }]);
   };
 
   const handleRemoveItem = (id: number) => {
@@ -84,11 +92,16 @@ export function POSBillingView({ userId }: { userId: string }) {
     setItems(items.map(item => {
       if (item.id === id) {
         const updatedItem = { ...item, [field]: value };
+        
         if (field === 'accountCode') {
-            updatedItem.isVatable = CATEGORIES[value as keyof typeof CATEGORIES]?.isVatable || false;
             updatedItem.description = ''; 
-            if (value === '4010') updatedItem.price = 500;
-            else updatedItem.price = 0;
+            
+            // Snap to 500 if Consultation, otherwise let them type it
+            if (value === '4010') {
+                updatedItem.price = 500;
+            } else {
+                updatedItem.price = 0;
+            }
         }
         return updatedItem;
       }
@@ -178,9 +191,11 @@ export function POSBillingView({ userId }: { userId: string }) {
       const finalPayeeId = payeeId || patientId; 
       const description = `Patient: ${selectedPatientName} | Billed To: ${payeeId ? selectedPayeeName : 'Self'} (${paymentMethod})${paymentMethod === 'HMO' ? ` LOA: ${loaNumber}` : ''}`;
       
+      const finalReferenceNo = manualInvoiceNo.trim() ? manualInvoiceNo.trim() : `SYS-${Math.floor(Date.now() / 1000).toString().slice(-6)}`;
+      
       const entryData = {
         date: new Date().toISOString(),
-        referenceNo: `INV-${Date.now()}`,
+        referenceNo: finalReferenceNo,
         description: description,
         vatType: vatAmount > 0 ? 'VATABLE' : 'EXEMPT',
         userId: userId,
@@ -200,8 +215,14 @@ export function POSBillingView({ userId }: { userId: string }) {
       setStatus({ type: 'success', msg: `Invoice ${entryData.referenceNo} saved to Database! Billed ₱${grandTotal.toFixed(2)}.` });
       
       setPatientId(''); setPayeeId('');
-      setItems([{ id: Date.now(), accountCode: '4010', description: '', quantity: 1, price: 500, isVatable: false }]);
+      
+      // Reset items back to Consultation
+      const defaultCode = revenueAccounts.find(a => a.code === '4010')?.code || (revenueAccounts.length > 0 ? revenueAccounts[0].code : '');
+      setItems([{ id: Date.now(), accountCode: defaultCode, description: '', quantity: 1, price: 500, isVatable: false }]);
+      
       setAmountTendered(''); setLoaNumber(''); setIsSCPWD(false); setScPwdId(''); setIsConfirmOpen(false); setPaymentMethod('CASH');
+      setManualInvoiceNo('');
+
       setTimeout(() => setStatus(null), 5000);
 
     } catch (error: any) { 
@@ -213,7 +234,7 @@ export function POSBillingView({ userId }: { userId: string }) {
   };
 
   return (
-    <div className="h-full flex flex-col bg-[#FBF8F8] text-gray-800 font-sans relative max-w-7xl mx-auto">
+    <div className="h-full flex flex-col bg-[#FBF8F8] text-gray-800 font-sans relative max-w-7xl mx-auto animate-in fade-in duration-300">
       
       <div className="mb-6 flex justify-between items-center border-b border-[#B0DCDA] pb-4">
         <div>
@@ -284,6 +305,19 @@ export function POSBillingView({ userId }: { userId: string }) {
               </div>
 
               <div>
+                <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">
+                    Official Receipt / Invoice No. (Optional)
+                </label>
+                <input 
+                    type="text" 
+                    placeholder="Leave blank to auto-generate" 
+                    className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md px-3 py-2 text-sm text-gray-800 font-mono font-bold focus:outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA]" 
+                    value={manualInvoiceNo} 
+                    onChange={(e) => setManualInvoiceNo(e.target.value)} 
+                />
+              </div>
+
+              <div>
                 <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">Payment Method</label>
                 <div className="grid grid-cols-4 gap-2">
                   {['CASH', 'GCASH', 'HMO', 'CHARGE'].map((method) => (
@@ -346,7 +380,6 @@ export function POSBillingView({ userId }: { userId: string }) {
               <button type="button" onClick={handleAddItem} className="cursor-pointer text-[10px] font-extrabold uppercase tracking-wider bg-white border border-[#B0DCDA] text-gray-600 hover:text-[#1B9387] hover:bg-[#E9FAFA] px-3 py-1.5 rounded-md transition shadow-sm">+ Add Item</button>
             </div>
 
-            {/* 🔥 FIX: ADJUSTED GRID COLUMNS TO PREVENT OVERLAP */}
             <div className="grid grid-cols-12 gap-2 mb-2 text-[10px] font-extrabold text-gray-500 uppercase tracking-wider px-2">
               <div className="col-span-3">Category</div>
               <div className="col-span-3">Description / Test Name</div>
@@ -359,13 +392,14 @@ export function POSBillingView({ userId }: { userId: string }) {
             <div className="space-y-3">
               {items.map((item) => (
                 <div key={item.id} className="grid grid-cols-12 gap-2 items-center bg-[#FBF8F8] p-2 rounded-lg border border-[#B0DCDA] shadow-sm">
+                  
+                  {/* 🔥 DYNAMIC REVENUE DROPDOWN */}
                   <div className="col-span-3">
                     <select className="w-full bg-transparent text-xs font-bold text-[#1B9387] focus:outline-none cursor-pointer" value={item.accountCode} onChange={(e) => updateItem(item.id, 'accountCode', e.target.value)}>
-                      {Object.entries(CATEGORIES).map(([code, details]) => (<option key={code} value={code} className="bg-white text-gray-800 font-medium">{details.label}</option>))}
+                      {revenueAccounts.map(acc => (<option key={acc.code} value={acc.code} className="bg-white text-gray-800 font-medium">{acc.name}</option>))}
                     </select>
                   </div>
                   
-                  {/* 🔥 THE SMART LABORATORY SEARCH DROPDOWN */}
                   <div className="col-span-3 relative border-l border-gray-200 pl-2">
                     <input 
                         type="text" 
@@ -416,6 +450,7 @@ export function POSBillingView({ userId }: { userId: string }) {
                   <div className="col-span-2 border-l border-gray-200 pl-1 pr-1">
                     <input type="number" min="0" step="0.01" required className="w-full bg-transparent text-sm text-gray-800 font-mono font-bold text-right focus:outline-none" value={item.price === 0 ? '' : item.price} onChange={(e) => updateItem(item.id, 'price', parseFloat(e.target.value) || 0)} />
                   </div>
+                  
                   <div className="col-span-2 flex justify-end items-center space-x-3 border-l border-gray-200 pl-3 pr-2">
                     <span className="text-sm font-bold font-mono text-gray-600">{(item.quantity * item.price).toFixed(2)}</span>
                     <button type="button" onClick={() => handleRemoveItem(item.id)} className="cursor-pointer text-gray-300 hover:text-red-500 transition text-lg font-bold">×</button>

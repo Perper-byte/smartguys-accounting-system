@@ -10,7 +10,7 @@ import { POSBillingView } from './components/POSBillingView';
 import { ReceivePaymentView } from './components/ReceivePaymentView';
 import { ContactDirectoryView } from './components/ContactDirectoryView';
 import { CashierHistoryView } from './components/CashierHistoryView';
-import { InventoryView } from './components/InventoryView';
+import { InventoryView } from './components/InventoryView'; // 🔥 IMPORTED!
 import { CashDisbursementForm } from './components/CashDisbursementForm';
 import { EWTPayoutView } from './components/EWTPayoutView';
 import { AgedReceivablesView } from './components/AgedReceivablesView';
@@ -31,7 +31,6 @@ import { ServicesManagerView } from './components/ServicesManagerView';
 
 import logoImage from './assets/smartguys_logo.jpg';
 
-// 🔥 THE FIX: Added 'permissions' to the User type so React doesn't delete it!
 type User = { id: string; username: string; role: string; permissions?: string[] };
 type Role = 'CASHIER' | 'ACCOUNTANT' | 'MANAGER' | 'IT_PERSONNEL';
 
@@ -103,7 +102,7 @@ export default function App() {
   }, []);
 
   const handleLoginSuccess = (user: User) => {
-    setCurrentUser(user); // Now safely includes permissions!
+    setCurrentUser(user); 
     setActiveTab('home');
   };
 
@@ -112,7 +111,6 @@ export default function App() {
     setActiveTab('home');
   };
 
-  // 🔥 SMART PERMISSIONS FILTER
   const permittedTabs = currentUser
     ? ALL_TABS.filter(tab => {
         if (currentUser.permissions && currentUser.permissions.length > 0) {
@@ -234,6 +232,9 @@ export default function App() {
               {activeTab === 'directory' && <ContactDirectoryView />}
               {activeTab === 'coa' && <ChartOfAccountsView />}
               {activeTab === 'services' && <ServicesManagerView />}
+              
+              {/* 🔥 THE FIX: Added the missing Inventory Screen to the renderer! */}
+              {activeTab === 'inventory' && <InventoryView userId={currentUser.id} role={currentUser.role} />}
               
               {/* FORMS */}
               {activeTab === 'journal' && <JournalEntryForm userId={currentUser.id} isAdjusting={false} />}

@@ -592,17 +592,37 @@ export const LedgerService = {
             return { success: false, error: error.message };
         }
     },
+    
+    async updateReferenceNumber(entryId: string, newReferenceNo: string) {
+        try {
+            await prisma.journalEntry.update({
+                where: { id: entryId },
+                data: { reference_no: newReferenceNo }
+            });
+            return { success: true };
+        } catch (error: any) {
+            console.error("Update Ref Error:", error);
+            return { success: false, error: error.message };
+        }
+    },
 
-    async getUserSalesHistory(userId: string) {
+   async getUserSalesHistory(userId: string) {
         const entries = await prisma.journalEntry.findMany({
             where: {
                 user_id: userId,
-                OR: [ { reference_no: { startsWith: 'INV-' } }, { reference_no: { startsWith: 'OR-' } } ]
+                // 🔥 THE FIX: Added 'SYS-' so auto-generated receipts show up in history!
+                OR: [ 
+                    { reference_no: { startsWith: 'INV-' } }, 
+                    { reference_no: { startsWith: 'OR-' } },
+                    { reference_no: { startsWith: 'SYS-' } }
+                ]
             },
             orderBy: { date: 'desc' },
             take: 100,
             include: { payee: true, lines: { include: { account: true } } }
         });
+
+        
 
         return entries.map(entry => {
             const totalAmount = entry.lines.reduce((sum, line) => sum + Number(line.debit), 0);
@@ -612,6 +632,5 @@ export const LedgerService = {
                 lines: entry.lines.map(l => ({ accountCode: l.account.code, accountName: l.account.name, debit: Number(l.debit), credit: Number(l.credit) }))
             };
         });
-        
     }
 };

@@ -4,8 +4,18 @@ export const api = {
   // Authentication
   login: (username: string, password: string) => ipcRenderer.invoke('auth:login', username, password),
 
+  // Users
+  getUsers: () => ipcRenderer.invoke('get-users'),
+  createUser: (userData: any) => ipcRenderer.invoke('create-user', userData),
+  toggleUserStatus: (userId: string, isActive: boolean) => ipcRenderer.invoke('toggle-user-status', userId, isActive),
+  resetUserPassword: (userId: string, newPassword: string) => ipcRenderer.invoke('reset-user-password', userId, newPassword),
+  updateUserPermissions: (id: string, perms: string[]) => ipcRenderer.invoke('update-user-permissions', id, perms),
+  getPettyCashBalance: () => ipcRenderer.invoke('get-petty-cash-balance'),
+
   // Ledger & Accounts
   getAccounts: () => ipcRenderer.invoke('ledger:getAccounts'),
+  getAccountTypes: () => ipcRenderer.invoke('ledger:getAccountTypes'),
+  createAccount: (data: any) => ipcRenderer.invoke('ledger:createAccount', data),
   submitJournalEntry: (entryData: any) => ipcRenderer.invoke('ledger:submitEntry', entryData),
   getAccountLedger: (accountId: string) => ipcRenderer.invoke('ledger:getAccountLedger', accountId),
   getAllJournalEntries: () => ipcRenderer.invoke('ledger:getAllJournalEntries'),
@@ -25,9 +35,22 @@ export const api = {
   getPayees: (typeFilter?: string) => ipcRenderer.invoke('get-payees', typeFilter),
   createPayee: (name: string, type?: string, tin?: string, email?: string, phone?: string, address?: string) => 
       ipcRenderer.invoke('create-payee', name, type, tin, email, phone, address),
+  importPayees: (data: any[]) => ipcRenderer.invoke('import-payees', data),
   getPayeeBalance: (payeeId: string) => ipcRenderer.invoke('get-payee-balance', payeeId),
   updatePayeeTin: (payeeId: string, tin: string) => ipcRenderer.invoke('update-payee-tin', payeeId, tin),
   getContactsWithBalances: () => ipcRenderer.invoke('get-contacts-with-balances'),
+
+  // Services & Procedures (POS Items)
+  getAllServiceItems: () => ipcRenderer.invoke('get-all-service-items'),
+  createServiceItem: (data: any) => ipcRenderer.invoke('create-service-item', data),
+  updateServiceItem: (id: number, data: any) => ipcRenderer.invoke('update-service-item', id, data),
+  getServiceItems: () => ipcRenderer.invoke('get-service-items'),
+
+  // Inventory
+  getInventoryItems: () => ipcRenderer.invoke('get-inventory-items'),
+  createInventoryItem: (data: any) => ipcRenderer.invoke('create-inventory-item', data),
+  getInventoryLogs: (itemId: string) => ipcRenderer.invoke('get-inventory-logs', itemId),
+  addInventoryLog: (data: any) => ipcRenderer.invoke('add-inventory-log', data),
 
   // Voids
   requestVoid: (id: string, reason: string) => ipcRenderer.invoke('request-void', id, reason),
@@ -41,7 +64,6 @@ export const api = {
   getAllRecentTransactions: () => ipcRenderer.invoke('get-all-recent-transactions'),
   getUserSalesHistory: (userId: string) => ipcRenderer.invoke('get-user-sales-history', userId),
   getShiftReport: (userId: string) => ipcRenderer.invoke('get-shift-report', userId),
-  getPettyCashBalance: () => ipcRenderer.invoke('get-petty-cash-balance'),
 
   // Custom Reports
   getBooksOfAccounts: (bookType: string, startDate: string, endDate: string) => ipcRenderer.invoke('get-books-of-accounts', bookType, startDate, endDate),
@@ -57,30 +79,17 @@ export const api = {
   // Exporters
   exportTrialBalanceExcel: (year?: number, month?: number) => ipcRenderer.invoke('export:trialBalanceExcel', year, month),
   exportPDF: (filename: string) => ipcRenderer.invoke('export:printToPDF', filename),
-  getAllServiceItems: () => ipcRenderer.invoke('get-all-service-items'),
-  createServiceItem: (data: any) => ipcRenderer.invoke('create-service-item', data),
-  updateServiceItem: (id: number, data: any) => ipcRenderer.invoke('update-service-item', id, data),
-  getAccountTypes: () => ipcRenderer.invoke('ledger:getAccountTypes'),
-  createAccount: (data: any) => ipcRenderer.invoke('ledger:createAccount', data),
-  importPayees: (data: any[]) => ipcRenderer.invoke('import-payees', data),
-  // Inventory
-getInventoryItems: () => ipcRenderer.invoke('get-inventory-items'),
-createInventoryItem: (data: any) => ipcRenderer.invoke('create-inventory-item', data),
-getInventoryLogs: (itemId: string) => ipcRenderer.invoke('get-inventory-logs', itemId),
-addInventoryLog: (data: any) => ipcRenderer.invoke('add-inventory-log', data),
-updateUserPermissions: (id: string, perms: string[]) => ipcRenderer.invoke('update-user-permissions', id, perms),
 
   // Employees & Payroll
   getEmployees: () => ipcRenderer.invoke('get-employees'),
   createEmployee: (data: any) => ipcRenderer.invoke('create-employee', data),
   processPayroll: (data: any) => ipcRenderer.invoke('process-payroll', data),
   toggleEmployeeStatus: (id: string, isActive: boolean) => ipcRenderer.invoke('toggle-employee-status', id, isActive),
+  getPayrollHistory: () => ipcRenderer.invoke('get-payroll-history'), // 🔥 THIS WAS MISSING/BROKEN
 
   // Audit Logs
   logAction: (userId: string, action: string, details: string) => ipcRenderer.invoke('log-action', userId, action, details),
   getAuditLogs: (startDate: string, endDate: string) => ipcRenderer.invoke('get-audit-logs', startDate, endDate),
-  getServiceItems: () => ipcRenderer.invoke('get-service-items'),
-  
 
   // Backups & Tax
   triggerBackup: () => ipcRenderer.invoke('backup:triggerBackup'),
@@ -89,12 +98,7 @@ updateUserPermissions: (id: string, perms: string[]) => ipcRenderer.invoke('upda
 
   // Analytics
   getAnalyticsMetrics: (timeframe: string) => ipcRenderer.invoke('analytics:getMetrics', timeframe),
-
-  // Users
-  getUsers: () => ipcRenderer.invoke('get-users'),
-  createUser: (userData: any) => ipcRenderer.invoke('create-user', userData),
-  toggleUserStatus: (userId: string, isActive: boolean) => ipcRenderer.invoke('toggle-user-status', userId, isActive),
-  resetUserPassword: (userId: string, newPassword: string) => ipcRenderer.invoke('reset-user-password', userId, newPassword),
+  updateReferenceNumber: (entryId: string, newRef: string) => ipcRenderer.invoke('update-reference-number', entryId, newRef),
 
   // System & Network Config
   getServerIp: () => ipcRenderer.invoke('config:getServerIp'),
