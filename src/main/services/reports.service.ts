@@ -28,13 +28,13 @@ export class ReportsService {
         for (const line of lines) {
             const acc = tbMap[line.account_id];
             if (!acc) continue;
-            
+
             const txDate = new Date(line.entry.date);
             // Safely check if txDate is before startDate (if a startDate was provided)
             const isPrior = startDate ? (txDate < startDate) : false;
             const isRevenue = acc.account_type.name === 'Revenue';
             const isExpense = acc.account_type.name === 'Expense';
-            
+
             const debit = Number(line.debit);
             const credit = Number(line.credit);
 
@@ -92,8 +92,8 @@ export class ReportsService {
                 totalCredits += netCredit;
             }
         }
-        
-        trialBalanceLines.sort((a,b) => a.accountCode.localeCompare(b.accountCode));
+
+        trialBalanceLines.sort((a, b) => a.accountCode.localeCompare(b.accountCode));
 
         return {
             lines: trialBalanceLines,
@@ -150,7 +150,7 @@ export class ReportsService {
 
         // Balance Sheet relies on ALL historical data up to the selected date
         const trialBalance = await this.getTrialBalance(undefined, endDate);
-        
+
         // Fetch Income Statement to calculate Net Income / Retained Earnings
         const incomeStatement = await this.getIncomeStatement(year, month);
 
@@ -205,13 +205,13 @@ export class ReportsService {
     static async getShiftReport(userId: string) {
         const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
         const endOfDay = new Date(); endOfDay.setHours(23, 59, 59, 999);
-        
+
         const entries = await prisma.journalEntry.findMany({
-            where: { 
-                user_id: userId, 
+            where: {
+                user_id: userId,
                 // ---> FIX: Changed 'created_at' to 'date' here! <---
-                date: { gte: startOfDay, lte: endOfDay }, 
-                description: { startsWith: 'POS Billing' } 
+                date: { gte: startOfDay, lte: endOfDay },
+                description: { startsWith: 'POS Billing' }
             },
             include: { lines: true }
         });
@@ -239,11 +239,11 @@ export class ReportsService {
 
         let whereClause: any = { date: { gte: startDate, lte: endDate } };
 
-        if (bookType === 'SJ') whereClause.reference_no = { startsWith: 'INV-' };      
-        else if (bookType === 'CRJ') whereClause.reference_no = { startsWith: 'OR-' }; 
-        else if (bookType === 'CDJ') whereClause.reference_no = { startsWith: 'CV-' }; 
-        else if (bookType === 'PJ') whereClause.reference_no = { startsWith: 'PJ-' };  
-        else if (bookType === 'GJ') {                                                  
+        if (bookType === 'SJ') whereClause.reference_no = { startsWith: 'INV-' };
+        else if (bookType === 'CRJ') whereClause.reference_no = { startsWith: 'OR-' };
+        else if (bookType === 'CDJ') whereClause.reference_no = { startsWith: 'CV-' };
+        else if (bookType === 'PJ') whereClause.reference_no = { startsWith: 'PJ-' };
+        else if (bookType === 'GJ') {
             whereClause.OR = [
                 { reference_no: { startsWith: 'JV-' } },
                 { reference_no: { startsWith: 'ADJ-' } },
@@ -292,12 +292,20 @@ export class ReportsService {
             if (!payeeMap[payeeId]) {
                 payeeMap[payeeId] = { name: line.entry.payee!.name, invoices: [], totalPayments: 0 };
             }
-            if (Number(line.debit) > 0) payeeMap[payeeId].invoices.push({ date: line.entry.date, amount: Number(line.debit) });
+            if (Number(line.debit) > 0) {
+                // 🔥 UPDATE: Capture the invoice details here
+                payeeMap[payeeId].invoices.push({
+                    invoiceNo: line.entry.reference_no || 'N/A',
+                    date: line.entry.date,
+                    amount: Number(line.debit),
+                    dueDate: new Date(new Date(line.entry.date).getTime() + (30 * 24 * 60 * 60 * 1000)) // Add 30 days for due date
+                });
+            }
             if (Number(line.credit) > 0) payeeMap[payeeId].totalPayments += Number(line.credit);
         }
 
         const today = new Date();
-        today.setHours(0,0,0,0);
+        today.setHours(0, 0, 0, 0);
         const report: any[] = [];
 
         for (const payeeId in payeeMap) {
@@ -305,17 +313,20 @@ export class ReportsService {
             let remainingPayments = p.totalPayments;
             let current = 0; let days30 = 0; let days60 = 0; let days90 = 0;
 
+            const unpaidInvoices: any[] = []; // 🔥 UPDATE: Array to hold only unpaid invoices
+
             for (const inv of p.invoices) {
                 if (remainingPayments >= inv.amount) {
                     remainingPayments -= inv.amount;
-                    continue; 
+                    continue; // Fully paid, skip it
                 }
-                
+
                 const unpaidAmount = inv.amount - remainingPayments;
-                remainingPayments = 0; 
-                
+                const status = remainingPayments > 0 ? 'Partially Paid' : 'Unpaid';
+                remainingPayments = 0;
+
                 const invDate = new Date(inv.date);
-                invDate.setHours(0,0,0,0);
+                invDate.setHours(0, 0, 0, 0);
                 const diffTime = today.getTime() - invDate.getTime();
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
@@ -323,10 +334,22 @@ export class ReportsService {
                 else if (diffDays <= 60) days30 += unpaidAmount;
                 else if (diffDays <= 90) days60 += unpaidAmount;
                 else days90 += unpaidAmount;
+
+                // 🔥 UPDATE: Push to our invoice breakdown list
+                unpaidInvoices.push({
+                    invoiceNo: inv.invoiceNo,
+                    date: inv.date,
+                    dueDate: inv.dueDate,
+                    amount: unpaidAmount,
+                    status: status
+                });
             }
 
             const total = current + days30 + days60 + days90;
-            if (total > 0) report.push({ payeeName: p.name, current, days30, days60, days90, total });
+            if (total > 0) {
+                // 🔥 UPDATE: Include 'invoices: unpaidInvoices' in the return object
+                report.push({ payeeName: p.name, current, days30, days60, days90, total, invoices: unpaidInvoices });
+            }
         }
 
         return report.sort((a, b) => b.total - a.total);
@@ -337,7 +360,7 @@ export class ReportsService {
         const invoices = await prisma.journalEntry.findMany({
             where: { reference_no: { startsWith: 'INV-' }, status: { not: 'VOIDED' } },
             include: { lines: true, payee: true },
-            orderBy: { date: 'asc' } 
+            orderBy: { date: 'asc' }
         });
 
         // 2. Fetch ALL Payments/Collections (Credits to Account 1200)
@@ -358,7 +381,7 @@ export class ReportsService {
         // 4. Apply payments to invoices sequentially (FIFO)
         for (const inv of invoices) {
             const totalAmount = inv.lines.reduce((sum, l) => sum + Number(l.debit), 0);
-            const isAR = inv.lines.some(l => l.account_id === '1200'); 
+            const isAR = inv.lines.some(l => l.account_id === '1200');
 
             let paid = 0; let balance = 0; let status = 'Unpaid';
 
@@ -372,10 +395,10 @@ export class ReportsService {
                     let availableCredit = payeeCredits[pId];
                     if (availableCredit >= totalAmount) {
                         paid = totalAmount; balance = 0; status = 'Fully Paid';
-                        payeeCredits[pId] -= totalAmount; 
+                        payeeCredits[pId] -= totalAmount;
                     } else if (availableCredit > 0) {
                         paid = availableCredit; balance = totalAmount - availableCredit; status = 'Partially Paid';
-                        payeeCredits[pId] = 0; 
+                        payeeCredits[pId] = 0;
                     } else {
                         paid = 0; balance = totalAmount; status = 'Unpaid';
                     }
@@ -396,8 +419,8 @@ export class ReportsService {
             });
         }
 
-        return results.sort((a,b) => b.date.getTime() - a.date.getTime());
-    } 
+        return results.sort((a, b) => b.date.getTime() - a.date.getTime());
+    }
 
     /**
      * Cash Flow Statement (Strictly for the selected month)

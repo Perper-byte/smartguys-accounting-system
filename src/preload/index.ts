@@ -33,8 +33,8 @@ export const api = {
 
   // Payees
   getPayees: (typeFilter?: string) => ipcRenderer.invoke('get-payees', typeFilter),
-  createPayee: (name: string, type?: string, tin?: string, email?: string, phone?: string, address?: string) => 
-      ipcRenderer.invoke('create-payee', name, type, tin, email, phone, address),
+  createPayee: (name: string, type?: string, tin?: string, email?: string, phone?: string, address?: string) =>
+    ipcRenderer.invoke('create-payee', name, type, tin, email, phone, address),
   importPayees: (data: any[]) => ipcRenderer.invoke('import-payees', data),
   getPayeeBalance: (payeeId: string) => ipcRenderer.invoke('get-payee-balance', payeeId),
   updatePayeeTin: (payeeId: string, tin: string) => ipcRenderer.invoke('update-payee-tin', payeeId, tin),
@@ -68,7 +68,7 @@ export const api = {
   // Custom Reports
   getBooksOfAccounts: (bookType: string, startDate: string, endDate: string) => ipcRenderer.invoke('get-books-of-accounts', bookType, startDate, endDate),
   getAgedReceivables: () => ipcRenderer.invoke('get-aged-receivables'),
-  getInvoiceTracker: () => ipcRenderer.invoke('get-invoice-tracker'), 
+  getInvoiceTracker: () => ipcRenderer.invoke('get-invoice-tracker'),
 
   // Financial Reports
   getTrialBalance: (year?: number, month?: number) => ipcRenderer.invoke('reports:getTrialBalance', year, month),
@@ -85,7 +85,7 @@ export const api = {
   createEmployee: (data: any) => ipcRenderer.invoke('create-employee', data),
   processPayroll: (data: any) => ipcRenderer.invoke('process-payroll', data),
   toggleEmployeeStatus: (id: string, isActive: boolean) => ipcRenderer.invoke('toggle-employee-status', id, isActive),
-  getPayrollHistory: () => ipcRenderer.invoke('get-payroll-history'), // 🔥 THIS WAS MISSING/BROKEN
+  getPayrollHistory: () => ipcRenderer.invoke('get-payroll-history'),
 
   // Audit Logs
   logAction: (userId: string, action: string, details: string) => ipcRenderer.invoke('log-action', userId, action, details),
@@ -96,8 +96,11 @@ export const api = {
   generate2550Q: (year: number, quarter: number) => ipcRenderer.invoke('tax:generate2550Q', year, quarter),
   generateRelief: (year: number, quarter: number) => ipcRenderer.invoke('tax:generateRelief', year, quarter),
 
-  // Analytics
+  // 🔥 DASHBOARD ANALYTICS (ADDED THESE TWO LINES)
+  getTodayStats: () => ipcRenderer.invoke('get-today-stats'),
+  getRecentTransactions: () => ipcRenderer.invoke('get-recent-transactions'),
   getAnalyticsMetrics: (timeframe: string) => ipcRenderer.invoke('analytics:getMetrics', timeframe),
+
   updateReferenceNumber: (entryId: string, newRef: string) => ipcRenderer.invoke('update-reference-number', entryId, newRef),
 
   // System & Network Config
@@ -108,7 +111,7 @@ export const api = {
 
 try {
   contextBridge.exposeInMainWorld('electronAPI', api);
-  contextBridge.exposeInMainWorld('api', api); 
+  contextBridge.exposeInMainWorld('api', api);
 } catch (error) {
   console.error('Failed to expose electronAPI in preload:', error);
 }
