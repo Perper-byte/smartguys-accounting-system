@@ -11,14 +11,14 @@ datasource db {
 // 1. SYSTEM ACCESS & SECURITY
 // ------------------------------------------
 model User {
-  id            String   @id @default(uuid()) @db.VarChar(50)
-  username      String   @unique @db.VarChar(100)
-  password_hash String   @db.VarChar(255)
-  role          Role     @default(CASHIER) 
-  is_active     Boolean  @default(true) 
-  
+  id            String  @id @default(uuid()) @db.VarChar(50)
+  username      String  @unique @db.VarChar(100)
+  password_hash String  @db.VarChar(255)
+  role          Role    @default(CASHIER)
+  is_active     Boolean @default(true)
+
   // 🔥 NEW: Custom Access Control List
-  permissions   Json?
+  permissions Json?
 
   journal_entries JournalEntry[]
   audit_logs      AuditLog[]
@@ -39,34 +39,34 @@ enum Role {
 // 6. INVENTORY MANAGEMENT (Non-Financial)
 // ------------------------------------------
 model InventoryItem {
-  id          String   @id @default(uuid()) @db.VarChar(50)
-  code        String   @unique @db.VarChar(50)  // The "Item Code"
-  name        String   @db.VarChar(150)         // The "Product / Description"
-  location    String?  @db.VarChar(100)         // The "Location"
-  stock       Int      @default(0)              // The "Quantity On Hand"
-  is_active   Boolean  @default(true)
+  id        String  @id @default(uuid()) @db.VarChar(50)
+  code      String  @unique @db.VarChar(50) // The "Item Code"
+  name      String  @db.VarChar(150) // The "Product / Description"
+  location  String? @db.VarChar(100) // The "Location"
+  stock     Int     @default(0) // The "Quantity On Hand"
+  is_active Boolean @default(true)
 
-  logs        InventoryLog[]
+  logs InventoryLog[]
 
   @@map("inventory_items")
 }
 
 model InventoryLog {
-  id          String   @id @default(uuid()) @db.VarChar(50)
-  item_id     String   @db.VarChar(50)
-  date        DateTime @default(now())
-  in_qty      Int      @default(0)
-  out_qty     Int      @default(0)
-  balance     Int      @default(0)
-  remarks     String?  @db.VarChar(255)
-  
+  id      String   @id @default(uuid()) @db.VarChar(50)
+  item_id String   @db.VarChar(50)
+  date    DateTime @default(now())
+  in_qty  Int      @default(0)
+  out_qty Int      @default(0)
+  balance Int      @default(0)
+  remarks String?  @db.VarChar(255)
+
   // 🔥 NEW: Expiry Date tracking for deliveries
-  expiry_date DateTime? @db.Date 
+  expiry_date DateTime? @db.Date
 
-  user_id     String   @db.VarChar(50)
+  user_id String @db.VarChar(50)
 
-  item        InventoryItem @relation(fields: [item_id], references: [id], onDelete: Cascade)
-  user        User          @relation(fields: [user_id], references: [id])
+  item InventoryItem @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  user User          @relation(fields: [user_id], references: [id])
 
   @@index([item_id])
   @@index([date])
@@ -74,13 +74,13 @@ model InventoryLog {
 }
 
 model AuditLog {
-  id         Int      @id @default(autoincrement())
-  timestamp  DateTime @default(now())
-  user_id    String   @db.VarChar(50)
-  action     String   @db.VarChar(100)
-  details    String   @db.Text
+  id        Int      @id @default(autoincrement())
+  timestamp DateTime @default(now())
+  user_id   String   @db.VarChar(50)
+  action    String   @db.VarChar(100)
+  details   String   @db.Text
 
-  user       User     @relation(fields: [user_id], references: [id])
+  user User @relation(fields: [user_id], references: [id])
 
   @@index([timestamp])
   @@map("audit_logs")
@@ -91,8 +91,8 @@ model AuditLog {
 // ------------------------------------------
 model AccountType {
   id             String @id @default(uuid()) @db.VarChar(50)
-  name           String @db.VarChar(100) 
-  normal_balance String @db.VarChar(10) 
+  name           String @db.VarChar(100)
+  normal_balance String @db.VarChar(10)
 
   accounts Account[]
 
@@ -100,10 +100,10 @@ model AccountType {
 }
 
 model Account {
-  code         String  @id @db.VarChar(50) 
+  code         String  @id @db.VarChar(50)
   name         String  @db.VarChar(150)
-  tax_category String? @db.VarChar(50) 
-  type_id      String  @db.VarChar(50) 
+  tax_category String? @db.VarChar(50)
+  type_id      String  @db.VarChar(50)
 
   account_type  AccountType   @relation(fields: [type_id], references: [id])
   journal_lines JournalLine[]
@@ -116,43 +116,44 @@ model Account {
 // 3. TRANSACTIONS & BOOKKEEPING (Core Engine)
 // ------------------------------------------
 model Payee {
-  id           String  @id @default(uuid()) @db.VarChar(50)
-  name         String  @db.VarChar(150)
-  tin          String? @db.VarChar(50)
-  type         String  @default("PATIENT") @db.VarChar(50) 
-  
+  id   String  @id @default(uuid()) @db.VarChar(50)
+  name String  @db.VarChar(150)
+  tin  String? @db.VarChar(50)
+  type String  @default("PATIENT") @db.VarChar(50)
+
   // ---> NEW CRM FIELDS <---
   email        String? @db.VarChar(100)
   phone_number String? @db.VarChar(50)
   address      String? @db.Text
 
   journal_entries JournalEntry[]
+
   @@map("payees")
 }
 
 model JournalEntry {
   id           String   @id @default(uuid()) @db.VarChar(50)
   date         DateTime @db.DateTime
-  reference_no String   @db.VarChar(100) 
-  vat_type     String   @default("VATABLE") @db.VarChar(20) 
+  reference_no String   @db.VarChar(100)
+  vat_type     String   @default("VATABLE") @db.VarChar(20)
   description  String   @db.Text
-  payee_id     String?  @db.VarChar(50) 
-  user_id      String   @db.VarChar(50) 
+  payee_id     String?  @db.VarChar(50)
+  user_id      String   @db.VarChar(50)
   created_at   DateTime @default(now())
 
   // VOID SYSTEM STATUS
-  status       String   @default("ACTIVE") @db.VarChar(20)
-  void_reason  String?  @db.Text
+  status      String  @default("ACTIVE") @db.VarChar(20)
+  void_reason String? @db.Text
 
-  payee Payee?        @relation(fields: [payee_id], references: [id])
-  user  User          @relation(fields: [user_id], references: [id])
-  payslips Payslip[] 
-  lines JournalLine[]
+  payee          Payee?          @relation(fields: [payee_id], references: [id])
+  user           User            @relation(fields: [user_id], references: [id])
+  payslips       Payslip[]
+  lines          JournalLine[]
   reconciliation Reconciliation?
 
-  @@index([date]) 
-  @@index([reference_no]) 
-  @@index([payee_id]) 
+  @@index([date])
+  @@index([reference_no])
+  @@index([payee_id])
   @@index([created_at])
   @@map("journal_entries")
 }
@@ -161,14 +162,14 @@ model JournalLine {
   id         String  @id @default(uuid()) @db.VarChar(50)
   debit      Decimal @default(0.00) @db.Decimal(15, 2)
   credit     Decimal @default(0.00) @db.Decimal(15, 2)
-  entry_id   String  @db.VarChar(50) 
-  account_id String  @db.VarChar(50) 
+  entry_id   String  @db.VarChar(50)
+  account_id String  @db.VarChar(50)
 
   entry   JournalEntry @relation(fields: [entry_id], references: [id], onDelete: Cascade)
   account Account      @relation(fields: [account_id], references: [code])
 
-  @@index([account_id]) 
-  @@index([entry_id]) 
+  @@index([account_id])
+  @@index([entry_id])
   @@map("journal_lines")
 }
 
@@ -188,19 +189,19 @@ model Employee {
   is_active      Boolean  @default(true)
   created_at     DateTime @default(now())
 
-  payslips       Payslip[] // 🔥 ADD THIS
+  payslips Payslip[] // 🔥 ADD THIS
 
   @@map("employees")
 }
 
 model BankAccount {
-  id              String            @id @default(uuid()) @db.VarChar(50)
-  name            String            @db.VarChar(150)
-  account_number  String?           @db.VarChar(100)
-  ledger_account  String            @db.VarChar(50)
-  created_at      DateTime          @default(now())
+  id             String   @id @default(uuid()) @db.VarChar(50)
+  name           String   @db.VarChar(150)
+  account_number String?  @db.VarChar(100)
+  ledger_account String   @db.VarChar(50)
+  created_at     DateTime @default(now())
 
-  ledger_account_ref Account          @relation(fields: [ledger_account], references: [code])
+  ledger_account_ref Account           @relation(fields: [ledger_account], references: [code])
   transactions       BankTransaction[]
 
   @@index([ledger_account])
@@ -208,14 +209,14 @@ model BankAccount {
 }
 
 model BankTransaction {
-  id               String          @id @default(uuid()) @db.VarChar(50)
-  bank_account_id  String          @db.VarChar(50)
-  transaction_date DateTime        @db.DateTime
-  description      String          @db.Text
-  reference_no     String?         @db.VarChar(100)
-  amount           Decimal         @db.Decimal(15, 2)
-  status           String          @default("UNMATCHED") @db.VarChar(20)
-  created_at       DateTime        @default(now())
+  id               String    @id @default(uuid()) @db.VarChar(50)
+  bank_account_id  String    @db.VarChar(50)
+  transaction_date DateTime  @db.DateTime
+  description      String    @db.Text
+  reference_no     String?   @db.VarChar(100)
+  amount           Decimal   @db.Decimal(15, 2)
+  status           String    @default("UNMATCHED") @db.VarChar(20)
+  created_at       DateTime  @default(now())
   removed_at       DateTime?
 
   bank_account   BankAccount     @relation(fields: [bank_account_id], references: [id], onDelete: Cascade)
@@ -230,21 +231,21 @@ model BankTransaction {
 // 5. SERVICES & PROCEDURES (POS Items)
 // ------------------------------------------
 model ServiceItem {
-  id          Int      @id @default(autoincrement())
-  category    String   @db.VarChar(100)
-  name        String   @db.VarChar(150)
-  price       Decimal  @default(0.00) @db.Decimal(15, 2)
-  is_active   Boolean  @default(true)
+  id        Int     @id @default(autoincrement())
+  category  String  @db.VarChar(100)
+  name      String  @db.VarChar(150)
+  price     Decimal @default(0.00) @db.Decimal(15, 2)
+  is_active Boolean @default(true)
 
   @@map("service_items")
 }
 
 model Reconciliation {
-  id                  String          @id @default(uuid()) @db.VarChar(50)
-  bank_transaction_id String          @unique @db.VarChar(50)
-  journal_entry_id    String          @unique @db.VarChar(50)
-  matched_at          DateTime        @default(now())
-  matched_by          String          @db.VarChar(50)
+  id                  String   @id @default(uuid()) @db.VarChar(50)
+  bank_transaction_id String   @unique @db.VarChar(50)
+  journal_entry_id    String   @unique @db.VarChar(50)
+  matched_at          DateTime @default(now())
+  matched_by          String   @db.VarChar(50)
 
   bank_transaction BankTransaction @relation(fields: [bank_transaction_id], references: [id], onDelete: Cascade)
   journal_entry    JournalEntry    @relation(fields: [journal_entry_id], references: [id])
@@ -259,28 +260,28 @@ model Payslip {
   journal_entry_id String   @db.VarChar(50)
   date             DateTime @db.Date
   reference_no     String   @db.VarChar(100)
-  
-  // Earnings
-  base_pay         Decimal  @default(0.00) @db.Decimal(15, 2)
-  overtime         Decimal  @default(0.00) @db.Decimal(15, 2)
-  night_diff       Decimal  @default(0.00) @db.Decimal(15, 2)
-  other_earnings   Decimal  @default(0.00) @db.Decimal(15, 2)
-  gross_pay        Decimal  @default(0.00) @db.Decimal(15, 2)
-  
-  // Deductions
-  sss              Decimal  @default(0.00) @db.Decimal(15, 2)
-  philhealth       Decimal  @default(0.00) @db.Decimal(15, 2)
-  pagibig          Decimal  @default(0.00) @db.Decimal(15, 2)
-  cash_advance     Decimal  @default(0.00) @db.Decimal(15, 2)
-  license_fee      Decimal  @default(0.00) @db.Decimal(15, 2)
-  other_deductions Decimal  @default(0.00) @db.Decimal(15, 2)
-  total_deductions Decimal  @default(0.00) @db.Decimal(15, 2)
-  
-  tax_withheld     Decimal  @default(0.00) @db.Decimal(15, 2)
-  net_pay          Decimal  @default(0.00) @db.Decimal(15, 2)
 
-  employee         Employee     @relation(fields: [employee_id], references: [id])
-  journal_entry    JournalEntry @relation(fields: [journal_entry_id], references: [id], onDelete: Cascade)
+  // Earnings
+  base_pay       Decimal @default(0.00) @db.Decimal(15, 2)
+  overtime       Decimal @default(0.00) @db.Decimal(15, 2)
+  night_diff     Decimal @default(0.00) @db.Decimal(15, 2)
+  other_earnings Decimal @default(0.00) @db.Decimal(15, 2)
+  gross_pay      Decimal @default(0.00) @db.Decimal(15, 2)
+
+  // Deductions
+  sss              Decimal @default(0.00) @db.Decimal(15, 2)
+  philhealth       Decimal @default(0.00) @db.Decimal(15, 2)
+  pagibig          Decimal @default(0.00) @db.Decimal(15, 2)
+  cash_advance     Decimal @default(0.00) @db.Decimal(15, 2)
+  license_fee      Decimal @default(0.00) @db.Decimal(15, 2)
+  other_deductions Decimal @default(0.00) @db.Decimal(15, 2)
+  total_deductions Decimal @default(0.00) @db.Decimal(15, 2)
+
+  tax_withheld Decimal @default(0.00) @db.Decimal(15, 2)
+  net_pay      Decimal @default(0.00) @db.Decimal(15, 2)
+
+  employee      Employee     @relation(fields: [employee_id], references: [id])
+  journal_entry JournalEntry @relation(fields: [journal_entry_id], references: [id], onDelete: Cascade)
 
   @@map("payslips")
 }
