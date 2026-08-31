@@ -14,7 +14,7 @@ export type JournalEntryInput = {
 };
 
 export const LedgerService = {
-  
+
     async getAccounts() {
         return await prisma.account.findMany({ include: { account_type: true }, orderBy: { code: 'asc' } });
     },
@@ -25,13 +25,13 @@ export const LedgerService = {
 
     async createBankAccount(data: { name: string; accountNumber?: string; ledgerAccount: string }) {
         try {
-            const bankAccount = await prisma.bankAccount.create({ 
+            const bankAccount = await prisma.bankAccount.create({
                 data: {
                     name: data.name,
                     account_number: data.accountNumber || null,
                     ledger_account: data.ledgerAccount
-                }, 
-                include: { ledger_account_ref: true } 
+                },
+                include: { ledger_account_ref: true }
             });
             return { success: true, data: bankAccount };
         } catch (error: any) {
@@ -84,13 +84,15 @@ export const LedgerService = {
     },
 
     async createBankTransaction(data: { bankAccountId: string; date: string; description: string; referenceNo?: string; amount: number }) {
-        const transaction = await prisma.bankTransaction.create({ data: {
-            bank_account_id: data.bankAccountId,
-            transaction_date: new Date(data.date),
-            description: data.description,
-            reference_no: data.referenceNo || null,
-            amount: data.amount
-        } });
+        const transaction = await prisma.bankTransaction.create({
+            data: {
+                bank_account_id: data.bankAccountId,
+                transaction_date: new Date(data.date),
+                description: data.description,
+                reference_no: data.referenceNo || null,
+                amount: data.amount
+            }
+        });
         return {
             id: transaction.id,
             bank_account_id: transaction.bank_account_id,
@@ -120,7 +122,7 @@ export const LedgerService = {
         const earliestDate = new Date(Math.min(...dates.map(date => date.getTime())));
         const latestDate = new Date(Math.max(...dates.map(date => date.getTime())));
         latestDate.setHours(23, 59, 59, 999);
-        
+
         const existingTransactions = await prisma.bankTransaction.findMany({
             where: {
                 bank_account_id: data.bankAccountId,
@@ -129,17 +131,17 @@ export const LedgerService = {
             },
             select: { transaction_date: true, description: true, reference_no: true, amount: true }
         });
-        
+
         const duplicateKey = (transaction: { date: string; description: string; referenceNo?: string; amount: number }) =>
             `${new Date(transaction.date).toISOString().slice(0, 10)}|${transaction.description.trim().toLowerCase()}|${transaction.referenceNo?.trim().toLowerCase() || ''}|${Number(transaction.amount).toFixed(2)}`;
-            
+
         const existingKeys = new Set(existingTransactions.map(transaction => duplicateKey({
             date: transaction.transaction_date.toISOString(),
             description: transaction.description,
             referenceNo: transaction.reference_no || undefined,
             amount: Number(transaction.amount)
         })));
-        
+
         const importKeys = new Set<string>();
         const newTransactions = data.transactions.filter(transaction => {
             const key = duplicateKey(transaction);
@@ -147,7 +149,7 @@ export const LedgerService = {
             importKeys.add(key);
             return true;
         });
-        
+
         const skippedCount = data.transactions.length - newTransactions.length;
         if (!newTransactions.length) return { count: 0, skippedCount };
 
@@ -226,17 +228,41 @@ export const LedgerService = {
         return await prisma.payee.findMany({ where: whereClause, orderBy: { name: 'asc' } });
     },
 
-    async createPayee(name: string, type: string = 'PATIENT', tin?: string, email?: string, phone?: string, address?: string) {
-        return await prisma.payee.create({
-            data: { 
-                name, 
-                type,
-                tin: tin || null,
-                email: email || null,
-                phone_number: phone || null,
-                address: address || null
-            }
-        });
+    async createPayee(
+        name: string,
+        type: string = 'PATIENT',
+        tin?: string,
+        email?: string,
+        phone?: string,
+        address?: string
+    ) {
+        try {
+
+            const payee = await prisma.payee.create({
+                data: {
+                    name: name.trim(),
+                    type: type || 'PATIENT',
+                    tin: tin?.trim() || null,
+                    email: email?.trim() || null,
+                    phone_number: phone?.trim() || null,
+                    address: address?.trim() || null
+                }
+            });
+
+            return {
+                success: true,
+                data: payee
+            };
+
+        } catch (error: any) {
+
+            console.error('Create Payee Error:', error);
+
+            return {
+                success: false,
+                error: error.message
+            };
+        }
     },
 
     async updatePayeeTin(payeeId: string, tin: string) {
@@ -274,8 +300,8 @@ export const LedgerService = {
                 reference_no: data.referenceNo,
                 description: data.description,
                 vat_type: data.vatType || 'EXEMPT',
-                user_id: data.userId, 
-                payee_id: data.payeeId || null, 
+                user_id: data.userId,
+                payee_id: data.payeeId || null,
                 lines: {
                     create: validLines.map((l) => ({
                         account_id: l.accountId,
@@ -291,10 +317,10 @@ export const LedgerService = {
     async getAccountLedger(accountId: string) {
         const account = await prisma.account.findUnique({ where: { code: accountId }, include: { account_type: true } });
         if (!account) throw new Error("Account not found");
-        
+
         const lines = await prisma.journalLine.findMany({
-            where: { account_id: accountId, entry: { status: 'ACTIVE' } }, 
-            include: { entry: { include: { payee: true } } }, 
+            where: { account_id: accountId, entry: { status: 'ACTIVE' } },
+            include: { entry: { include: { payee: true } } },
             orderBy: { entry: { date: 'asc' } }
         });
 
@@ -322,14 +348,22 @@ export const LedgerService = {
         for (const line of lines) {
             const pId = line.entry.payee_id as string;
             if (!balances[pId]) balances[pId] = { receivable: 0, payable: 0 };
-            
+
             if (line.account_id === '1200') balances[pId].receivable += (Number(line.debit) - Number(line.credit));
             if (line.account_id === '2010') balances[pId].payable += (Number(line.credit) - Number(line.debit));
         }
 
         return payees.map(p => ({
-            id: p.id, name: p.name, type: p.type, email: p.email, phone: p.phone_number, tin: p.tin,
-            youOwe: balances[p.id]?.payable || 0, theyOwe: balances[p.id]?.receivable || 0 
+            id: p.id,
+            name: p.name,
+            type: p.type,
+            email: p.email,
+            phone: p.phone_number,
+            tin: p.tin,
+            address: p.address,
+
+            youOwe: balances[p.id]?.payable || 0,
+            theyOwe: balances[p.id]?.receivable || 0
         }));
     },
 
@@ -338,7 +372,7 @@ export const LedgerService = {
         const endDate = new Date(endDateStr); endDate.setHours(23, 59, 59, 999);
 
         const accounts = await prisma.account.findMany({ include: { account_type: true }, orderBy: { code: 'asc' } });
-        
+
         const periodLines = await prisma.journalLine.findMany({
             where: { entry: { date: { gte: startDate, lte: endDate } } },
             include: { entry: { include: { payee: true } } },
@@ -351,7 +385,7 @@ export const LedgerService = {
 
         for (const acc of accounts) {
             const normalBalance = acc.account_type.normal_balance;
-            
+
             const accPriorLines = priorLines.filter(l => l.account_id === acc.code && l.entry.status === 'ACTIVE');
             let openingBalance = 0;
             for (const l of accPriorLines) {
@@ -393,7 +427,7 @@ export const LedgerService = {
         const lastEntry = await prisma.journalEntry.findFirst({ where: { reference_no: { startsWith: prefix } }, orderBy: { date: 'desc' } });
         if (!lastEntry) return '001';
         const lastSeqNum = parseInt(lastEntry.reference_no.replace(prefix, ''), 10);
-        if (isNaN(lastSeqNum) || lastSeqNum > 999999) return '001'; 
+        if (isNaN(lastSeqNum) || lastSeqNum > 999999) return '001';
         return (lastSeqNum + 1).toString().padStart(3, '0');
     },
 
@@ -487,8 +521,8 @@ export const LedgerService = {
                 lines: {
                     create: original.lines.map(line => ({
                         account_id: line.account_id,
-                        debit: line.credit, 
-                        credit: line.debit  
+                        debit: line.credit,
+                        credit: line.debit
                     }))
                 }
             }
@@ -538,7 +572,7 @@ export const LedgerService = {
             });
             // 🔥 THE FIX: Cast the Decimal price to a normal Number!
             return { success: true, data: { ...item, price: Number(item.price) } };
-        } catch(error: any) {
+        } catch (error: any) {
             return { success: false, error: error.message };
         }
     },
@@ -592,7 +626,7 @@ export const LedgerService = {
             return { success: false, error: error.message };
         }
     },
-    
+
     async updateReferenceNumber(entryId: string, newReferenceNo: string) {
         try {
             await prisma.journalEntry.update({
@@ -606,13 +640,13 @@ export const LedgerService = {
         }
     },
 
-   async getUserSalesHistory(userId: string) {
+    async getUserSalesHistory(userId: string) {
         const entries = await prisma.journalEntry.findMany({
             where: {
                 user_id: userId,
                 // 🔥 THE FIX: Added 'SYS-' so auto-generated receipts show up in history!
-                OR: [ 
-                    { reference_no: { startsWith: 'INV-' } }, 
+                OR: [
+                    { reference_no: { startsWith: 'INV-' } },
                     { reference_no: { startsWith: 'OR-' } },
                     { reference_no: { startsWith: 'SYS-' } }
                 ]
@@ -622,7 +656,7 @@ export const LedgerService = {
             include: { payee: true, lines: { include: { account: true } } }
         });
 
-        
+
 
         return entries.map(entry => {
             const totalAmount = entry.lines.reduce((sum, line) => sum + Number(line.debit), 0);

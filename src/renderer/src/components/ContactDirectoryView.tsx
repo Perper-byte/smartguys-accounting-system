@@ -99,6 +99,451 @@ export function ContactDirectoryView() {
         setIsModalOpen(true);
     };
 
+    const handleImport = () => {
+
+        const input = document.createElement('input');
+
+        input.type = 'file';
+        input.accept = '.xlsx,.xls,.csv';
+
+        input.onchange = async () => {
+
+            const file = input.files?.[0];
+
+            if (!file) return;
+
+            try {
+
+                const buffer = await file.arrayBuffer();
+
+                const workbook = XLSX.read(buffer, {
+                    type: 'array'
+                });
+
+                if (workbook.SheetNames.length === 0) {
+                    throw new Error(
+                        'The selected workbook has no worksheets.'
+                    );
+                }
+
+                // --------------------------------------------
+                // FIND CONTACTS SHEET
+                // --------------------------------------------
+
+                const contactsSheetName =
+                    workbook.SheetNames.find(
+                        (sheetName) =>
+                            sheetName
+                                .trim()
+                                .toLowerCase() === 'contacts'
+                    );
+
+                const selectedSheetName =
+                    contactsSheetName ||
+                    workbook.SheetNames[0];
+
+                const worksheet =
+                    workbook.Sheets[selectedSheetName];
+
+                // --------------------------------------------
+                // READ ROWS
+                // --------------------------------------------
+
+                const rows =
+                    XLSX.utils.sheet_to_json<any>(
+                        worksheet,
+                        {
+                            defval: '',
+                            raw: false
+                        }
+                    );
+
+                if (rows.length === 0) {
+                    throw new Error(
+                        'The selected file contains no contacts.'
+                    );
+                }
+
+                const allowedTypes = [
+                    'PATIENT',
+                    'DOCTOR',
+                    'HMO',
+                    'SUPPLIER'
+                ];
+
+                const importedContacts: any[] = [];
+
+                // --------------------------------------------
+                // VALIDATE EACH ROW
+                // --------------------------------------------
+
+                for (let i = 0; i < rows.length; i++) {
+
+                    const row = rows[i];
+
+                    const name = String(
+                        row.Name ??
+                        row.name ??
+                        ''
+                    ).trim();
+
+                    const type = String(
+                        row.Type ??
+                        row.type ??
+                        ''
+                    )
+                        .trim()
+                        .toUpperCase();
+
+                    const email = String(
+                        row.Email ??
+                        row.email ??
+                        ''
+                    ).trim();
+
+                    const phone = String(
+                        row.Phone ??
+                        row.phone ??
+                        row['Phone Number'] ??
+                        ''
+                    ).trim();
+
+                    const tin = String(
+                        row.TIN ??
+                        row.tin ??
+                        ''
+                    ).trim();
+
+                    const address = String(
+                        row.Address ??
+                        row.address ??
+                        ''
+                    ).trim();
+
+                    const excelRow = i + 2;
+
+                    // Ignore completely blank rows
+                    if (
+                        !name &&
+                        !type &&
+                        !email &&
+                        !phone &&
+                        !tin &&
+                        !address
+                    ) {
+                        continue;
+                    }
+
+                    if (!name) {
+                        throw new Error(
+                            `Row ${excelRow}: Name is required.`
+                        );
+                    }
+
+                    if (!type) {
+                        throw new Error(
+                            `Row ${excelRow}: Type is required.`
+                        );
+                    }
+
+                    if (!allowedTypes.includes(type)) {
+                        throw new Error(
+                            `Row ${excelRow}: Invalid Type "${type}".\n\n` +
+                            `Allowed values:\n` +
+                            `PATIENT\nDOCTOR\nHMO\nSUPPLIER`
+                        );
+                    }
+
+                    importedContacts.push({
+                        name,
+                        type,
+                        email,
+                        phone,
+                        tin,
+                        address
+                    });
+                }
+
+                if (importedContacts.length === 0) {
+                    throw new Error(
+                        'No valid contact rows were found.'
+                    );
+                }
+
+                // --------------------------------------------
+                // SEND TO ELECTRON BACKEND
+                // --------------------------------------------
+
+                const api =
+                    (window as any).api ||
+                    (window as any).electronAPI;
+
+                if (!api || !api.importPayees) {
+                    throw new Error(
+                        'Import API is unavailable. Please restart the application.'
+                    );
+                }
+
+                const result =
+                    await api.importPayees(
+                        importedContacts
+                    );
+
+                if (!result || result.success === false) {
+                    throw new Error(
+                        result?.error ||
+                        'Failed to import contacts.'
+                    );
+                }
+
+                const importedCount =
+                    Number(result.count || 0);
+
+                const skippedCount =
+                    importedContacts.length -
+                    importedCount;
+
+                // --------------------------------------------
+                // REFRESH TABLE
+                // --------------------------------------------
+
+                await fetchContacts();
+
+                // --------------------------------------------
+                // USER-FRIENDLY RESULT MESSAGE
+                // --------------------------------------------
+
+                if (
+                    importedCount === 0 &&
+                    skippedCount > 0
+                ) {
+
+                    alert(
+                        `No new contacts were imported.\n\n` +
+                        `All ${skippedCount} contact(s) already exist in the Contact Directory.`
+                    );
+
+                } else if (skippedCount > 0) {
+
+                    alert(
+                        `Import completed successfully.\n\n` +
+                        `New contacts: ${importedCount}\n` +
+                        `Duplicates skipped: ${skippedCount}`
+                    );
+
+                } else {
+
+                    alert(
+                        `Import completed successfully.\n\n` +
+                        `${importedCount} contact(s) imported.`
+                    );
+
+                }
+
+            } catch (error: any) {
+
+                console.error(
+                    'Contact Import Error:',
+                    error
+                );
+
+                alert(
+                    error?.message ||
+                    'Failed to import contacts.'
+                );
+            }
+
+            // Allows selecting the same file again
+            input.value = '';
+
+        };
+
+        input.click();
+    };
+
+    const handleExport = () => {
+
+        if (contacts.length === 0) {
+            alert('There are no contacts to export.');
+            return;
+        }
+
+        try {
+
+            const exportData = contacts.map((c: any) => ({
+
+                ID: String(c.id || ''),
+
+                Name: c.name || '',
+
+                Type: c.type || '',
+
+                Email: c.email || '',
+
+                Phone: c.phone
+                    ? String(c.phone)
+                    : '',
+
+                TIN: c.tin
+                    ? String(c.tin)
+                    : '',
+
+                Address: c.address || '',
+
+                Status: c.status || 'ACTIVE',
+
+                Payable: Number(c.youOwe || 0),
+
+                Receivable: Number(c.theyOwe || 0)
+
+            }));
+
+            const worksheet =
+                XLSX.utils.json_to_sheet(exportData);
+
+            /*
+             * COLUMN WIDTHS
+             */
+            worksheet['!cols'] = [
+
+                { wch: 38 }, // ID
+
+                { wch: 28 }, // Name
+
+                { wch: 14 }, // Type
+
+                { wch: 32 }, // Email
+
+                { wch: 18 }, // Phone
+
+                { wch: 22 }, // TIN
+
+                { wch: 45 }, // Address
+
+                { wch: 14 }, // Status
+
+                { wch: 18 }, // Payable
+
+                { wch: 18 }  // Receivable
+            ];
+
+            /*
+             * EXCEL AUTO FILTER
+             */
+            worksheet['!autofilter'] = {
+                ref: `A1:J${exportData.length + 1}`
+            };
+
+            /*
+             * CELL FORMATTING
+             */
+            for (
+                let row = 2;
+                row <= exportData.length + 1;
+                row++
+            ) {
+
+                /*
+                 * ID
+                 */
+                const idCell =
+                    worksheet[`A${row}`];
+
+                if (idCell) {
+                    idCell.t = 's';
+                }
+
+                /*
+                 * PHONE
+                 *
+                 * Keep it as text so 0917...
+                 * doesn't lose the first zero.
+                 */
+                const phoneCell =
+                    worksheet[`E${row}`];
+
+                if (phoneCell) {
+                    phoneCell.t = 's';
+                }
+
+                /*
+                 * TIN
+                 */
+                const tinCell =
+                    worksheet[`F${row}`];
+
+                if (tinCell) {
+                    tinCell.t = 's';
+                }
+
+                /*
+                 * PAYABLE
+                 */
+                const payableCell =
+                    worksheet[`I${row}`];
+
+                if (payableCell) {
+
+                    payableCell.t = 'n';
+
+                    payableCell.z =
+                        '₱#,##0.00';
+                }
+
+                /*
+                 * RECEIVABLE
+                 */
+                const receivableCell =
+                    worksheet[`J${row}`];
+
+                if (receivableCell) {
+
+                    receivableCell.t = 'n';
+
+                    receivableCell.z =
+                        '₱#,##0.00';
+                }
+
+            }
+
+            /*
+             * CREATE WORKBOOK
+             */
+            const workbook =
+                XLSX.utils.book_new();
+
+            XLSX.utils.book_append_sheet(
+                workbook,
+                worksheet,
+                'Contacts'
+            );
+
+            /*
+             * FILE DATE
+             */
+            const today =
+                new Date()
+                    .toISOString()
+                    .slice(0, 10);
+
+            XLSX.writeFile(
+                workbook,
+                `SmartGuys_Contacts_${today}.xlsx`
+            );
+
+        } catch (error) {
+
+            console.error(
+                'Contact Export Error:',
+                error
+            );
+
+            alert(
+                'Failed to export contacts.'
+            );
+        }
+    };
+
     return (
         <div className="w-full max-w-7xl mx-auto px-6 py-4 flex flex-col font-sans text-gray-800 relative animate-in fade-in duration-300">
 
@@ -125,8 +570,8 @@ export function ContactDirectoryView() {
                         key={card.type}
                         onClick={() => setFilterType(card.type as any)}
                         className={`p-4 rounded-xl border cursor-pointer transition shadow-sm text-center ${filterType === card.type
-                                ? 'bg-[#1B9387] border-[#1B9387] text-white'
-                                : 'bg-white border-[#B0DCDA] hover:bg-[#E9FAFA] text-gray-600'
+                            ? 'bg-[#1B9387] border-[#1B9387] text-white'
+                            : 'bg-white border-[#B0DCDA] hover:bg-[#E9FAFA] text-gray-600'
                             }`}
                     >
                         <p className={`text-[10px] font-extrabold uppercase tracking-wider mb-1 ${filterType === card.type ? 'text-[#E9FAFA]' : 'text-gray-500'}`}>
@@ -151,28 +596,63 @@ export function ContactDirectoryView() {
                 </div>
 
                 <div className="flex items-center space-x-3 w-full lg:w-auto">
-                    <button className="bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] px-4 py-2 rounded-md text-sm font-extrabold shadow-sm transition flex items-center space-x-2">
-                        <span>📥</span> <span>Import</span>
+                    <button
+                        onClick={handleImport}
+                        className="bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] px-4 py-2 rounded-md text-sm font-extrabold shadow-sm transition flex items-center space-x-2"
+                    >
+                        <span>📥</span>
+                        <span>Import</span>
                     </button>
-                    <button className="bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] px-4 py-2 rounded-md text-sm font-extrabold shadow-sm transition flex items-center space-x-2">
-                        <span>📤</span> <span>Export</span>
+                    <button
+                        onClick={handleExport}
+                        className="bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] px-4 py-2 rounded-md text-sm font-extrabold shadow-sm transition flex items-center space-x-2"
+                    >
+                        <span>📤</span>
+                        <span>Export</span>
                     </button>
 
                     {/* Improved New Contact Flow */}
-                    <div className="relative z-30">
+                    <div className="relative z-50">
                         <button
                             onClick={() => setIsNewContactMenuOpen(!isNewContactMenuOpen)}
                             className="bg-[#1B9387] hover:bg-[#28958B] border border-transparent text-white px-5 py-2 rounded-md text-sm font-extrabold shadow-sm transition flex items-center space-x-2"
                         >
                             <span>+ New Contact ▾</span>
                         </button>
+
                         {isNewContactMenuOpen && (
-                            <div className="absolute right-0 mt-2 w-48 bg-white border border-[#B0DCDA] rounded-lg shadow-xl overflow-hidden py-1">
-                                <div className="px-3 py-2 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">What Type?</div>
-                                <button onClick={() => openNewContactModal('PATIENT')} className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition">👤 Patient</button>
-                                <button onClick={() => openNewContactModal('DOCTOR')} className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition">🩺 Doctor</button>
-                                <button onClick={() => openNewContactModal('HMO')} className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition">🏥 HMO</button>
-                                <button onClick={() => openNewContactModal('SUPPLIER')} className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition">📦 Supplier</button>
+                            <div className="absolute right-0 mt-2 w-48 bg-white border border-[#B0DCDA] rounded-lg shadow-xl overflow-hidden py-1 z-50">
+                                <div className="px-3 py-2 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">
+                                    What Type?
+                                </div>
+
+                                <button
+                                    onClick={() => openNewContactModal('PATIENT')}
+                                    className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
+                                >
+                                    👤 Patient
+                                </button>
+
+                                <button
+                                    onClick={() => openNewContactModal('DOCTOR')}
+                                    className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
+                                >
+                                    🩺 Doctor
+                                </button>
+
+                                <button
+                                    onClick={() => openNewContactModal('HMO')}
+                                    className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
+                                >
+                                    🏥 HMO
+                                </button>
+
+                                <button
+                                    onClick={() => openNewContactModal('SUPPLIER')}
+                                    className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
+                                >
+                                    📦 Supplier
+                                </button>
                             </div>
                         )}
                     </div>
@@ -234,7 +714,7 @@ export function ContactDirectoryView() {
                                         <td className="p-4 text-right font-mono font-bold text-[#1B9387]">{formatCurrency(c.theyOwe)}</td>
 
                                         {/* Actions (⋮) Menu */}
-                                        <td className="p-4 text-center relative z-30">
+                                        <td className="p-4 text-center relative z-10">
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); setActionMenuId(actionMenuId === c.id ? null : c.id); }}
                                                 className="text-gray-400 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-200 transition text-lg font-bold"
@@ -243,7 +723,7 @@ export function ContactDirectoryView() {
                                             </button>
 
                                             {actionMenuId === c.id && (
-                                                <div className="absolute right-8 top-10 w-40 bg-white border border-[#B0DCDA] rounded-md shadow-xl overflow-hidden py-1 text-left z-40">
+                                                <div className="absolute right-8 top-10 w-40 bg-white border border-[#B0DCDA] rounded-md shadow-xl overflow-hidden py-1 text-left z-20">
                                                     <button onClick={(e) => { e.stopPropagation(); alert('View Contact'); setActionMenuId(null); }} className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]">👁️ View Details</button>
                                                     <button onClick={(e) => { e.stopPropagation(); alert('Edit Contact'); setActionMenuId(null); }} className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]">✏️ Edit</button>
                                                     <button onClick={(e) => { e.stopPropagation(); alert('Transactions'); setActionMenuId(null); }} className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]">🧾 Transactions</button>

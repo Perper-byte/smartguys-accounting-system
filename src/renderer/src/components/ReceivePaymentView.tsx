@@ -181,6 +181,16 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
     setStatus(null);
   };
 
+  // FIXED: Print Receipt was rendering a button with no onClick — wired it up.
+  // Uses window.print() with a print-only stylesheet so only the receipt
+  // block (#receipt-print-area) is visible on the printed page, regardless
+  // of the surrounding app chrome (sidebar, header, etc).
+  const handlePrintReceipt = () => {
+    // Electron's window.print() opens the native print dialog for the
+    // current renderer window, same as a browser tab.
+    window.print();
+  };
+
   const filteredPayees = payees.filter(p => p.name.toLowerCase().includes(payeeSearchQuery.toLowerCase()));
   const selectedPayee = payees.find(p => p.id === payeeId);
 
@@ -190,7 +200,27 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   if (successData) {
     return (
       <div className="w-full flex justify-center p-8 bg-slate-50 min-h-[calc(100vh-64px)]">
-        <div className="w-full max-w-3xl bg-white border border-slate-200 rounded-xl p-12 shadow-sm flex flex-col items-center">
+        {/* Print-only CSS: hides everything on the page except the receipt
+            block when printing, and resets it to fill the printed page. */}
+        <style>{`
+          @media print {
+            body * { visibility: hidden; }
+            #receipt-print-area, #receipt-print-area * { visibility: visible; }
+            #receipt-print-area {
+              position: absolute;
+              top: 0;
+              left: 0;
+              width: 100%;
+              margin: 0;
+              padding: 24px;
+              box-shadow: none !important;
+              border: none !important;
+            }
+            #receipt-print-hide { display: none !important; }
+          }
+        `}</style>
+
+        <div id="receipt-print-area" className="w-full max-w-3xl bg-white border border-slate-200 rounded-xl p-12 shadow-sm flex flex-col items-center">
           <CheckCircle size={64} className="text-emerald-500 mb-6" />
           <h2 className="text-2xl font-bold text-slate-800 tracking-widest uppercase mb-2">Payment Received</h2>
           <p className="text-5xl font-mono font-bold text-emerald-500 mb-8">₱ {successData.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
@@ -214,8 +244,8 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
             </div>
           </div>
 
-          <div className="flex gap-4 w-full max-w-md">
-            <button className="flex-1 flex justify-center items-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-4 rounded-md transition">
+          <div id="receipt-print-hide" className="flex gap-4 w-full max-w-md">
+            <button onClick={handlePrintReceipt} className="flex-1 flex justify-center items-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-4 rounded-md transition">
               <Printer size={20} /> Print Receipt
             </button>
             <button onClick={resetForm} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 rounded-md transition shadow-md">
