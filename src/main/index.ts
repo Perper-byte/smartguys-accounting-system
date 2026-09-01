@@ -52,7 +52,15 @@ app.whenReady().then(() => {
     ipcMain.handle('create-payee', async (e, name: string, type: string, tin?: string, email?: string, phone?: string, address?: string) => { const result = await LedgerService.createPayee(name, type, tin, email, phone, address); if (result.success) await AuditService.logAction('SYSTEM', 'CREATE CONTACT', `Added ${type}: ${name}`); return result; });
     ipcMain.handle('import-payees', async (e, data) => { try { const result = typeof LedgerService.importPayees === 'function' ? await LedgerService.importPayees(data) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'IMPORT CONTACTS', `Imported ${result.count} contacts.`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('get-payee-balance', async (e, payeeId: string) => { return await LedgerService.getPayeeBalance(payeeId); });
-    ipcMain.handle('update-payee-tin', async (e, payeeId: string, tin: string) => { try { await LedgerService.updatePayeeTin(payeeId, tin); await AuditService.logAction('SYSTEM', 'UPDATE CONTACT', `Updated TIN for ID: ${payeeId}`); return { success: true }; } catch (err: any) { return { success: false, error: err.message }; } });
+    ipcMain.handle('update-payee-tin', async (_, payeeId: string, tin: string) => {
+        try {
+            const result = await LedgerService.updatePayeeTin(payeeId, tin);
+            return { success: true, data: result };
+        } catch (error: any) {
+            console.error('Update TIN Error:', error);
+            return { success: false, error: error.message };
+        }
+    });
     ipcMain.handle('get-contacts-with-balances', async () => { try { return typeof LedgerService.getContactsWithBalances === 'function' ? await LedgerService.getContactsWithBalances() : []; } catch (err) { return []; } });
 
     // Services
