@@ -5,9 +5,15 @@ const prisma = new PrismaClient();
 
 export class InventoryService {
     static async getItems() {
-        return await prisma.inventoryItem.findMany({
+        const items = await prisma.inventoryItem.findMany({
             orderBy: { name: 'asc' }
         });
+
+        // 🔥 FIX: Cast stock to a Number to prevent Electron IPC DataCloneError
+        return items.map((item: any) => ({
+            ...item,
+            stock: Number(item.stock)
+        }));
     }
 
     static async createItem(data: { code: string, name: string, location?: string }) {
@@ -23,18 +29,28 @@ export class InventoryService {
                     stock: 0
                 }
             });
-            return { success: true, data: item };
+
+            // 🔥 FIX: Cast stock to a Number
+            return { success: true, data: { ...item, stock: Number(item.stock) } };
         } catch (error: any) {
             return { success: false, error: error.message };
         }
     }
 
     static async getLogs(itemId: string) {
-        return await prisma.inventoryLog.findMany({
+        const logs = await prisma.inventoryLog.findMany({
             where: { item_id: itemId },
             include: { user: true },
             orderBy: { date: 'desc' } // Newest first
         });
+
+        // 🔥 FIX: Cast quantities and balance to Numbers
+        return logs.map((log: any) => ({
+            ...log,
+            in_qty: Number(log.in_qty),
+            out_qty: Number(log.out_qty),
+            balance: Number(log.balance)
+        }));
     }
 
     static async addLog(data: { itemId: string, userId: string, inQty: number, outQty: number, remarks: string, expiryDate?: string }) {
@@ -43,7 +59,7 @@ export class InventoryService {
                 const item = await tx.inventoryItem.findUnique({ where: { id: data.itemId } });
                 if (!item) throw new Error("Item not found");
 
-                const newBalance = item.stock + data.inQty - data.outQty;
+                const newBalance = Number(item.stock) + Number(data.inQty) - Number(data.outQty);
                 if (newBalance < 0) throw new Error("Cannot have negative stock balance!");
 
                 const log = await tx.inventoryLog.create({
@@ -54,7 +70,6 @@ export class InventoryService {
                         out_qty: data.outQty,
                         balance: newBalance,
                         remarks: data.remarks || null,
-                        // 🔥 Inject the expiry date if it was provided!
                         expiry_date: data.expiryDate ? new Date(data.expiryDate) : null
                     }
                 });
@@ -64,7 +79,16 @@ export class InventoryService {
                     data: { stock: newBalance }
                 });
 
-                return { success: true, data: log };
+                // 🔥 FIX: Cast returned log numbers
+                return {
+                    success: true,
+                    data: {
+                        ...log,
+                        in_qty: Number(log.in_qty),
+                        out_qty: Number(log.out_qty),
+                        balance: Number(log.balance)
+                    }
+                };
             });
         } catch (error: any) {
             return { success: false, error: error.message };
