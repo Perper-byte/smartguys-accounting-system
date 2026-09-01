@@ -641,21 +641,82 @@ export const LedgerService = {
     },
 
     async getUserSalesHistory(userId: string) {
-        const entries = await prisma.journalEntry.findMany({
-            where: {
-                user_id: userId,
-                // 🔥 THE FIX: Added 'SYS-' so auto-generated receipts show up in history!
-                OR: [
-                    { reference_no: { startsWith: 'INV-' } },
-                    { reference_no: { startsWith: 'OR-' } },
-                    { reference_no: { startsWith: 'SYS-' } }
-                ]
-            },
-            orderBy: { date: 'desc' },
-            take: 100,
-            include: { payee: true, lines: { include: { account: true } } }
-        });
+        try {
+            console.log('[Transaction History] Loading for user:', userId);
 
+            // Safety check: if no user is passed, return empty to prevent DB errors
+            if (!userId) {
+                console.warn('[Transaction History] Missing userId prop from frontend.');
+                return [];
+            }
+
+            const entries = await prisma.journalEntry.findMany({
+                where: {
+                    // 1. TEMPORARILY COMMENTED OUT USER FILTER FOR DEBUGGING
+                    // user_id: userId, 
+
+                    // 2. TEMPORARILY COMMENTED OUT STRICT POS FILTERS FOR DEBUGGING
+                    /*
+                    OR: [
+                        { reference_no: { startsWith: 'INV-' } },
+                        { reference_no: { startsWith: 'OR-' } },
+                        { reference_no: { startsWith: 'SYS-' } },
+                        { description: { startsWith: 'Patient:' } }
+                    ]
+                    */
+                },
+                orderBy: {
+                    date: 'desc'
+                },
+                take: 100,
+                include: {
+                    payee: true,
+                    lines: {
+                        include: {
+                            account: true
+                        }
+                    }
+                }
+            });
+
+            console.log('[Transaction History] Found:', entries.length);
+
+            return entries.map((entry) => {
+                const totalAmount = entry.lines.reduce(
+                    (sum, line) => sum + Number(line.debit),
+                    0
+                );
+
+                let patientName = entry.payee?.name || 'Walk-in / Cash';
+                const patientMatch = entry.description.match(/Patient:\s*(.*?)\s*\|/i);
+
+                if (patientMatch && patientMatch[1]) {
+                    patientName = patientMatch[1].trim();
+                }
+
+                return {
+                    id: entry.id,
+                    date: entry.date,
+                    referenceNo: entry.reference_no,
+                    description: entry.description,
+                    patientName,
+                    payeeName: patientName,
+                    billedEntity: entry.payee?.name || null,
+                    totalAmount,
+                    status: entry.status,
+                    lines: entry.lines.map((line) => ({
+                        accountCode: line.account.code,
+                        accountName: line.account.name,
+                        debit: Number(line.debit),
+                        credit: Number(line.credit)
+                    }))
+                };
+            });
+
+        } catch (error) {
+            console.error('[Transaction History] Failed:', error);
+            throw error;
+        }
 
 
         return entries.map(entry => {

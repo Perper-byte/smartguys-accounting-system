@@ -68,7 +68,43 @@ app.whenReady().then(() => {
     ipcMain.handle('get-payout-history', async () => { try { return await LedgerService.getPayoutHistory(); } catch (err) { return []; } });
     ipcMain.handle('get-full-ledger-report', async (e, startDate, endDate) => { try { return await LedgerService.getFullLedgerReport(startDate, endDate); } catch (err: any) { return { error: err.message }; } });
     ipcMain.handle('ledger:getAllJournalEntries', async () => { try { return await LedgerService.getAllJournalEntries(); } catch (error) { return []; } });
-    ipcMain.handle('get-user-sales-history', async (e, userId) => { try { return await LedgerService.getUserSalesHistory(userId); } catch (err) { return []; } });
+    ipcMain.handle(
+        'get-user-sales-history',
+        async (e, userId) => {
+            try {
+
+                console.log(
+                    '[IPC] get-user-sales-history:',
+                    userId
+                );
+
+                const result =
+                    await LedgerService.getUserSalesHistory(
+                        userId
+                    );
+
+                return {
+                    success: true,
+                    data: result
+                };
+
+            } catch (err: any) {
+
+                console.error(
+                    '[IPC] Transaction history error:',
+                    err
+                );
+
+                return {
+                    success: false,
+                    error:
+                        err.message ||
+                        'Unable to load transaction history.',
+                    data: []
+                };
+            }
+        }
+    );
 
     // Bank Reconciliation
     ipcMain.handle('get-bank-accounts', async () => { try { return typeof LedgerService.getBankAccounts === 'function' ? await LedgerService.getBankAccounts() : []; } catch (err) { return []; } });
