@@ -1,9 +1,10 @@
+// src/renderer/src/components/InventoryView.tsx
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import {
     Search, Plus, X, ClipboardList,
     ArrowDownToLine, ArrowUpFromLine,
-    CheckCircle, AlertTriangle
+    CheckCircle, AlertTriangle, Edit, Trash2, Save
 } from 'lucide-react';
 
 export function InventoryView({ userId, role }: { userId: string, role: string }) {
@@ -15,14 +16,17 @@ export function InventoryView({ userId, role }: { userId: string, role: string }
     const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
 
     const [showNewItem, setShowNewItem] = useState(false);
-    const [newItem, setNewItem] = useState({ code: '', name: '', location: '' });
+    const [newItem, setNewItem] = useState({ code: '', name: '', location: '', uom: 'Pieces' });
+
+    // 🔥 NEW: States for Editing an Item
+    const [isEditing, setIsEditing] = useState(false);
+    const [editItem, setEditItem] = useState({ id: '', code: '', name: '', location: '', uom: 'Pieces' });
 
     const [logType, setLogType] = useState<'IN' | 'OUT'>('OUT');
     const [logQty, setLogQty] = useState<number | ''>('');
     const [logRemarks, setLogRemarks] = useState('');
     const [logExpiry, setLogExpiry] = useState('');
 
-    // Clear status message timeout cleanly to prevent memory leaks
     useEffect(() => {
         let timeoutId: NodeJS.Timeout;
         if (statusMessage) {
@@ -52,7 +56,13 @@ export function InventoryView({ userId, role }: { userId: string, role: string }
     };
 
     useEffect(() => { fetchItems(); }, []);
-    useEffect(() => { if (selectedItemId) fetchLogs(selectedItemId); }, [selectedItemId]);
+
+    useEffect(() => { 
+        if (selectedItemId) {
+            fetchLogs(selectedItemId);
+            setIsEditing(false); // Reset edit state when switching items
+        } 
+    }, [selectedItemId]);
 
     const handleCreateItem = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -60,13 +70,42 @@ export function InventoryView({ userId, role }: { userId: string, role: string }
         const res = await api.createInventoryItem(newItem);
         if (res && res.success) {
             setStatusMessage({ type: 'success', msg: 'Product added successfully!' });
-            setNewItem({ code: '', name: '', location: '' });
+            setNewItem({ code: '', name: '', location: '', uom: 'Pieces' });
             setShowNewItem(false);
             fetchItems();
         } else {
             setStatusMessage({ type: 'error', msg: res?.error || 'Failed to create item' });
         }
-        // Removed inline setTimeout, handled by useEffect now
+    };
+
+    // 🔥 NEW: Handle Updating Item
+    const handleUpdateItem = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const api = (window as any).api || (window as any).electronAPI;
+        const res = await api.updateInventoryItem(editItem.id, editItem);
+        if (res && res.success) {
+            setStatusMessage({ type: 'success', msg: 'Product updated successfully!' });
+            setIsEditing(false);
+            fetchItems();
+        } else {
+            setStatusMessage({ type: 'error', msg: res?.error || 'Failed to update item' });
+        }
+    };
+
+    // 🔥 NEW: Handle Deleting Item
+    const handleDeleteItem = async () => {
+        if (!window.confirm("Are you sure you want to delete this product? All of its stock history will also be permanently deleted. This cannot be undone.")) return;
+        
+        const api = (window as any).api || (window as any).electronAPI;
+        const res = await api.deleteInventoryItem(selectedItemId);
+        
+        if (res && res.success) {
+            setStatusMessage({ type: 'success', msg: 'Product deleted successfully.' });
+            setSelectedItemId(null);
+            fetchItems();
+        } else {
+            setStatusMessage({ type: 'error', msg: res?.error || 'Failed to delete item' });
+        }
     };
 
     const handleAddLog = async (e: React.FormEvent) => {
@@ -100,6 +139,19 @@ export function InventoryView({ userId, role }: { userId: string, role: string }
         (i.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
         (i.code || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    const startEditing = () => {
+        if (selectedItem) {
+            setEditItem({
+                id: selectedItem.id,
+                code: selectedItem.code || '',
+                name: selectedItem.name || '',
+                location: selectedItem.location || '',
+                uom: selectedItem.uom || 'Pieces'
+            });
+            setIsEditing(true);
+        }
+    };
 
     return (
         <div className="max-w-7xl mx-auto h-full flex flex-col text-gray-800 font-sans animate-in fade-in duration-300">
@@ -147,17 +199,35 @@ export function InventoryView({ userId, role }: { userId: string, role: string }
 
                     {showNewItem && (
                         <form onSubmit={handleCreateItem} className="p-4 bg-[#E9FAFA] border-b border-[#B0DCDA] shadow-inner space-y-3">
-                            <div>
-                                <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">Item Code</label>
-                                <input required value={newItem.code} onChange={e => setNewItem({ ...newItem, code: e.target.value })} placeholder="e.g. MED-001" className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">Product Name</label>
-                                <input required value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} placeholder="e.g. Biogesic 500mg" className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition" />
-                            </div>
-                            <div>
-                                <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">Location (Optional)</label>
-                                <input value={newItem.location} onChange={e => setNewItem({ ...newItem, location: e.target.value })} placeholder="e.g. Cabinet A" className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition" />
+                            <div className="grid grid-cols-2 gap-3">
+                                <div className="col-span-2">
+                                    <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">Product Name</label>
+                                    <input required value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} placeholder="e.g. Biogesic 500mg" className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition" />
+                                </div>
+                                
+                                <div>
+                                    <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">Item Code</label>
+                                    <input required value={newItem.code} onChange={e => setNewItem({ ...newItem, code: e.target.value })} placeholder="e.g. MED-001" className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition" />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">Unit / UOM</label>
+                                    <select value={newItem.uom} onChange={e => setNewItem({ ...newItem, uom: e.target.value })} className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition cursor-pointer font-medium text-gray-700">
+                                        <option value="Pieces">Pieces (pcs)</option>
+                                        <option value="Boxes">Boxes (box)</option>
+                                        <option value="Vials">Vials (vial)</option>
+                                        <option value="Bottles">Bottles (btl)</option>
+                                        <option value="Packs">Packs (pack)</option>
+                                        <option value="Tablets">Tablets (tab)</option>
+                                        <option value="Capsules">Capsules (cap)</option>
+                                        <option value="Kits">Kits</option>
+                                    </select>
+                                </div>
+
+                                <div className="col-span-2">
+                                    <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">Location (Optional)</label>
+                                    <input value={newItem.location} onChange={e => setNewItem({ ...newItem, location: e.target.value })} placeholder="e.g. Cabinet A" className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition" />
+                                </div>
                             </div>
                             <button className="w-full bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-bold py-2 rounded shadow-sm cursor-pointer transition uppercase tracking-wider mt-2">
                                 Save Product
@@ -177,7 +247,10 @@ export function InventoryView({ userId, role }: { userId: string, role: string }
                                 <div key={item.id} onClick={() => setSelectedItemId(item.id)} className={`p-4 cursor-pointer transition ${selectedItemId === item.id ? 'bg-[#E9FAFA] border-l-4 border-[#1B9387]' : 'hover:bg-gray-50 border-l-4 border-transparent'}`}>
                                     <div className="flex justify-between items-start">
                                         <span className="font-extrabold text-gray-800 text-sm truncate pr-2">{item.name}</span>
-                                        <span className={`font-mono font-extrabold text-sm ${item.stock <= 5 ? 'text-red-500' : 'text-[#1B9387]'}`}>{item.stock}</span>
+                                        <div className={`flex items-baseline gap-1 ${item.stock <= 5 ? 'text-red-500' : 'text-[#1B9387]'}`}>
+                                            <span className="font-mono font-extrabold text-sm">{item.stock}</span>
+                                            <span className="text-[9px] font-sans font-bold uppercase tracking-wider opacity-70">{item.uom || 'PCS'}</span>
+                                        </div>
                                     </div>
                                     <div className="flex justify-between mt-1">
                                         <span className="text-[10px] text-gray-400 font-mono font-bold">{item.code}</span>
@@ -199,23 +272,81 @@ export function InventoryView({ userId, role }: { userId: string, role: string }
                         </div>
                     ) : (
                         <>
-                            <div className="p-6 bg-white border-b-2 border-gray-800 flex justify-between items-start shrink-0">
-                                <div>
-                                    <div className="flex items-center space-x-4 mb-2">
-                                        <h3 className="text-2xl font-extrabold text-gray-800 tracking-tight">{selectedItem.name}</h3>
-                                        <span className={`px-3 py-1 rounded-full text-xs font-black font-mono shadow-sm border ${selectedItem.stock <= 5 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]'}`}>
-                                            STOCK: {selectedItem.stock}
-                                        </span>
+                            {/* HEADER - DISPLAY OR EDIT MODE */}
+                            <div className={`p-6 border-b-2 border-gray-800 shrink-0 ${isEditing ? 'bg-[#FBF8F8]' : 'bg-white'}`}>
+                                {isEditing ? (
+                                    <form onSubmit={handleUpdateItem} className="space-y-4 animate-in fade-in duration-200">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <h3 className="text-lg font-black text-gray-800 uppercase tracking-widest flex items-center gap-2">
+                                                <Edit size={18} className="text-[#1B9387]" /> Edit Product Details
+                                            </h3>
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Product Name</label>
+                                                <input required value={editItem.name} onChange={e => setEditItem({ ...editItem, name: e.target.value })} className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Item Code</label>
+                                                <input required value={editItem.code} onChange={e => setEditItem({ ...editItem, code: e.target.value })} className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm font-mono text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Unit of Measure (UOM)</label>
+                                                <select value={editItem.uom} onChange={e => setEditItem({ ...editItem, uom: e.target.value })} className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30">
+                                                    <option value="Pieces">Pieces (pcs)</option>
+                                                    <option value="Boxes">Boxes (box)</option>
+                                                    <option value="Vials">Vials (vial)</option>
+                                                    <option value="Bottles">Bottles (btl)</option>
+                                                    <option value="Packs">Packs (pack)</option>
+                                                    <option value="Tablets">Tablets (tab)</option>
+                                                    <option value="Capsules">Capsules (cap)</option>
+                                                    <option value="Kits">Kits</option>
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Location</label>
+                                                <input value={editItem.location} onChange={e => setEditItem({ ...editItem, location: e.target.value })} placeholder="Optional" className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30" />
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-end gap-3 pt-2">
+                                            <button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 bg-white border border-gray-300 rounded-md text-xs font-bold text-gray-600 hover:bg-gray-50 transition cursor-pointer">
+                                                Cancel
+                                            </button>
+                                            <button type="submit" className="px-5 py-2 bg-[#1B9387] rounded-md text-xs font-bold text-white hover:bg-[#15796f] transition flex items-center gap-2 shadow-sm cursor-pointer">
+                                                <Save size={14} /> Save Changes
+                                            </button>
+                                        </div>
+                                    </form>
+                                ) : (
+                                    <div className="flex justify-between items-start animate-in fade-in duration-200">
+                                        <div>
+                                            <div className="flex items-center space-x-4 mb-2">
+                                                <h3 className="text-2xl font-extrabold text-gray-800 tracking-tight">{selectedItem.name}</h3>
+                                                <span className={`px-3 py-1 rounded-full text-xs font-black font-mono shadow-sm border flex gap-1.5 items-center ${selectedItem.stock <= 5 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]'}`}>
+                                                    <span>STOCK: {selectedItem.stock}</span>
+                                                    <span className="text-[10px] font-sans opacity-70 uppercase tracking-widest">{selectedItem.uom || 'PCS'}</span>
+                                                </span>
+                                            </div>
+                                            <div className="flex space-x-8 mt-4 text-sm font-bold text-gray-600 uppercase tracking-wider">
+                                                <p>PRODUCT CODE: <span className="font-mono text-gray-800 ml-2">{selectedItem.code}</span></p>
+                                                <p>LOCATION: <span className="text-gray-800 ml-2">{selectedItem.location || '—'}</span></p>
+                                            </div>
+                                        </div>
+                                        {/* EDIT / DELETE BUTTONS */}
+                                        <div className="flex items-center gap-2">
+                                            <button onClick={startEditing} title="Edit Product" className="p-2 bg-white border border-gray-200 text-gray-500 rounded-md hover:bg-gray-50 hover:text-[#1B9387] transition shadow-sm cursor-pointer">
+                                                <Edit size={16} />
+                                            </button>
+                                            <button onClick={handleDeleteItem} title="Delete Product" className="p-2 bg-white border border-gray-200 text-gray-500 rounded-md hover:bg-red-50 hover:border-red-200 hover:text-red-500 transition shadow-sm cursor-pointer">
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </div>
                                     </div>
-                                    <div className="flex space-x-8 mt-4 text-sm font-bold text-gray-600 uppercase tracking-wider">
-                                        <p>PRODUCT CODE: <span className="font-mono text-gray-800 ml-2">{selectedItem.code}</span></p>
-                                        <p>LOCATION: <span className="text-gray-800 ml-2">{selectedItem.location || '—'}</span></p>
-                                    </div>
-                                </div>
+                                )}
                             </div>
 
-                            <form onSubmit={handleAddLog} className="p-4 bg-[#FBF8F8] border-b border-[#B0DCDA] flex flex-col gap-3 shadow-inner shrink-0">
-                                {/* Changed from hardcoded Grid to flex-wrap for better responsiveness in Electron */}
+                            {/* LOGBOOK ENTRY FORM */}
+                            <form onSubmit={handleAddLog} className={`p-4 border-b border-[#B0DCDA] flex flex-col gap-3 shadow-inner shrink-0 ${isEditing ? 'opacity-50 pointer-events-none bg-gray-50' : 'bg-[#FBF8F8]'}`}>
                                 <div className="flex flex-wrap gap-3 items-center w-full">
                                     <div className="relative w-36">
                                         <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
@@ -232,16 +363,21 @@ export function InventoryView({ userId, role }: { userId: string, role: string }
                                         </select>
                                     </div>
 
-                                    <input
-                                        type="number"
-                                        min="1"
-                                        step="1"
-                                        required
-                                        placeholder="Qty"
-                                        value={logQty}
-                                        onChange={e => setLogQty(Number(e.target.value))}
-                                        className="w-24 bg-white border border-[#B0DCDA] rounded-md px-3 py-2 text-sm font-mono font-bold outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] transition"
-                                    />
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="number"
+                                            min="1"
+                                            step="1"
+                                            required
+                                            placeholder="Qty"
+                                            value={logQty}
+                                            onChange={e => setLogQty(Number(e.target.value))}
+                                            className="w-32 bg-white border border-[#B0DCDA] rounded-md px-3 py-2 pr-12 text-sm font-mono font-bold outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] transition"
+                                        />
+                                        <span className="absolute right-3 text-[10px] text-gray-400 font-bold uppercase pointer-events-none">
+                                            {selectedItem.uom === 'Pieces' ? 'PCS' : selectedItem.uom === 'Boxes' ? 'BOX' : selectedItem.uom?.substring(0,3) || 'PCS'}
+                                        </span>
+                                    </div>
 
                                     {logType === 'IN' && (
                                         <input
@@ -267,7 +403,8 @@ export function InventoryView({ userId, role }: { userId: string, role: string }
                                 </div>
                             </form>
 
-                            <div className="flex-1 overflow-auto bg-white">
+                            {/* LOGBOOK TABLE */}
+                            <div className={`flex-1 overflow-auto ${isEditing ? 'opacity-50 pointer-events-none bg-gray-50' : 'bg-white'}`}>
                                 <table className="w-full text-left text-sm">
                                     <thead className="bg-[#FBF8F8] sticky top-0 border-b border-[#B0DCDA] shadow-sm z-10">
                                         <tr className="text-gray-500 uppercase tracking-wider text-xs font-extrabold">

@@ -33,8 +33,24 @@ export const api = {
 
   // Payees
   getPayees: (typeFilter?: string) => ipcRenderer.invoke('get-payees', typeFilter),
-  createPayee: (name: string, type?: string, tin?: string, email?: string, phone?: string, address?: string) =>
-    ipcRenderer.invoke('create-payee', name, type, tin, email, phone, address),
+    createPayee: (
+        name: string, 
+        type: string, 
+        tin: string, 
+        email: string, 
+        phone: string, 
+        address: string, 
+        hmoAffiliation?: string, 
+        hmoCardNo?: string, 
+        hmoExpiry?: string
+    ) => ipcRenderer.invoke(
+        'create-payee', 
+        name, type, tin, email, phone, address, hmoAffiliation, hmoCardNo, hmoExpiry
+    ),
+
+    // Inside contextBridge.exposeInMainWorld('api', { ... })
+    updateInventoryItem: (id: string, data: any) => ipcRenderer.invoke('update-inventory-item', id, data),
+    deleteInventoryItem: (id: string) => ipcRenderer.invoke('delete-inventory-item', id),
   importPayees: (data: any[]) => ipcRenderer.invoke('import-payees', data),
   getPayeeBalance: (payeeId: string) => ipcRenderer.invoke('get-payee-balance', payeeId),
   updatePayeeTin: (payeeId: string, tin: string) => ipcRenderer.invoke('update-payee-tin', payeeId, tin),

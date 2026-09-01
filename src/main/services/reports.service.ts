@@ -180,10 +180,10 @@ export class ReportsService {
             }
         }
 
-        // 1. Current period's Net Income (Kept from feature branch for the UI)
+        // 1. Current period's Net Income
         const netIncome = incomeStatement.netIncome;
 
-        // 2. All-time Retained Earnings (From main branch, needed to balance the sheet!)
+        // 2. All-time Retained Earnings
         const cumulativeNetIncome = cumulativeRevenue - cumulativeExpenses;
 
         // 3. Calculate the grand total
@@ -209,7 +209,6 @@ export class ReportsService {
         const entries = await prisma.journalEntry.findMany({
             where: {
                 user_id: userId,
-                // ---> FIX: Changed 'created_at' to 'date' here! <---
                 date: { gte: startOfDay, lte: endOfDay },
                 description: { startsWith: 'POS Billing' }
             },
@@ -239,7 +238,12 @@ export class ReportsService {
 
         let whereClause: any = { date: { gte: startDate, lte: endDate } };
 
-        if (bookType === 'SJ') whereClause.reference_no = { startsWith: 'INV-' };
+        if (bookType === 'SJ') {
+            whereClause.OR = [
+                { reference_no: { startsWith: 'INV-' } },
+                { reference_no: { startsWith: 'SYS-' } }
+            ];
+        }
         else if (bookType === 'CRJ') whereClause.reference_no = { startsWith: 'OR-' };
         else if (bookType === 'CDJ') whereClause.reference_no = { startsWith: 'CV-' };
         else if (bookType === 'PJ') whereClause.reference_no = { startsWith: 'PJ-' };
@@ -275,9 +279,6 @@ export class ReportsService {
         return formattedData;
     }
 
-    // ==========================================
-    // ---> NEW: AGED RECEIVABLES (HMO TRACKER) <---
-    // ==========================================
     static async getAgedReceivables() {
         const lines = await prisma.journalLine.findMany({
             where: { account_id: '1200', entry: { payee_id: { not: null } } },
@@ -293,12 +294,11 @@ export class ReportsService {
                 payeeMap[payeeId] = { name: line.entry.payee!.name, invoices: [], totalPayments: 0 };
             }
             if (Number(line.debit) > 0) {
-                // 🔥 UPDATE: Capture the invoice details here
                 payeeMap[payeeId].invoices.push({
                     invoiceNo: line.entry.reference_no || 'N/A',
                     date: line.entry.date,
                     amount: Number(line.debit),
-                    dueDate: new Date(new Date(line.entry.date).getTime() + (30 * 24 * 60 * 60 * 1000)) // Add 30 days for due date
+                    dueDate: new Date(new Date(line.entry.date).getTime() + (30 * 24 * 60 * 60 * 1000))
                 });
             }
             if (Number(line.credit) > 0) payeeMap[payeeId].totalPayments += Number(line.credit);
@@ -313,12 +313,12 @@ export class ReportsService {
             let remainingPayments = p.totalPayments;
             let current = 0; let days30 = 0; let days60 = 0; let days90 = 0;
 
-            const unpaidInvoices: any[] = []; // 🔥 UPDATE: Array to hold only unpaid invoices
+            const unpaidInvoices: any[] = []; 
 
             for (const inv of p.invoices) {
                 if (remainingPayments >= inv.amount) {
                     remainingPayments -= inv.amount;
-                    continue; // Fully paid, skip it
+                    continue;
                 }
 
                 const unpaidAmount = inv.amount - remainingPayments;
@@ -335,7 +335,6 @@ export class ReportsService {
                 else if (diffDays <= 90) days60 += unpaidAmount;
                 else days90 += unpaidAmount;
 
-                // 🔥 UPDATE: Push to our invoice breakdown list
                 unpaidInvoices.push({
                     invoiceNo: inv.invoiceNo,
                     date: inv.date,
@@ -347,7 +346,6 @@ export class ReportsService {
 
             const total = current + days30 + days60 + days90;
             if (total > 0) {
-                // 🔥 UPDATE: Include 'invoices: unpaidInvoices' in the return object
                 report.push({ payeeName: p.name, current, days30, days60, days90, total, invoices: unpaidInvoices });
             }
         }
@@ -356,9 +354,15 @@ export class ReportsService {
     }
 
     static async getInvoiceTracker() {
-        // 1. Fetch ALL Invoices from oldest to newest
+        // 1. Fetch BOTH manual INV- invoices AND automated SYS- POS transactions
         const invoices = await prisma.journalEntry.findMany({
-            where: { reference_no: { startsWith: 'INV-' }, status: { not: 'VOIDED' } },
+            where: {
+                OR: [
+                    { reference_no: { startsWith: 'INV-' } },
+                    { reference_no: { startsWith: 'SYS-' } }
+                ],
+                status: { not: 'VOIDED' }
+            },
             include: { lines: true, payee: true },
             orderBy: { date: 'asc' }
         });
@@ -369,7 +373,7 @@ export class ReportsService {
             include: { entry: true }
         });
 
-        // 3. Group the payments by Patient/Payee
+        // 3. Group the collections by Patient/Payee
         const payeeCredits: Record<string, number> = {};
         for (const line of arCreditLines) {
             const pId = line.entry.payee_id!.toString();
@@ -378,40 +382,61 @@ export class ReportsService {
 
         const results: any[] = [];
 
-        // 4. Apply payments to invoices sequentially (FIFO)
+        // 4. Calculate statuses sequentially with robust Split-Payment Math
         for (const inv of invoices) {
             const totalAmount = inv.lines.reduce((sum, l) => sum + Number(l.debit), 0);
-            const isAR = inv.lines.some(l => l.account_id === '1200');
+            
+            // Check if this transaction actually had an A/R component
+            const arLine = inv.lines.find(l => l.account_id === '1200' && Number(l.debit) > 0);
+            const isAR = !!arLine;
 
-            let paid = 0; let balance = 0; let status = 'Unpaid';
+            let paid = 0; 
+            let balance = 0; 
+            let status = 'Unpaid';
 
             if (!isAR) {
-                // Paid in Cash/GCash instantly
-                paid = totalAmount; balance = 0; status = 'Fully Paid';
+                // If it wasn't charged to AR, it was paid fully in Cash/GCash instantly via POS
+                paid = totalAmount; 
+                balance = 0; 
+                status = 'Fully Paid';
             } else {
-                // Charged to HMO/Credit
+                // A/R was used. Calculate how much was paid in cash vs charged to A/R
+                const arAmount = Number(arLine.debit);
+                const cashAmount = totalAmount - arAmount;
                 const pId = inv.payee_id?.toString();
+
                 if (pId && payeeCredits[pId] !== undefined) {
                     let availableCredit = payeeCredits[pId];
-                    if (availableCredit >= totalAmount) {
-                        paid = totalAmount; balance = 0; status = 'Fully Paid';
-                        payeeCredits[pId] -= totalAmount;
+                    if (availableCredit >= arAmount) {
+                        paid = totalAmount; 
+                        balance = 0; 
+                        status = 'Fully Paid';
+                        payeeCredits[pId] -= arAmount;
                     } else if (availableCredit > 0) {
-                        paid = availableCredit; balance = totalAmount - availableCredit; status = 'Partially Paid';
+                        paid = cashAmount + availableCredit; 
+                        balance = arAmount - availableCredit; 
+                        status = 'Partially Paid';
                         payeeCredits[pId] = 0;
                     } else {
-                        paid = 0; balance = totalAmount; status = 'Unpaid';
+                        paid = cashAmount; 
+                        balance = arAmount; 
+                        status = cashAmount > 0 ? 'Partially Paid' : 'Unpaid';
                     }
                 } else {
-                    paid = 0; balance = totalAmount; status = 'Unpaid';
+                    paid = cashAmount; 
+                    balance = arAmount; 
+                    status = cashAmount > 0 ? 'Partially Paid' : 'Unpaid';
                 }
             }
 
+            // 🔥 UPDATED: Added inv.description here as requested!
             results.push({
                 id: inv.id,
                 date: inv.date,
                 referenceNo: inv.reference_no,
+                description: inv.description, 
                 payeeName: inv.payee?.name || 'Walk-in / Cash',
+                payeeType: inv.payee?.type || 'PATIENT',
                 total: totalAmount,
                 paid: paid,
                 balance: balance,

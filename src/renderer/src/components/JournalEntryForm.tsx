@@ -2,6 +2,7 @@
 import * as React from 'react';
 import { useState, useEffect, useMemo } from 'react';
 import { NewContactModal } from './NewContactModal';
+import { UploadCloud, File as FileIcon, X, Image as ImageIcon } from 'lucide-react';
 
 // Prevents timezone bugs when selecting dates
 const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
@@ -31,6 +32,11 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     
     const [payeeBalance, setPayeeBalance] = useState<{receivable: number, payable: number} | null>(null);
     const [lines, setLines] = useState([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
+    
+    // 🔥 NEW: Attachment States
+    const [attachments, setAttachments] = useState<File[]>([]);
+    const [isDragging, setIsDragging] = useState(false);
+
     const [status, setStatus] = useState<{ type: 'error' | 'success', msg: string } | null>(null);
     const [loading, setLoading] = useState(false);
 
@@ -43,7 +49,6 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         }
     }, []);
 
-    // Auto-Fetch the next Sequence Number
     useEffect(() => {
         const fetchNextSeq = async () => {
             try {
@@ -71,15 +76,6 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         };
         fetchBalance();
     }, [payeeId]);
-
-    const groupedAccounts = useMemo(() => {
-        return accounts.reduce((groups: any, acc: any) => {
-            const categoryName = acc.account_type?.name || 'Other';
-            if (!groups[categoryName]) groups[categoryName] = [];
-            groups[categoryName].push(acc);
-            return groups;
-        }, {});
-    }, [accounts]);
 
     const handleContactSaved = async (newId: string, newName: string) => {
         const api = (window as any).electronAPI || (window as any).api;
@@ -109,6 +105,57 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         setLines(newLines);
     };
 
+    // 🔥 NEW: Attachment Handlers
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (e.target.files) handleFilesAdded(Array.from(e.target.files));
+    };
+
+    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (e.dataTransfer.files) handleFilesAdded(Array.from(e.dataTransfer.files));
+    };
+
+    const handleFilesAdded = (files: File[]) => {
+        const validFiles = files.filter(file => {
+            const isValidType = ['image/jpeg', 'image/png', 'application/pdf', 'application/zip', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'].includes(file.type);
+            const isValidSize = file.size <= 10 * 1024 * 1024; // 10MB limit
+            
+            if (!isValidType) alert(`${file.name} is not a supported file type.`);
+            if (!isValidSize) alert(`${file.name} exceeds the 10MB limit.`);
+            
+            return isValidType && isValidSize;
+        });
+
+        if (attachments.length + validFiles.length > 10) {
+            alert('You can only upload a maximum of 10 attachments per entry.');
+            return;
+        }
+
+        setAttachments(prev => [...prev, ...validFiles]);
+    };
+
+    const removeAttachment = (index: number) => {
+        setAttachments(prev => prev.filter((_, i) => i !== index));
+    };
+
+    // Convert Files to Base64 to safely send to Electron backend
+    const processAttachments = async () => {
+        return Promise.all(attachments.map(async (file) => {
+            return new Promise<{ name: string, type: string, size: number, data: string | ArrayBuffer | null }>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve({
+                    name: file.name,
+                    type: file.type,
+                    size: file.size,
+                    data: reader.result // This is the Base64 string
+                });
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        }));
+    };
+
     const totalDebit = lines.reduce((sum, ln) => sum + (Number(ln.debit) || 0), 0);
     const totalCredit = lines.reduce((sum, ln) => sum + (Number(ln.credit) || 0), 0);
     const isBalanced = totalDebit > 0 && totalDebit.toFixed(2) === totalCredit.toFixed(2);
@@ -126,6 +173,9 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
             const paddedSequence = refSequence.padStart(3, '0');
             const fullReferenceNo = `${refPrefix}${paddedSequence}`;
 
+            // Process attachments to send to backend
+            const processedAttachments = await processAttachments();
+
             const result = await api.submitJournalEntry({
                 date: new Date(date),
                 referenceNo: fullReferenceNo,
@@ -133,7 +183,8 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 vatType,
                 payeeId: payeeId === '' ? undefined : payeeId,
                 userId,
-                lines: validLines
+                lines: validLines,
+                attachments: processedAttachments // 🔥 Sent to backend here
             });
 
             if (result.success) {
@@ -143,6 +194,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 setPayeeId(''); 
                 setPayeeSearchQuery(''); 
                 setLines([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
+                setAttachments([]); // Reset attachments
                 
                 if (api.getAllJournalEntries) api.getAllJournalEntries().then(setPastEntries);
             } else {
@@ -217,41 +269,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                             placeholder={isAdjusting ? "Search (e.g. OR-1001)" : "001"} 
                             className="w-full bg-transparent p-3 text-sm font-mono text-gray-800 font-bold outline-none" 
                         />
-                        {isAdjusting && (
-                            <button
-                                type="button"
-                                onClick={() => setIsRefDropdownOpen(!isRefDropdownOpen)}
-                                className="px-4 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] rounded-r-md transition"
-                                title="Search Past Transactions"
-                            >
-                                🔍
-                            </button>
-                        )}
                     </div>
-
-                    {isAdjusting && isRefDropdownOpen && (
-                        <ul className="absolute z-50 w-full mt-1 bg-white border border-[#B0DCDA] rounded-md shadow-xl max-h-48 overflow-y-auto">
-                            <li className="p-2 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider sticky top-0">Recent Database Entries</li>
-                            {pastEntries
-                                .filter(e => e.reference_no.toLowerCase().includes(refSequence.toLowerCase()))
-                                .map(entry => (
-                                    <li
-                                        key={entry.id}
-                                        onMouseDown={() => {
-                                            const cleanRef = entry.reference_no.replace('ADJ-', '');
-                                            setRefSequence(cleanRef);
-                                            if (description === 'Adjusting Entry: ') {
-                                                setDescription(`Adjusting Entry to correct ${entry.reference_no}: ${entry.description}`);
-                                            }
-                                        }}
-                                        className="p-3 text-sm text-gray-800 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-b border-gray-50 last:border-0"
-                                    >
-                                        <span className="font-mono font-bold text-[#1B9387] mr-2">{entry.reference_no}</span>
-                                        <span className="text-gray-500 truncate">{entry.description}</span>
-                                    </li>
-                                ))}
-                        </ul>
-                    )}
                 </div>
 
                 {!isAdjusting && (
@@ -263,9 +281,6 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                                 <option value="EXEMPT">VAT-Exempt</option>
                                 <option value="ZERO_RATED">Zero-Rated (0%)</option>
                             </select>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
-                                <svg className="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
-                            </div>
                         </div>
                     </div>
                 )}
@@ -277,85 +292,34 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                     <div className="mb-6">
                         <div className="flex justify-between items-end mb-2">
                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">Contact / Subsidiary (For AR/AP)</label>
-                            <button
-                                type="button"
-                                onClick={() => setIsNewContactModalOpen(true)}
-                                className="bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-bold px-4 py-2 rounded-md transition shadow-sm cursor-pointer"
-                            >
+                            <button type="button" onClick={() => setIsNewContactModalOpen(true)} className="bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-bold px-4 py-2 rounded-md transition shadow-sm cursor-pointer">
                                 + New Contact
                             </button>
                         </div>
 
                         <div className="relative mt-2">
-                            <div
-                                onClick={() => setIsPayeeDropdownOpen(!isPayeeDropdownOpen)}
-                                className={`w-full bg-[#FBF8F8] border ${isPayeeDropdownOpen ? 'border-[#1B9387] ring-2 ring-[#E9FAFA]' : 'border-[#B0DCDA]'} rounded-md p-3 text-sm text-gray-800 transition cursor-pointer flex justify-between items-center`}
-                            >
+                            <div onClick={() => setIsPayeeDropdownOpen(!isPayeeDropdownOpen)} className={`w-full bg-[#FBF8F8] border ${isPayeeDropdownOpen ? 'border-[#1B9387] ring-2 ring-[#E9FAFA]' : 'border-[#B0DCDA]'} rounded-md p-3 text-sm text-gray-800 transition cursor-pointer flex justify-between items-center`}>
                                 <span className={payeeId ? 'text-gray-800 font-medium' : 'text-gray-400'}>{selectedPayeeName}</span>
-                                <svg className="w-4 h-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                                </svg>
                             </div>
 
                             {isPayeeDropdownOpen && (
                                 <div className="absolute z-20 w-full mt-1 bg-white border border-[#B0DCDA] rounded-md shadow-xl overflow-hidden">
                                     <div className="p-2 border-b border-[#B0DCDA] bg-gray-50">
-                                        <input
-                                            type="text"
-                                            autoFocus
-                                            placeholder="🔍 Search contact name..."
-                                            value={payeeSearchQuery}
-                                            onChange={(e) => setPayeeSearchQuery(e.target.value)}
-                                            className="w-full bg-transparent p-2 text-sm text-gray-800 outline-none placeholder-gray-400"
-                                        />
+                                        <input type="text" autoFocus placeholder="🔍 Search contact name..." value={payeeSearchQuery} onChange={(e) => setPayeeSearchQuery(e.target.value)} className="w-full bg-transparent p-2 text-sm text-gray-800 outline-none placeholder-gray-400" />
                                     </div>
-
                                     <ul className="max-h-48 overflow-y-auto">
-                                        <li
-                                            onClick={() => { setPayeeId(''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }}
-                                            className="p-3 text-sm text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition font-medium"
-                                        >
+                                        <li onClick={() => { setPayeeId(''); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }} className="p-3 text-sm text-gray-500 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition font-medium">
                                             -- No Sub-Account Tagged --
                                         </li>
-                                        {filteredPayees && filteredPayees.length > 0 ? (
-                                            filteredPayees.map((p: any) => (
-                                                <li
-                                                    key={p.id}
-                                                    onClick={() => { setPayeeId(p.id); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }}
-                                                    className="p-3 text-sm text-gray-800 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-t border-gray-50"
-                                                >
-                                                    {p.name}
-                                                </li>
-                                            ))
-                                        ) : (
-                                            <li className="p-3 text-sm text-gray-500 text-center italic border-t border-gray-50">
-                                                No records found.
+                                        {filteredPayees.map((p: any) => (
+                                            <li key={p.id} onClick={() => { setPayeeId(p.id); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }} className="p-3 text-sm text-gray-800 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-t border-gray-50">
+                                                {p.name}
                                             </li>
-                                        )}
+                                        ))}
                                     </ul>
                                 </div>
                             )}
                         </div>
-
-                        {payeeBalance && (
-                            <div className="mt-3 flex gap-3 text-xs">
-                                {payeeBalance.receivable > 0 && (
-                                    <span className="text-red-600 font-bold bg-red-50 px-3 py-1.5 rounded border border-red-200 flex items-center shadow-sm">
-                                        ⚠️ They owe clinic: ₱{payeeBalance.receivable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                    </span>
-                                )}
-                                {payeeBalance.payable > 0 && (
-                                    <span className="text-amber-600 font-bold bg-amber-50 px-3 py-1.5 rounded border border-amber-200 flex items-center shadow-sm">
-                                        ⚠️ Clinic owes them: ₱{payeeBalance.payable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                    </span>
-                                )}
-                                {payeeBalance.receivable <= 0 && payeeBalance.payable <= 0 && (
-                                    <span className="text-[#1B9387] font-bold bg-[#E9FAFA] px-3 py-1.5 rounded border border-[#B0DCDA] flex items-center shadow-sm">
-                                        ✅ Cleared / No outstanding balance
-                                    </span>
-                                )}
-                            </div>
-                        )}
                     </div>
                 )}
 
@@ -379,113 +343,94 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                     <tbody className="divide-y divide-gray-100">
                         {lines.map((line, idx) => (
                             <tr key={idx} className="even:bg-gray-50 odd:bg-white hover:bg-[#E9FAFA]/50 transition">
-                                
-                                {/* SEARCHABLE ACCOUNT CELL */}
                                 <td className="p-0 border-r border-[#B0DCDA] relative align-top">
                                     {activeAccountRow === idx ? (
                                         <div className="absolute z-50 left-0 top-0 w-full min-w-[350px] bg-white border border-[#1B9387] shadow-xl rounded-md overflow-hidden">
                                             <div className="p-2 bg-[#FBF8F8] border-b border-[#B0DCDA]">
-                                                <input
-                                                    type="text"
-                                                    autoFocus
-                                                    placeholder="🔍 Type account code or name..."
-                                                    value={accountSearchQuery}
-                                                    onChange={(e) => setAccountSearchQuery(e.target.value)}
-                                                    onBlur={() => setTimeout(() => setActiveAccountRow(null), 200)}
-                                                    className="w-full bg-transparent p-1.5 text-sm text-gray-800 outline-none font-medium"
-                                                />
+                                                <input type="text" autoFocus placeholder="🔍 Type account code or name..." value={accountSearchQuery} onChange={(e) => setAccountSearchQuery(e.target.value)} onBlur={() => setTimeout(() => setActiveAccountRow(null), 200)} className="w-full bg-transparent p-1.5 text-sm text-gray-800 outline-none font-medium" />
                                             </div>
                                             <ul className="max-h-48 overflow-y-auto bg-white">
-                                                {accounts
-                                                    .filter(a => `${a.code} ${a.name}`.toLowerCase().includes(accountSearchQuery.toLowerCase()))
-                                                    .map(acc => (
-                                                        <li
-                                                            key={acc.code}
-                                                            onMouseDown={() => {
-                                                                updateLine(idx, 'accountId', acc.code);
-                                                                setActiveAccountRow(null);
-                                                            }}
-                                                            className="p-3 text-sm text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-b border-gray-50 last:border-0 flex items-center"
-                                                        >
-                                                            <span className="font-mono font-bold text-[#1B9387] w-14 inline-block">{acc.code}</span>
-                                                            <span className="font-medium">{acc.name}</span>
-                                                        </li>
-                                                    ))
-                                                }
-                                                {accounts.filter(a => `${a.code} ${a.name}`.toLowerCase().includes(accountSearchQuery.toLowerCase())).length === 0 && (
-                                                    <li className="p-3 text-sm text-red-500 text-center font-medium">No accounts found.</li>
-                                                )}
+                                                {accounts.filter(a => `${a.code} ${a.name}`.toLowerCase().includes(accountSearchQuery.toLowerCase())).map(acc => (
+                                                    <li key={acc.code} onMouseDown={() => { updateLine(idx, 'accountId', acc.code); setActiveAccountRow(null); }} className="p-3 text-sm text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-b border-gray-50 last:border-0 flex items-center">
+                                                        <span className="font-mono font-bold text-[#1B9387] w-14 inline-block">{acc.code}</span>
+                                                        <span className="font-medium">{acc.name}</span>
+                                                    </li>
+                                                ))}
                                             </ul>
                                         </div>
                                     ) : (
-                                        <div
-                                            onClick={() => {
-                                                setActiveAccountRow(idx);
-                                                setAccountSearchQuery('');
-                                            }}
-                                            className="w-full h-full min-h-[44px] p-3.5 pl-5 text-sm text-gray-800 cursor-text flex justify-between items-center group"
-                                        >
+                                        <div onClick={() => { setActiveAccountRow(idx); setAccountSearchQuery(''); }} className="w-full h-full min-h-[44px] p-3.5 pl-5 text-sm text-gray-800 cursor-text flex justify-between items-center group">
                                             {line.accountId ? (
                                                 <span>
                                                     <span className="font-mono font-extrabold text-[#1B9387] mr-3">{line.accountId}</span>
                                                     <span className="font-medium text-gray-800">{accounts.find(a => a.code === line.accountId)?.name}</span>
                                                 </span>
-                                            ) : (
-                                                <span className="text-gray-400 italic font-medium">Type to search account...</span>
-                                            )}
-                                            <span className="text-gray-300 group-hover:text-[#1B9387] transition">🔍</span>
+                                            ) : <span className="text-gray-400 italic font-medium">Type to search account...</span>}
                                         </div>
                                     )}
                                 </td>
 
-                                {/* DEBIT INPUT */}
                                 <td className="p-0 border-r border-[#B0DCDA] align-top">
                                     <div className="relative flex items-center h-full">
                                         <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
-                                        <input 
-                                            type="number" 
-                                            min="0" 
-                                            step="0.01" 
-                                            value={line.debit === 0 ? '' : line.debit} 
-                                            placeholder="0.00" 
-                                            onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)} 
-                                            className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" 
-                                        />
+                                        <input type="number" min="0" step="0.01" value={line.debit === 0 ? '' : line.debit} placeholder="0.00" onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)} className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" />
                                     </div>
                                 </td>
                                 
-                                {/* CREDIT INPUT */}
                                 <td className="p-0 border-r border-[#B0DCDA] align-top">
                                     <div className="relative flex items-center h-full">
                                         <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
-                                        <input 
-                                            type="number" 
-                                            min="0" 
-                                            step="0.01" 
-                                            value={line.credit === 0 ? '' : line.credit} 
-                                            placeholder="0.00" 
-                                            onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} 
-                                            className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" 
-                                        />
+                                        <input type="number" min="0" step="0.01" value={line.credit === 0 ? '' : line.credit} placeholder="0.00" onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" />
                                     </div>
                                 </td>
                                 
-                                {/* REMOVE BUTTON */}
                                 <td className="p-2 text-center align-middle">
-                                    <button 
-                                        type="button" 
-                                        onClick={() => removeLine(idx)} 
-                                        disabled={lines.length <= 2} 
-                                        className="text-red-400 hover:text-red-600 disabled:opacity-20 transition cursor-pointer font-bold" 
-                                        title="Remove Line"
-                                    >
-                                        ✕
-                                    </button>
+                                    <button type="button" onClick={() => removeLine(idx)} disabled={lines.length <= 2} className="text-red-400 hover:text-red-600 disabled:opacity-20 transition cursor-pointer font-bold">✕</button>
                                 </td>
                             </tr>
                         ))}
                     </tbody>
                 </table>
+            </div>
+
+            {/* 🔥 NEW: ATTACHMENTS SECTION */}
+            <div className="mb-6">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Attachments</label>
+                
+                <div 
+                    onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                    onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+                    onDrop={handleDrop}
+                    className={`mt-2 border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center transition-all ${isDragging ? 'bg-[#E9FAFA] border-[#1B9387]' : 'bg-gray-50 border-gray-300 hover:bg-gray-100'}`}
+                >
+                    <UploadCloud className={`mb-3 ${isDragging ? 'text-[#1B9387]' : 'text-gray-400'}`} size={32} />
+                    <p className="text-sm font-bold text-gray-600">Drag and drop or upload attachments here</p>
+                    <p className="text-xs text-gray-400 mt-1">JPG, PNG, PDF, XLSX, ZIP. Max 10mb each. Up to 10 files.</p>
+                    
+                    <input type="file" multiple id="file-upload" className="hidden" onChange={handleFileSelect} accept=".jpg,.jpeg,.png,.pdf,.zip,.xlsx" />
+                    <label htmlFor="file-upload" className="mt-4 cursor-pointer bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-md text-xs font-bold hover:bg-gray-50 transition shadow-sm">
+                        Browse Files
+                    </label>
+                </div>
+
+                {attachments.length > 0 && (
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                        {attachments.map((file, i) => (
+                            <div key={i} className="flex justify-between items-center p-3 bg-white border border-[#B0DCDA] rounded-lg shadow-sm">
+                                <div className="flex items-center gap-3 overflow-hidden">
+                                    {file.type.includes('image') ? <ImageIcon size={18} className="text-[#1B9387] shrink-0" /> : <FileIcon size={18} className="text-[#1B9387] shrink-0" />}
+                                    <div className="flex flex-col overflow-hidden">
+                                        <span className="text-sm font-bold text-gray-700 truncate">{file.name}</span>
+                                        <span className="text-[10px] font-mono text-gray-400">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                                    </div>
+                                </div>
+                                <button type="button" onClick={() => removeAttachment(i)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition cursor-pointer shrink-0">
+                                    <X size={16} />
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* FOOTER & MATH VALIDATION */}

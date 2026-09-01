@@ -1,7 +1,7 @@
 // src/renderer/src/components/InvoiceTrackerView.tsx
 import * as React from 'react';
 import { useState, useEffect } from 'react';
-import { Printer, RefreshCw, Search, Eye, CreditCard, Clock, FileText, X } from 'lucide-react';
+import { Printer, RefreshCw, Search, Eye, CreditCard, Clock, FileText, X, Filter } from 'lucide-react';
 
 interface InvoiceTrackerProps {
     onNavigate?: (viewName: string, data?: any) => void;
@@ -10,8 +10,12 @@ interface InvoiceTrackerProps {
 export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
     const [invoices, setInvoices] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    
+    // Filters
     const [searchQuery, setSearchQuery] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
+    const [entityFilter, setEntityFilter] = useState('All'); // NEW: HMO, PATIENT, CORPORATE filter
+    
     const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
     const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null);
 
@@ -19,11 +23,13 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
         setLoading(true);
         try {
             const api = (window as any).api || (window as any).electronAPI;
+            // Enhanced fallback data to demonstrate HMO vs Patient vs Corporate
             const fallbackData = [
-                { referenceNo: 'INV-001', payeeName: 'Maxicare Healthcare', date: '2026-08-13', status: 'Partially Paid', total: 5600, paid: 4100, balance: 1500 },
-                { referenceNo: 'INV-002', payeeName: 'John Doe', date: '2026-08-20', status: 'Unpaid', total: 2500, paid: 0, balance: 2500 },
-                { referenceNo: 'INV-003', payeeName: 'Intellicare', date: '2026-08-15', status: 'Fully Paid', total: 10000, paid: 10000, balance: 0 },
-                { referenceNo: 'INV-004', payeeName: 'Asian Hospital', date: '2026-08-18', status: 'Fully Paid', total: 4500, paid: 4500, balance: 0 },
+                { referenceNo: 'INV-001', payeeName: 'Maxicare Healthcare', payeeType: 'HMO', date: '2026-08-13', status: 'Partially Paid', total: 5600, paid: 4100, balance: 1500 },
+                { referenceNo: 'INV-002', payeeName: 'Juan Dela Cruz', payeeType: 'PATIENT', date: '2026-08-20', status: 'Unpaid', total: 2500, paid: 0, balance: 2500 },
+                { referenceNo: 'INV-003', payeeName: 'Intellicare', payeeType: 'HMO', date: '2026-08-15', status: 'Fully Paid', total: 10000, paid: 10000, balance: 0 },
+                { referenceNo: 'INV-004', payeeName: 'MedSupplies Corp', payeeType: 'CORPORATE', date: '2026-08-18', status: 'Fully Paid', total: 4500, paid: 4500, balance: 0 },
+                { referenceNo: 'INV-005', payeeName: 'Maria Clara', payeeType: 'PATIENT', date: '2026-08-21', status: 'Unpaid', total: 1200, paid: 0, balance: 1200 },
             ];
             const data = api ? await api.getInvoiceTracker() : fallbackData;
             setInvoices(data || []);
@@ -50,17 +56,26 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
         return (words[0][0] + words[1][0]).toUpperCase();
     };
 
-    // Filter Logic
+    // Filter Logic Enhanced
     const filteredInvoices = invoices.filter(inv => {
-        const matchesSearch = inv.payeeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            inv.referenceNo.toLowerCase().includes(searchQuery.toLowerCase());
+        // Search Filter
+        const matchesSearch = String(inv.payeeName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+                              String(inv.referenceNo || '').toLowerCase().includes(searchQuery.toLowerCase());
+        
+        // Payment Status Filter
         const matchesStatus = statusFilter === 'All' ? true :
-            statusFilter === 'Outstanding' ? (inv.status === 'Unpaid' || inv.status === 'Partially Paid') :
-                inv.status === statusFilter;
-        return matchesSearch && matchesStatus;
+                              statusFilter === 'Outstanding' ? (inv.status === 'Unpaid' || inv.status === 'Partially Paid') :
+                              inv.status === statusFilter;
+        
+        // Entity Type Filter (HMO, PATIENT, CORPORATE)
+        const matchesEntity = entityFilter === 'All' ? true :
+                              entityFilter === 'HMO_CORP' ? (inv.payeeType === 'HMO' || inv.payeeType === 'CORPORATE') :
+                              inv.payeeType === entityFilter;
+
+        return matchesSearch && matchesStatus && matchesEntity;
     });
 
-    // KPI Math (Calculated from ALL invoices, not just filtered ones, so cards remain stable)
+    // KPI Math (Calculated from ALL invoices so top cards remain stable)
     const totalBilled = invoices.reduce((sum, inv) => sum + (inv.total || 0), 0);
     const totalCollected = invoices.reduce((sum, inv) => sum + (inv.paid || 0), 0);
     const totalBalance = invoices.reduce((sum, inv) => sum + (inv.balance || 0), 0);
@@ -72,20 +87,25 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
         return <span className="bg-red-100 text-red-700 border border-red-200 px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider shadow-sm">Unpaid</span>;
     };
 
-    // Filter Chips Component
+    const renderTypeBadge = (type: string) => {
+        if (type === 'HMO') return <span className="bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ml-2 shrink-0">HMO</span>;
+        if (type === 'CORPORATE') return <span className="bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ml-2 shrink-0">CORP</span>;
+        if (type === 'PATIENT') return <span className="bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-widest ml-2 shrink-0">PATIENT</span>;
+        return null;
+    };
+
     const filterOptions = ['All', 'Unpaid', 'Partially Paid', 'Fully Paid'];
 
     return (
-        // 🔥 FIX: Standard block centering with padding guarantees it sits perfectly in the middle
         <div className="w-full min-h-full p-6 md:p-8">
             <div className="max-w-7xl mx-auto flex flex-col font-sans text-gray-800 animate-in fade-in duration-300 space-y-6">
 
                 {/* HEADER */}
                 <div className="flex justify-between items-end pb-4 border-b border-[#B0DCDA] print:hidden">
                     <div>
-                        <h2 className="text-2xl font-extrabold text-gray-800 tracking-wide">Invoice Tracker</h2>
+                        <h2 className="text-2xl font-extrabold text-gray-800 tracking-wide">A/R Invoice Tracker</h2>
                         <div className="flex items-center space-x-3 mt-1">
-                            <p className="text-sm text-gray-500 font-medium">Live status of all patient and HMO invoices.</p>
+                            <p className="text-sm text-gray-500 font-medium">Live status of all Patient, HMO, and Corporate charges.</p>
                             {lastUpdated && (
                                 <>
                                     <span className="text-gray-300">•</span>
@@ -128,8 +148,6 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
                             <span className="text-xs font-bold text-teal-600 bg-teal-50 px-2 py-0.5 rounded-full">{percentCollected}% Collected</span>
                         </div>
                         <span className="text-2xl font-black text-teal-600 tabular-nums">{formatCurrency(totalCollected, true)}</span>
-
-                        {/* Progress Bar */}
                         <div className="w-full bg-gray-100 h-1.5 rounded-full mt-3 overflow-hidden">
                             <div className="bg-teal-500 h-1.5 rounded-full transition-all duration-1000" style={{ width: `${percentCollected}%` }}></div>
                         </div>
@@ -149,15 +167,32 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
 
                 {/* SEARCH & QUICK-FILTER CHIPS */}
                 <div className="flex flex-col md:flex-row justify-between items-center bg-white p-3 rounded-lg border border-gray-200 shadow-sm print:hidden gap-4">
-                    <div className="relative w-full md:w-1/3">
-                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
-                        <input
-                            type="text"
-                            placeholder="Search patient, HMO, or invoice..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#1B9387] focus:border-transparent bg-gray-50"
-                        />
+                    
+                    <div className="flex w-full md:w-1/2 gap-3">
+                        <div className="relative w-full">
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={16} />
+                            <input
+                                type="text"
+                                placeholder="Search entity or invoice..."
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#1B9387] focus:border-transparent bg-gray-50 font-medium"
+                            />
+                        </div>
+                        
+                        {/* 🔥 NEW: Entity Type Dropdown */}
+                        <div className="relative shrink-0 w-40">
+                            <Filter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={14} />
+                            <select 
+                                value={entityFilter} 
+                                onChange={(e) => setEntityFilter(e.target.value)}
+                                className="w-full pl-8 pr-4 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-[#1B9387] focus:border-transparent bg-white font-bold text-gray-700 cursor-pointer appearance-none"
+                            >
+                                <option value="All">All Types</option>
+                                <option value="PATIENT">Patients Only</option>
+                                <option value="HMO_CORP">HMO & Corporate</option>
+                            </select>
+                        </div>
                     </div>
 
                     <div className="flex items-center space-x-2 overflow-x-auto w-full md:w-auto pb-1 md:pb-0">
@@ -185,7 +220,7 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
                         <table className="w-full text-left text-sm whitespace-nowrap">
                             <thead className="bg-white/95 backdrop-blur sticky top-0 z-20 shadow-sm border-b border-[#B0DCDA]">
                                 <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold">
-                                    <th className="p-4 border-r border-gray-100">Customer / Patient</th>
+                                    <th className="p-4 border-r border-gray-100">Billed Entity</th>
                                     <th className="p-4 border-r border-gray-100">Invoice Ref #</th>
                                     <th className="p-4 border-r border-gray-100 text-center">Date</th>
                                     <th className="p-4 border-r border-gray-100 text-center">Status</th>
@@ -197,7 +232,6 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
                             </thead>
                             <tbody className="divide-y divide-gray-100">
                                 {loading ? (
-                                    // SKELETON LOADING
                                     Array(5).fill(0).map((_, i) => (
                                         <tr key={i} className="animate-pulse bg-white">
                                             <td className="p-4 border-r border-gray-100 flex items-center space-x-3">
@@ -225,33 +259,26 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
                                     </tr>
                                 ) : (
                                     filteredInvoices.map((inv: any, i: number) => (
-                                        // ZEBRA STRIPING & HOVER
                                         <tr key={i} className="hover:bg-[#E9FAFA]/60 transition-colors even:bg-gray-50 odd:bg-white group">
-                                            <td className="p-4 font-bold text-gray-800 flex items-center space-x-3 border-r border-gray-100">
-                                                <div className="h-7 w-7 rounded-full bg-teal-600 text-white flex items-center justify-center font-bold text-[10px] shadow-sm shrink-0">
+                                            <td className="p-4 font-bold text-gray-800 flex items-center border-r border-gray-100">
+                                                <div className={`h-7 w-7 rounded-full text-white flex items-center justify-center font-bold text-[10px] shadow-sm shrink-0 mr-3 ${inv.payeeType === 'HMO' ? 'bg-indigo-500' : inv.payeeType === 'CORPORATE' ? 'bg-blue-500' : 'bg-teal-600'}`}>
                                                     {getInitials(inv.payeeName)}
                                                 </div>
                                                 <span className="truncate">{inv.payeeName}</span>
+                                                {renderTypeBadge(inv.payeeType)}
                                             </td>
                                             <td className="p-4 font-mono text-gray-600 border-r border-gray-100 text-xs">{inv.referenceNo}</td>
                                             <td className="p-4 text-gray-500 border-r border-gray-100 text-center text-xs font-medium">
                                                 {new Date(inv.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                             </td>
                                             <td className="p-4 text-center border-r border-gray-100">{renderStatusBadge(inv.status)}</td>
-
-                                            {/* TABULAR NUMBERS FOR PERFECT ALIGNMENT */}
                                             <td className="p-4 text-right font-mono font-bold text-gray-800 border-r border-gray-100 tabular-nums">{formatCurrency(inv.total)}</td>
                                             <td className="p-4 text-right font-mono font-bold text-teal-600 border-r border-gray-100 tabular-nums">{formatCurrency(inv.paid)}</td>
                                             <td className={`p-4 text-right font-mono font-black border-r border-gray-100 tabular-nums ${inv.balance > 0 ? 'text-red-500' : 'text-gray-400'}`}>
                                                 {formatCurrency(inv.balance)}
                                             </td>
-
-                                            {/* MULTIPLE EXPLICIT ACTIONS */}
-                                            {/* 🔥 HIGH-CONTRAST ALWAYS-VISIBLE ACTION BUTTONS */}
                                             <td className="p-3 text-center print:hidden">
                                                 <div className="flex items-center justify-center space-x-2">
-
-                                                    {/* VIEW BUTTON - Clean, solid secondary style */}
                                                     <button
                                                         onClick={() => setSelectedInvoice(inv)}
                                                         className="px-2.5 py-1.5 text-[11px] font-bold text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-md transition-colors flex items-center gap-1.5 shadow-sm"
@@ -260,8 +287,6 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
                                                         <Eye size={13} className="text-gray-500" />
                                                         <span>View</span>
                                                     </button>
-
-                                                    {/* PAY BUTTON - Solid primary clinic-teal button */}
                                                     {inv.balance > 0 && (
                                                         <button
                                                             onClick={() => onNavigate && onNavigate('collections', {
@@ -276,7 +301,6 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
                                                             <span>Pay</span>
                                                         </button>
                                                     )}
-
                                                 </div>
                                             </td>
                                         </tr>
@@ -284,7 +308,6 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
                                 )}
                             </tbody>
 
-                            {/* GRAND TOTALS */}
                             {!loading && filteredInvoices.length > 0 && (
                                 <tfoot className="sticky bottom-0 z-20 bg-gray-100 shadow-[0_-1px_2px_rgba(0,0,0,0.05)] border-t-2 border-[#B0DCDA]">
                                     <tr>
@@ -309,7 +332,10 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
 
                         <div className="flex justify-between items-center p-5 border-b border-gray-200 bg-gray-50">
                             <div>
-                                <h3 className="text-xl font-extrabold text-gray-800 tracking-wide">{selectedInvoice.referenceNo}</h3>
+                                <h3 className="text-xl font-extrabold text-gray-800 tracking-wide flex items-center gap-2">
+                                    {selectedInvoice.referenceNo} 
+                                    {renderTypeBadge(selectedInvoice.payeeType)}
+                                </h3>
                                 <p className="text-xs font-bold text-gray-500 uppercase mt-1 tracking-wider">{selectedInvoice.payeeName}</p>
                             </div>
                             <button onClick={() => setSelectedInvoice(null)} className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded-full transition">

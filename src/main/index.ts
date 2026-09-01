@@ -51,7 +51,27 @@ app.whenReady().then(() => {
     ipcMain.handle('ledger:getAccountTypes', async () => { try { return typeof LedgerService.getAccountTypes === 'function' ? await LedgerService.getAccountTypes() : []; } catch (err) { return []; } });
     ipcMain.handle('ledger:createAccount', async (e, data) => { try { const result = typeof LedgerService.createAccount === 'function' ? await LedgerService.createAccount(data) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Added COA: ${data.code}`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('get-payees', async (e, typeFilter) => { try { return await LedgerService.getPayees(typeFilter); } catch (err) { return []; } });
-    ipcMain.handle('create-payee', async (e, name: string, type: string, tin?: string, email?: string, phone?: string, address?: string) => { const result = await LedgerService.createPayee(name, type, tin, email, phone, address); if (result.success) await AuditService.logAction('SYSTEM', 'CREATE CONTACT', `Added ${type}: ${name}`); return result; });
+   ipcMain.handle('create-payee', async (e, name: string, type: string, tin?: string, email?: string, phone?: string, address?: string, hmo?: string, hmoCardNo?: string, hmoExpiryDate?: string) => { 
+      const result = await LedgerService.createPayee(name, type, tin, email, phone, address, hmo, hmoCardNo, hmoExpiryDate); 
+      if (result.success) {
+          const hmoLog = hmo ? ` (Linked to HMO: ${hmo})` : '';
+          await AuditService.logAction('SYSTEM', 'CREATE CONTACT', `Added new ${type}: ${name}${hmoLog}`);
+      }
+      return result;
+  });
+
+  // Add these under your existing Inventory handlers
+    ipcMain.handle('update-inventory-item', async (e, id, data) => { 
+        try { 
+            return typeof InventoryService.updateItem === 'function' ? await InventoryService.updateItem(id, data) : { success: false }; 
+        } catch (err: any) { return { success: false, error: err.message }; } 
+    });
+
+    ipcMain.handle('delete-inventory-item', async (e, id) => { 
+        try { 
+            return typeof InventoryService.deleteItem === 'function' ? await InventoryService.deleteItem(id) : { success: false }; 
+        } catch (err: any) { return { success: false, error: err.message }; } 
+    });
     ipcMain.handle('import-payees', async (e, data) => { try { const result = typeof LedgerService.importPayees === 'function' ? await LedgerService.importPayees(data) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'IMPORT CONTACTS', `Imported ${result.count} contacts.`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('get-payee-balance', async (e, payeeId: string) => { return await LedgerService.getPayeeBalance(payeeId); });
     ipcMain.handle('update-payee-tin', async (_, payeeId: string, tin: string) => {

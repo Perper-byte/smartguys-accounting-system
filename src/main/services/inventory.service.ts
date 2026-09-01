@@ -4,6 +4,42 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export class InventoryService {
+
+    static async updateItem(id: string, data: any) {
+        try {
+            const item = await prisma.inventoryItem.update({
+                where: { id },
+                data: {
+                    code: data.code,
+                    name: data.name,
+                    location: data.location,
+                    uom: data.uom
+                }
+            });
+            return { success: true, item };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    }
+
+    static async deleteItem(id: string) {
+        try {
+            // Must delete all logs associated with the item first to prevent foreign key errors
+            await prisma.inventoryLog.deleteMany({
+                where: { item_id: id }
+            });
+            
+            // Then delete the item itself
+            await prisma.inventoryItem.delete({
+                where: { id }
+            });
+            
+            return { success: true };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    }
+
     static async getItems() {
         const items = await prisma.inventoryItem.findMany({
             orderBy: { name: 'asc' }
@@ -16,26 +52,21 @@ export class InventoryService {
         }));
     }
 
-    static async createItem(data: { code: string, name: string, location?: string }) {
-        try {
-            const exists = await prisma.inventoryItem.findUnique({ where: { code: data.code } });
-            if (exists) throw new Error("Item Code already exists.");
-
-            const item = await prisma.inventoryItem.create({
-                data: {
-                    code: data.code,
-                    name: data.name,
-                    location: data.location || null,
-                    stock: 0
-                }
-            });
-
-            // 🔥 FIX: Cast stock to a Number
-            return { success: true, data: { ...item, stock: Number(item.stock) } };
-        } catch (error: any) {
-            return { success: false, error: error.message };
-        }
+    static async createItem(data: any) {
+    try {
+        const item = await prisma.inventoryItem.create({
+            data: {
+                code: data.code,
+                name: data.name,
+                location: data.location,
+                uom: data.uom // 🔥 MUST HAVE THIS
+            }
+        });
+        return { success: true, item };
+    } catch (error: any) {
+        return { success: false, error: error.message };
     }
+}
 
     static async getLogs(itemId: string) {
         const logs = await prisma.inventoryLog.findMany({

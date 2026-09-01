@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// 🔥 UPDATE: Added attachments to the Input Type
 export type JournalEntryInput = {
     date: Date;
     referenceNo: string;
@@ -11,6 +12,7 @@ export type JournalEntryInput = {
     payeeId?: string;
     vatType?: string;
     lines: Array<{ accountId: string; debit: number; credit: number }>;
+    attachments?: Array<{ name: string; type: string; size: number; data: string }>;
 };
 
 export const LedgerService = {
@@ -228,40 +230,24 @@ export const LedgerService = {
         return await prisma.payee.findMany({ where: whereClause, orderBy: { name: 'asc' } });
     },
 
-    async createPayee(
-        name: string,
-        type: string = 'PATIENT',
-        tin?: string,
-        email?: string,
-        phone?: string,
-        address?: string
-    ) {
+    async createPayee(name: string, type: string = 'PATIENT', tin?: string, email?: string, phone?: string, address?: string, hmoAffiliation?: string, hmoCardNo?: string, hmoExpiryDate?: string) {
         try {
-
-            const payee = await prisma.payee.create({
-                data: {
-                    name: name.trim(),
-                    type: type || 'PATIENT',
-                    tin: tin?.trim() || null,
-                    email: email?.trim() || null,
-                    phone_number: phone?.trim() || null,
-                    address: address?.trim() || null
+            const newPayee = await prisma.payee.create({
+                data: { 
+                    name, 
+                    type,
+                    tin: tin || null,
+                    email: email || null,
+                    phone_number: phone || null,
+                    address: address || null,
+                    hmo_affiliation: hmoAffiliation || null,
+                    hmo_card_no: hmoCardNo || null,
+                    hmo_expiry_date: hmoExpiryDate ? new Date(hmoExpiryDate) : null
                 }
             });
-
-            return {
-                success: true,
-                data: payee
-            };
-
+            return { success: true, payee: newPayee };
         } catch (error: any) {
-
-            console.error('Create Payee Error:', error);
-
-            return {
-                success: false,
-                error: error.message
-            };
+            return { success: false, error: error.message };
         }
     },
 
@@ -284,16 +270,21 @@ export const LedgerService = {
         return { receivable, payable };
     },
 
+    // 🔥 UPDATE: Added attachments block to save logic
     async createJournalEntry(data: JournalEntryInput) {
         const validLines = data.lines.filter(line => line.accountId && (Number(line.debit) > 0 || Number(line.credit) > 0));
+        
         if (data.lines.some(line => Number(line.debit) < 0 || Number(line.credit) < 0)) {
             throw new Error('Validation Error: Debit and Credit values cannot be negative');
         }
+        
         const totalDebit = validLines.reduce((sum, line) => sum + Number(line.debit), 0);
         const totalCredit = validLines.reduce((sum, line) => sum + Number(line.credit), 0);
+        
         if (!validLines.length || Math.abs(totalDebit - totalCredit) > 0.005) {
             throw new Error('Validation Error: Journal entry must be balanced');
         }
+        
         const entry = await prisma.journalEntry.create({
             data: {
                 date: new Date(data.date),
@@ -308,9 +299,18 @@ export const LedgerService = {
                         debit: l.debit,
                         credit: l.credit
                     }))
-                }
+                },
+                // Save base64 files if present
+                attachments: data.attachments && data.attachments.length > 0 ? {
+                    create: data.attachments.map((att) => ({
+                        fileName: att.name,
+                        fileType: att.type,
+                        fileData: att.data
+                    }))
+                } : undefined
             }
         });
+        
         return { success: true, referenceNo: entry.reference_no, entryId: entry.id };
     },
 
@@ -424,10 +424,18 @@ export const LedgerService = {
     },
 
     async getNextReferenceSequence(prefix: string) {
-        const lastEntry = await prisma.journalEntry.findFirst({ where: { reference_no: { startsWith: prefix } }, orderBy: { date: 'desc' } });
+        // 🔥 THE FIX: Changed orderBy to 'created_at' to ensure we ALWAYS 
+        // get the most recently created record, regardless of the journal date.
+        const lastEntry = await prisma.journalEntry.findFirst({ 
+            where: { reference_no: { startsWith: prefix } }, 
+            orderBy: { created_at: 'desc' } 
+        });
+        
         if (!lastEntry) return '001';
+        
         const lastSeqNum = parseInt(lastEntry.reference_no.replace(prefix, ''), 10);
         if (isNaN(lastSeqNum) || lastSeqNum > 999999) return '001';
+        
         return (lastSeqNum + 1).toString().padStart(3, '0');
     },
 
@@ -467,10 +475,23 @@ export const LedgerService = {
     },
 
     async getAllJournalEntries() {
-        return await prisma.journalEntry.findMany({
+        const entries = await prisma.journalEntry.findMany({
             orderBy: { date: 'desc' },
-            select: { id: true, reference_no: true, description: true, date: true }
+            include: {
+                payee: true,
+                lines: { include: { account: true } },
+                attachments: true 
+            }
         });
+
+        return entries.map(entry => ({
+            ...entry,
+            lines: entry.lines.map(line => ({
+                ...line,
+                debit: Number(line.debit),
+                credit: Number(line.credit)
+            }))
+        }));
     },
 
     async requestVoid(entryId: string, reason: string) {
@@ -557,7 +578,7 @@ export const LedgerService = {
                     is_active: true
                 }
             });
-            // 🔥 THE FIX: Cast the Decimal price to a normal Number!
+            // Cast the Decimal price to a normal Number!
             return { success: true, data: { ...item, price: Number(item.price) } };
         } catch (error: any) {
             return { success: false, error: error.message };
@@ -570,7 +591,7 @@ export const LedgerService = {
                 where: { id },
                 data: data
             });
-            // 🔥 THE FIX: Cast the Decimal price to a normal Number!
+            // Cast the Decimal price to a normal Number!
             return { success: true, data: { ...item, price: Number(item.price) } };
         } catch (error: any) {
             return { success: false, error: error.message };
@@ -644,7 +665,6 @@ export const LedgerService = {
         try {
             console.log('[Transaction History] Loading for user:', userId);
 
-            // Safety check: if no user is passed, return empty to prevent DB errors
             if (!userId) {
                 console.warn('[Transaction History] Missing userId prop from frontend.');
                 return [];
@@ -652,18 +672,7 @@ export const LedgerService = {
 
             const entries = await prisma.journalEntry.findMany({
                 where: {
-                    // 1. TEMPORARILY COMMENTED OUT USER FILTER FOR DEBUGGING
-                    // user_id: userId, 
-
-                    // 2. TEMPORARILY COMMENTED OUT STRICT POS FILTERS FOR DEBUGGING
-                    /*
-                    OR: [
-                        { reference_no: { startsWith: 'INV-' } },
-                        { reference_no: { startsWith: 'OR-' } },
-                        { reference_no: { startsWith: 'SYS-' } },
-                        { description: { startsWith: 'Patient:' } }
-                    ]
-                    */
+                    // Filters currently commented out based on original file state
                 },
                 orderBy: {
                     date: 'desc'
@@ -717,15 +726,5 @@ export const LedgerService = {
             console.error('[Transaction History] Failed:', error);
             throw error;
         }
-
-
-        return entries.map(entry => {
-            const totalAmount = entry.lines.reduce((sum, line) => sum + Number(line.debit), 0);
-            return {
-                id: entry.id, date: entry.date, referenceNo: entry.reference_no, description: entry.description,
-                payeeName: entry.payee?.name || 'Walk-in / Cash', totalAmount: totalAmount, status: entry.status,
-                lines: entry.lines.map(l => ({ accountCode: l.account.code, accountName: l.account.name, debit: Number(l.debit), credit: Number(l.credit) }))
-            };
-        });
     }
 };

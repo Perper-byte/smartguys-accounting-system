@@ -45,7 +45,7 @@ import { EWTPayoutView } from './components/EWTPayoutView'
 import { AgedReceivablesView } from './components/AgedReceivablesView'
 import { InvoiceTrackerView } from './components/InvoiceTrackerView'
 import { PayrollView } from './components/PayrollView'
-import { JournalEntryForm } from './components/JournalEntryForm'
+import { JournalManagementView } from './components/JournalManagementView';
 import { GeneralLedgerView } from './components/GeneralLedgerView'
 import { ReconciliationView } from './components/ReconciliationView'
 import { BooksOfAccountsView } from './components/BooksOfAccountsView'
@@ -463,12 +463,7 @@ export default function App() {
                 <InventoryView userId={currentUser.id} role={currentUser.role} />
               )}
 
-              {activeTab === 'journal' && (
-                <JournalEntryForm userId={currentUser.id} isAdjusting={false} />
-              )}
-              {activeTab === 'adjusting' && (
-                <JournalEntryForm userId={currentUser.id} isAdjusting={true} />
-              )}
+             {activeTab === 'journal' && <JournalManagementView userId={currentUser.id} />}
               {activeTab === 'disbursement' && <CashDisbursementForm userId={currentUser.id} />}
               {activeTab === 'ledger' && <GeneralLedgerView />}
             </div>

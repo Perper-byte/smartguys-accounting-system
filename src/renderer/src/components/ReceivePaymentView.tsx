@@ -1,7 +1,8 @@
+// src/renderer/src/components/ReceivePaymentView.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Search, CheckCircle, History,
-  Info, X, Wallet, Smartphone, Landmark, Printer
+  Info, X, Wallet, Smartphone, Landmark, Printer, CheckSquare
 } from 'lucide-react';
 
 export function ReceivePaymentView({ userId }: { userId: string }) {
@@ -12,10 +13,15 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
 
   const [outstandingBalance, setOutstandingBalance] = useState(0);
+  
+  // NEW: Invoice Tracking States
+  const [unpaidInvoices, setUnpaidInvoices] = useState<any[]>([]);
+  const [checkedInvoiceIds, setCheckedInvoiceIds] = useState<string[]>([]);
+  const [fetchingInvoices, setFetchingInvoices] = useState(false);
+
   const [amountReceived, setAmountReceived] = useState<number | ''>('');
   const [cwtAmount, setCwtAmount] = useState<number | ''>('');
 
-  // FIXED: No default payment method. Cashier must actively select one.
   const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
 
@@ -38,10 +44,18 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   const totalCredit = received + tax;
   const remainingBalance = Math.max(0, outstandingBalance - totalCredit);
 
-  // Validation for enabling the confirm button
+  // NEW: Sum of checked invoices
+  const selectedTotal = unpaidInvoices
+    .filter(inv => checkedInvoiceIds.includes(inv.referenceNo))
+    .reduce((sum, inv) => sum + inv.balance, 0);
+
+  // Determines what amount the auto-compute buttons should use
+  const targetAmount = selectedTotal > 0 ? selectedTotal : outstandingBalance;
+
+  // Validation
   const isValid =
     payeeId !== '' &&
-    paymentMethod !== '' && // Must have a payment method
+    paymentMethod !== '' && 
     received > 0 &&
     totalCredit <= (outstandingBalance + 0.01) &&
     refSequence.trim() !== '';
@@ -61,8 +75,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
     const fetchPayees = async () => {
       try {
         const data = await (window as any).api.getPayees();
-        // IDEAL LOGIC NOTE: Ensure the backend only returns Patients and HMOs here.
-        // e.g., setPayees(data.filter(p => p.type === 'Patient' || p.type === 'HMO'));
         setPayees(data);
       } catch (error) { console.error(error); }
     };
@@ -80,31 +92,69 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
     if (!successData) fetchNextSeq();
   }, [refPrefix, successData]);
 
+  // Fetch Balances AND Unpaid Invoices when Payee is selected
   useEffect(() => {
     if (!payeeId) {
       setOutstandingBalance(0);
       setAmountReceived('');
       setCwtAmount('');
       setPaymentReference('');
+      setUnpaidInvoices([]);
+      setCheckedInvoiceIds([]);
       return;
     }
-    const fetchBalance = async () => {
+
+    const fetchData = async () => {
+      setFetchingInvoices(true);
       try {
-        // Balances update dynamically from a real record here
-        const bal = await (window as any).api.getPayeeBalance(payeeId);
+        const api = (window as any).api || (window as any).electronAPI;
+        
+        // 1. Fetch total balance
+        const bal = await api.getPayeeBalance(payeeId);
         setOutstandingBalance(bal?.receivable || 0);
+        
+        // 2. Fetch specific unpaid invoices for this payee
+        const tracker = await api.getInvoiceTracker();
+        const selectedName = payees.find(p => p.id === payeeId)?.name;
+        
+        // Filter invoices belonging to this payee that still have a balance
+        const pending = tracker.filter((inv: any) => 
+            inv.payeeName === selectedName && inv.balance > 0
+        );
+        
+        setUnpaidInvoices(pending);
+        setCheckedInvoiceIds([]); // Reset checks
         setAmountReceived('');
         setCwtAmount('');
-      } catch (error) { console.error(error); }
+      } catch (error) { 
+        console.error(error); 
+      } finally {
+        setFetchingInvoices(false);
+      }
     };
-    fetchBalance();
-  }, [payeeId]);
+
+    fetchData();
+  }, [payeeId, payees]);
 
   // --- Handlers ---
+  const handleToggleInvoice = (refNo: string) => {
+    setCheckedInvoiceIds(prev =>
+      prev.includes(refNo) ? prev.filter(id => id !== refNo) : [...prev, refNo]
+    );
+  };
+
+  const handleToggleAll = () => {
+    if (checkedInvoiceIds.length === unpaidInvoices.length) {
+      setCheckedInvoiceIds([]);
+    } else {
+      setCheckedInvoiceIds(unpaidInvoices.map(inv => inv.referenceNo));
+    }
+  };
+
   const handleAutoComputeTax = () => {
-    if (outstandingBalance > 0) {
-      const computedTax = outstandingBalance * 0.02;
-      const netAmount = outstandingBalance - computedTax;
+    if (targetAmount > 0) {
+      const computedTax = targetAmount * 0.02;
+      const netAmount = targetAmount - computedTax;
       setCwtAmount(Number(computedTax.toFixed(2)));
       setAmountReceived(Number(netAmount.toFixed(2)));
     }
@@ -112,8 +162,8 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
 
   const handleExactAmount = () => {
     const currentTax = Number(cwtAmount) || 0;
-    const netAmount = outstandingBalance - currentTax;
-    setAmountReceived(netAmount > 0 ? Number(netAmount.toFixed(2)) : outstandingBalance);
+    const netAmount = targetAmount - currentTax;
+    setAmountReceived(netAmount > 0 ? Number(netAmount.toFixed(2)) : targetAmount);
   };
 
   const handleOpenConfirm = (e: React.FormEvent) => {
@@ -137,10 +187,14 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
       const selectedName = payees.find(p => p.id === payeeId)?.name;
       const fullReferenceNo = `${refPrefix}${refSequence.padStart(3, '0')}`;
 
+      // Insert the specific invoices covered into the description for accounting audit logs
+      const invList = checkedInvoiceIds.length > 0 ? ` [Invs: ${checkedInvoiceIds.join(', ')}]` : '';
+      const description = `Collection of A/R from ${selectedName}${invList} via ${paymentMethod} ${paymentReference ? `(Ref: ${paymentReference})` : ''}`;
+
       const entryData = {
         date: new Date().toISOString(),
         referenceNo: fullReferenceNo,
-        description: `Collection of A/R from ${selectedName} via ${paymentMethod} ${paymentReference ? `(Ref: ${paymentReference})` : ''}`,
+        description: description,
         vatType: 'EXEMPT',
         userId: userId,
         payeeId: payeeId,
@@ -162,7 +216,8 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
         amount: received,
         method: paymentMethod,
         ref: paymentReference,
-        remaining: remainingBalance
+        remaining: remainingBalance,
+        invoicesCovered: checkedInvoiceIds
       });
 
     } catch (error) {
@@ -176,18 +231,12 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
 
   const resetForm = () => {
     setPayeeId('');
-    setPaymentMethod(''); // Reset method back to empty
+    setPaymentMethod('');
     setSuccessData(null);
     setStatus(null);
   };
 
-  // FIXED: Print Receipt was rendering a button with no onClick — wired it up.
-  // Uses window.print() with a print-only stylesheet so only the receipt
-  // block (#receipt-print-area) is visible on the printed page, regardless
-  // of the surrounding app chrome (sidebar, header, etc).
   const handlePrintReceipt = () => {
-    // Electron's window.print() opens the native print dialog for the
-    // current renderer window, same as a browser tab.
     window.print();
   };
 
@@ -200,8 +249,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   if (successData) {
     return (
       <div className="w-full flex justify-center p-8 bg-slate-50 min-h-[calc(100vh-64px)]">
-        {/* Print-only CSS: hides everything on the page except the receipt
-            block when printing, and resets it to fill the printed page. */}
         <style>{`
           @media print {
             body * { visibility: hidden; }
@@ -227,7 +274,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
 
           <div className="w-full max-w-md bg-slate-50 border border-slate-200 rounded-lg p-6 space-y-4 mb-8">
             <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Patient/Entity</span>
+              <span className="text-slate-500">Payer/Entity</span>
               <span className="text-slate-800 font-bold">{successData.name}</span>
             </div>
             <div className="flex justify-between text-sm">
@@ -238,6 +285,12 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               <span className="text-slate-500">Payment Method</span>
               <span className="text-slate-800 font-bold">{successData.method} {successData.ref && `(${successData.ref})`}</span>
             </div>
+            {successData.invoicesCovered?.length > 0 && (
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Invoices</span>
+                <span className="text-indigo-600 font-mono font-bold text-right max-w-[200px]">{successData.invoicesCovered.join(', ')}</span>
+              </div>
+            )}
             <div className="border-t border-slate-200 pt-4 flex justify-between text-sm">
               <span className="text-slate-500">Remaining Balance</span>
               <span className="text-slate-800 font-bold">₱ {successData.remaining.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
@@ -267,7 +320,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
         {/* Header */}
         <div className="flex justify-between items-center p-6 lg:px-10 border-b border-slate-100">
           <h2 className="text-xl font-bold text-slate-800 tracking-wide">Receive Payment (Collections)</h2>
-          {/* FIXED: Changed badge to Emerald Green to clearly signal money-in, distinct from connection pill */}
           <span className="bg-emerald-50 text-emerald-600 text-xs px-3 py-1.5 rounded font-bold uppercase tracking-widest border border-emerald-200">
             Payment Collection
           </span>
@@ -283,9 +335,9 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
           <form onSubmit={handleOpenConfirm} className="space-y-8">
 
             {/* STEP 1: ACCOUNT SELECTION */}
-            <div className="grid grid-cols-2 gap-10">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
               <div className="relative" ref={dropdownRef}>
-                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">1. Select Account</label>
+                <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">1. Select Payer (HMO/Patient)</label>
                 <div className="relative mt-2">
                   <div onClick={() => setIsPayeeDropdownOpen(!isPayeeDropdownOpen)} className={`w-full bg-white border ${isPayeeDropdownOpen ? 'border-[#1B9387] ring-1 ring-[#1B9387]' : 'border-slate-200 hover:border-slate-300'} rounded-lg p-4 text-sm text-slate-700 transition cursor-pointer flex justify-between items-center shadow-sm`}>
                     <div className="flex items-center gap-3">
@@ -302,8 +354,9 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                       </div>
                       <ul className="max-h-64 overflow-y-auto">
                         {filteredPayees.map(p => (
-                          <li key={p.id} onClick={() => { setPayeeId(p.id); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }} className="p-4 text-sm text-slate-700 hover:bg-slate-50 hover:text-[#1B9387] cursor-pointer transition border-b border-slate-50 last:border-0 font-medium">
-                            {p.name}
+                          <li key={p.id} onClick={() => { setPayeeId(p.id); setIsPayeeDropdownOpen(false); setPayeeSearchQuery(''); }} className="p-4 text-sm text-slate-700 hover:bg-slate-50 hover:text-[#1B9387] cursor-pointer transition border-b border-slate-50 last:border-0 font-medium flex justify-between">
+                            <span>{p.name}</span>
+                            <span className="text-[10px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded uppercase font-bold">{p.type}</span>
                           </li>
                         ))}
                       </ul>
@@ -323,7 +376,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
 
               <div className="flex flex-col justify-end">
                 <div className={`p-5 rounded-xl border flex flex-col justify-center items-end shadow-sm ${outstandingBalance > 0 ? 'bg-red-50 border-red-100' : 'bg-white border-slate-200'}`}>
-                  <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1">Current Outstanding Balance</p>
+                  <p className="text-xs text-slate-500 uppercase tracking-wider font-bold mb-1">Total Outstanding Balance</p>
                   <p className={`text-4xl font-bold font-mono ${outstandingBalance > 0 ? 'text-red-500' : 'text-[#10b981]'}`}>
                     ₱ {outstandingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </p>
@@ -331,22 +384,103 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               </div>
             </div>
 
-            {/* STEP 2: COLLECTION DETAILS */}
-            <div className="bg-white p-8 border border-slate-200 shadow-sm rounded-xl relative">
+            {/* STEP 2: SELECT INVOICES (BULK PAYMENT LOGIC) */}
+            <div className={`bg-white p-8 border ${checkedInvoiceIds.length > 0 ? 'border-emerald-300 ring-1 ring-emerald-100' : 'border-slate-200'} shadow-sm rounded-xl relative transition-all`}>
+              <div className="flex justify-between items-end border-b border-slate-100 pb-4 mb-6">
+                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                  2. Select Unpaid Invoices
+                </label>
+                <div className="text-xs font-bold text-slate-500 flex items-center gap-2">
+                   Selected Total: 
+                   <span className={`text-sm font-mono transition-colors ${checkedInvoiceIds.length > 0 ? 'text-emerald-600 font-black' : 'text-slate-400'}`}>
+                     ₱ {selectedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                   </span>
+                </div>
+              </div>
 
-              {/* FIXED: Added Step 2 label to complete the numerical flow */}
+              {!payeeId ? (
+                <div className="flex justify-center items-center py-10 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
+                  <span className="text-slate-400 font-bold text-sm tracking-widest uppercase">Select an account to view invoices</span>
+                </div>
+              ) : fetchingInvoices ? (
+                <div className="flex justify-center items-center py-10">
+                  <span className="text-slate-400 font-bold text-sm tracking-widest uppercase animate-pulse">Loading invoices...</span>
+                </div>
+              ) : unpaidInvoices.length === 0 ? (
+                <div className="flex flex-col justify-center items-center py-10 bg-emerald-50/30 rounded-lg border border-dashed border-emerald-200">
+                  <CheckCircle size={32} className="text-emerald-300 mb-3" />
+                  <span className="text-emerald-600 font-bold text-sm tracking-widest uppercase">No outstanding invoices</span>
+                </div>
+              ) : (
+                <div className="border border-slate-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase tracking-wider font-bold sticky top-0 z-10">
+                      <tr>
+                        <th className="p-3 w-12 text-center cursor-pointer hover:bg-slate-100" onClick={handleToggleAll} title="Select All">
+                           <input type="checkbox" className="cursor-pointer w-4 h-4 text-emerald-500 rounded border-slate-300 focus:ring-emerald-500" onChange={handleToggleAll} checked={checkedInvoiceIds.length === unpaidInvoices.length && unpaidInvoices.length > 0} />
+                        </th>
+                        <th className="p-3">Reference No.</th>
+                        <th className="p-3">Date</th>
+                        {/* 🔥 NEW COLUMN ADDED HERE */}
+                        <th className="p-3">Patient & Details</th>
+                        <th className="p-3 text-right">Invoice Total</th>
+                        <th className="p-3 text-right text-red-500">Balance Due</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {unpaidInvoices.map(inv => (
+                        <tr 
+                          key={inv.referenceNo} 
+                          className={`hover:bg-slate-50 transition cursor-pointer ${checkedInvoiceIds.includes(inv.referenceNo) ? 'bg-emerald-50/40' : ''}`} 
+                          onClick={() => handleToggleInvoice(inv.referenceNo)}
+                        >
+                          <td className="p-3 text-center">
+                            <input 
+                              type="checkbox" 
+                              className="cursor-pointer w-4 h-4 text-emerald-500 rounded border-slate-300 focus:ring-emerald-500 pointer-events-none" 
+                              checked={checkedInvoiceIds.includes(inv.referenceNo)} 
+                              readOnly 
+                            />
+                          </td>
+                          <td className="p-3 font-mono font-bold text-indigo-700 text-xs">{inv.referenceNo}</td>
+                          <td className="p-3 text-slate-500 text-xs">{new Date(inv.date).toLocaleDateString()}</td>
+                          
+                          {/* 🔥 NEW DESCRIPTION/PATIENT PARSER HERE */}
+                          <td className="p-3 text-xs w-1/3">
+                              <div className="flex flex-col max-w-[250px] overflow-hidden" title={inv.description || ''}>
+                                  <span className="text-slate-800 font-bold truncate">
+                                      {inv.description ? inv.description.split('|')[0].trim() : 'Manual Invoice'}
+                                  </span>
+                                  {inv.description && inv.description.includes('|') && (
+                                      <span className="text-slate-500 truncate text-[10px] mt-0.5">
+                                          {inv.description.substring(inv.description.indexOf('|') + 1).trim()}
+                                      </span>
+                                  )}
+                              </div>
+                          </td>
+
+                          <td className="p-3 text-right font-mono text-slate-400 text-xs">₱ {inv.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                          <td className="p-3 text-right font-mono font-bold text-red-500">₱ {inv.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* STEP 3: PAYMENT DETAILS */}
+            <div className="bg-white p-8 border border-slate-200 shadow-sm rounded-xl relative">
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-8 pb-4 border-b border-slate-100">
-                2. Payment Details
+                3. Payment Details
               </label>
 
               {!payeeId && (
-                <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-[2px] rounded-xl flex items-center justify-center">
-                  <span className="text-slate-500 font-bold text-sm tracking-widest uppercase bg-white px-6 py-3 rounded-full shadow-sm border border-slate-200">Select an account to proceed</span>
-                </div>
+                <div className="absolute inset-0 z-10 bg-white/60 backdrop-blur-[2px] rounded-xl flex items-center justify-center"></div>
               )}
 
               <div className="space-y-10">
-                <div className="grid grid-cols-2 gap-10">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Official Receipt No.</label>
                     <div className="flex shadow-sm rounded-md">
@@ -391,19 +525,18 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-10 items-start">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
                   <div>
                     <div className="flex justify-between items-center mb-2">
                       <label className="block text-xs font-bold text-[#10b981] uppercase tracking-wider">Amount Received</label>
-                      {outstandingBalance > 0 && (
-                        <button type="button" onClick={handleExactAmount} className="text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold px-3 py-1 rounded-full transition">
+                      {targetAmount > 0 && (
+                        <button type="button" onClick={handleExactAmount} className={`text-[10px] font-bold px-3 py-1 rounded-full transition ${checkedInvoiceIds.length > 0 ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
                           Use Exact Amount
                         </button>
                       )}
                     </div>
                     <div className="relative shadow-sm rounded-lg">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl text-slate-400 font-mono">₱</span>
-                      {/* FIXED: Removed stepper arrows using Tailwind appearance utilities */}
                       <input type="number" min="0.01" step="0.01" value={amountReceived} onChange={e => setAmountReceived(parseFloat(e.target.value) || '')} placeholder="0.00" className="w-full bg-white border-2 border-[#34d399] rounded-lg py-5 pl-12 pr-6 text-3xl text-slate-800 font-mono text-right focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/20 outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                     </div>
                   </div>
@@ -418,7 +551,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                         </div>
                       </div>
 
-                      {outstandingBalance > 0 && (
+                      {targetAmount > 0 && (
                         <button type="button" onClick={handleAutoComputeTax} className="text-[10px] bg-[#1B9387]/10 hover:bg-[#1B9387]/20 text-[#1B9387] font-bold px-3 py-1 rounded-full transition">
                           Auto-Compute
                         </button>
@@ -426,7 +559,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                     </div>
                     <div className="relative shadow-sm rounded-lg">
                       <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-slate-400 font-mono">₱</span>
-                      {/* FIXED: Removed resting yellow border; removed stepper arrows */}
                       <input type="number" min="0" step="0.01" value={cwtAmount} onChange={e => setCwtAmount(parseFloat(e.target.value) || '')} placeholder="0.00" className="w-full bg-white border border-slate-300 rounded-lg py-4 pl-12 pr-6 text-xl text-slate-800 font-mono text-right focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                     </div>
                   </div>
@@ -475,11 +607,11 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
       {/* CONFIRMATION MODAL                           */}
       {/* ========================================== */}
       {isConfirmModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="bg-slate-50 px-6 py-5 border-b border-slate-100 flex justify-between items-center">
               <h3 className="text-slate-800 font-bold tracking-wide">Confirm Payment</h3>
-              <button onClick={() => setIsConfirmModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition bg-white rounded-full p-1 border border-slate-200 shadow-sm">
+              <button onClick={() => setIsConfirmModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition bg-white rounded-full p-1 border border-slate-200 shadow-sm cursor-pointer">
                 <X size={18} />
               </button>
             </div>
@@ -487,6 +619,9 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               <div>
                 <p className="text-slate-500 text-xs uppercase tracking-wider font-bold mb-1">Patient / Entity</p>
                 <p className="text-slate-800 font-bold text-lg">{selectedPayee?.name}</p>
+                {checkedInvoiceIds.length > 0 && (
+                  <p className="text-indigo-600 text-xs font-mono font-bold mt-1">Paying {checkedInvoiceIds.length} invoice(s): {checkedInvoiceIds.join(', ')}</p>
+                )}
               </div>
 
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3 font-mono shadow-inner">
@@ -515,10 +650,10 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               </div>
             </div>
             <div className="px-6 py-5 bg-slate-50 border-t border-slate-100 flex gap-3">
-              <button onClick={() => setIsConfirmModalOpen(false)} className="flex-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 py-3 rounded-lg font-bold transition shadow-sm">
+              <button onClick={() => setIsConfirmModalOpen(false)} className="flex-1 bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 py-3 rounded-lg font-bold transition shadow-sm cursor-pointer">
                 Cancel
               </button>
-              <button onClick={handleActualSubmit} className="flex-1 bg-[#10b981] hover:bg-[#059669] text-white py-3 rounded-lg font-bold tracking-wide transition shadow-md">
+              <button onClick={handleActualSubmit} className="flex-1 bg-[#10b981] hover:bg-[#059669] text-white py-3 rounded-lg font-bold tracking-wide transition shadow-md cursor-pointer">
                 Confirm & Record
               </button>
             </div>
@@ -530,11 +665,11 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
       {/* PAYMENT HISTORY MODAL                        */}
       {/* ========================================== */}
       {isHistoryModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="bg-slate-50 px-6 py-5 border-b border-slate-100 flex justify-between items-center">
               <h3 className="text-slate-800 font-bold tracking-wide flex items-center gap-2"><History size={18} className="text-[#1B9387]" /> Payment History</h3>
-              <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition bg-white rounded-full p-1 border border-slate-200 shadow-sm">
+              <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition bg-white rounded-full p-1 border border-slate-200 shadow-sm cursor-pointer">
                 <X size={18} />
               </button>
             </div>

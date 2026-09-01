@@ -35,6 +35,18 @@ enum Role {
   IT_PERSONNEL
 }
 
+model Attachment {
+  id             String       @id @default(uuid())
+  journalEntryId String
+  fileName       String
+  fileType       String
+  fileData       String       // This will store the Base64 string
+  createdAt      DateTime     @default(now())
+
+  // Link it to the Journal Entry
+  entry          JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+}
+
 // ------------------------------------------
 // 6. INVENTORY MANAGEMENT (Non-Financial)
 // ------------------------------------------
@@ -44,6 +56,7 @@ model InventoryItem {
   name      String  @db.VarChar(150) // The "Product / Description"
   location  String? @db.VarChar(100) // The "Location"
   stock     Int     @default(0) // The "Quantity On Hand"
+   uom         String?  @default("Pieces") 
   is_active Boolean @default(true)
 
   logs InventoryLog[]
@@ -116,18 +129,21 @@ model Account {
 // 3. TRANSACTIONS & BOOKKEEPING (Core Engine)
 // ------------------------------------------
 model Payee {
-  id   String  @id @default(uuid()) @db.VarChar(50)
-  name String  @db.VarChar(150)
-  tin  String? @db.VarChar(50)
-  type String  @default("PATIENT") @db.VarChar(50)
-
-  // ---> NEW CRM FIELDS <---
+  id           String  @id @default(uuid()) @db.VarChar(50)
+  name         String  @db.VarChar(150)
+  tin          String? @db.VarChar(50)
+  type         String  @default("PATIENT") @db.VarChar(50) 
+  
   email        String? @db.VarChar(100)
   phone_number String? @db.VarChar(50)
   address      String? @db.Text
 
-  journal_entries JournalEntry[]
+  // 🔥 UPGRADED: Full HMO Tracking
+  hmo_affiliation String?   @db.VarChar(150)
+  hmo_card_no     String?   @db.VarChar(100)
+  hmo_expiry_date DateTime? @db.Date
 
+  journal_entries JournalEntry[]
   @@map("payees")
 }
 
@@ -140,6 +156,7 @@ model JournalEntry {
   payee_id     String?  @db.VarChar(50)
   user_id      String   @db.VarChar(50)
   created_at   DateTime @default(now())
+  attachments Attachment[]
 
   // VOID SYSTEM STATUS
   status      String  @default("ACTIVE") @db.VarChar(20)
