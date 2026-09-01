@@ -86,6 +86,7 @@ export const api = {
   processPayroll: (data: any) => ipcRenderer.invoke('process-payroll', data),
   toggleEmployeeStatus: (id: string, isActive: boolean) => ipcRenderer.invoke('toggle-employee-status', id, isActive),
   getPayrollHistory: () => ipcRenderer.invoke('get-payroll-history'),
+  updateEmployee: (id: string, data: any) => ipcRenderer.invoke('update-employee', id, data), // ADD THIS LINE
 
   // Audit Logs
   logAction: (userId: string, action: string, details: string) => ipcRenderer.invoke('log-action', userId, action, details),

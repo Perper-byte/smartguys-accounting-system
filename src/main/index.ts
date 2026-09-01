@@ -1,3 +1,5 @@
+import { PrismaClient } from '@prisma/client';
+const prisma = new PrismaClient();
 import './env';
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
@@ -151,6 +153,30 @@ app.whenReady().then(() => {
     ipcMain.handle('create-employee', async (e, data) => { try { const result = typeof PayrollService.createEmployee === 'function' ? await PayrollService.createEmployee(data) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'HR RECORD', `Created employee`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('process-payroll', async (e, data) => { try { const result = typeof PayrollService.processPayroll === 'function' ? await PayrollService.processPayroll(data) : { success: false }; if (result.success) await AuditService.logAction(data.userId || 'SYSTEM', 'PAYROLL PROCESSED', `Processed payroll`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('toggle-employee-status', async (e, id, isActive) => { try { const result = typeof PayrollService.toggleEmployeeStatus === 'function' ? await PayrollService.toggleEmployeeStatus(id, isActive) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'HR RECORD', `Changed employee status`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
+    ipcMain.handle('update-employee', async (_, id: string, data: any) => {
+        try {
+            await prisma.employee.update({
+                where: { id: id },
+                data: {
+                    first_name: data.firstName,
+                    last_name: data.lastName,
+                    position: data.position,
+                    monthly_salary: Number(data.monthlySalary),
+                    tin: data.tin || null,
+                    sss_no: data.sss || null,
+                    philhealth_no: data.philhealth || null,
+                    pagibig_no: data.pagibig || null,
+                }
+            });
+
+            // 🔥 THE FIX: Just return success: true without the raw Prisma object!
+            return { success: true };
+
+        } catch (error: any) {
+            console.error('Update Employee Error:', error);
+            return { success: false, error: error.message };
+        }
+    });
 
     // 🔥 RESTORED PAYROLL HISTORY HANDLER!
     ipcMain.handle('get-payroll-history', async () => { try { return typeof PayrollService.getPayrollHistory === 'function' ? await PayrollService.getPayrollHistory() : []; } catch (err) { return []; } });
