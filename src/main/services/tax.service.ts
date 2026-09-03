@@ -3,147 +3,146 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-export const TaxService = {
-  
-  async generate2550Q(year: number, quarter: number) {
-    let startDate: Date;
-    let endDate: Date;
-
-    // ---> NEW: If quarter is 0, fetch the entire year! <---
-    if (quarter === 0) {
-        startDate = new Date(year, 0, 1); // Jan 1
-        endDate = new Date(year, 11, 31, 23, 59, 59); // Dec 31
-    } else {
-        const startMonth = (quarter - 1) * 3;
-        startDate = new Date(year, startMonth, 1);
-        endDate = new Date(year, startMonth + 3, 0, 23, 59, 59);
-    }
-
-    const entries = await prisma.journalEntry.findMany({
-      where: { date: { gte: startDate, lte: endDate } },
-      include: { lines: true, payee: true } 
-    });
-
-    let outputVat = 0;
-    let inputVat = 0;
-    let exemptSales = 0;
-    let creditableVatWithheld = 0;
-    let ewtWithheld = 0;
+export class TaxService {
     
-    const qapList: any[] = [];
+    // 1. VAT REPORT (Form 2550Q)
+    static async generate2550Q(year: number, quarter: number) {
+        try {
+            const startMonth = (quarter - 1) * 3;
+            const startDate = new Date(year, startMonth, 1);
+            const endDate = new Date(year, startMonth + 3, 0, 23, 59, 59, 999);
 
-    entries.forEach(entry => {
-      let hasEwt = false;
-      let ewtAmount = 0;
-      let grossPayout = 0;
+            const outputVatLines = await prisma.journalLine.findMany({
+                where: { account_id: '2020', credit: { gt: 0 }, entry: { date: { gte: startDate, lte: endDate }, status: 'ACTIVE' } }
+            });
+            const outputVat = outputVatLines.reduce((sum, line) => sum + Number(line.credit), 0);
 
-      entry.lines.forEach(line => {
-        const credit = Number(line.credit);
-        const debit = Number(line.debit);
+            let vatableSales = 0; let exemptSales = 0;
+            const salesEntries = await prisma.journalEntry.findMany({
+                where: { date: { gte: startDate, lte: endDate }, status: 'ACTIVE', lines: { some: { account_id: { in: ['4010', '4020', '4040'] } } } },
+                include: { lines: true }
+            });
 
-        if (line.account_id === '2020' && credit > 0) outputVat += credit;
-        if (line.account_id === '1300' && debit > 0) inputVat += debit;
-        if (line.account_id === '1310' && debit > 0) creditableVatWithheld += debit;
-        if (entry.vat_type === 'EXEMPT' && line.account_id.startsWith('40') && credit > 0) {
-            exemptSales += credit;
-        }
+            salesEntries.forEach(entry => {
+                const isVatable = entry.lines.some(l => l.account_id === '2020');
+                const revenueLines = entry.lines.filter(l => ['4010', '4020', '4040'].includes(l.account_id));
+                const revenueAmount = revenueLines.reduce((sum, l) => sum + Number(l.credit), 0);
 
-        if (line.account_id === '2050' && credit > 0) {
-            ewtWithheld += credit;
-            hasEwt = true;
-            ewtAmount += credit;
-        }
-        if (line.account_id === '2010' && debit > 0) {
-            grossPayout += debit; 
-        }
-      });
+                if (isVatable) vatableSales += revenueAmount;
+                else exemptSales += revenueAmount;
+            });
 
-      if (hasEwt && entry.payee) {
-         const taxRate = Math.round((ewtAmount / grossPayout) * 100);
-         let atcCode = taxRate === 5 ? 'WI011' : 'WI157';
+            const netSales = vatableSales + exemptSales;
+            const grossSales = netSales + outputVat;
 
-         qapList.push({
-            date: entry.date,
-            payeeName: entry.payee.name,
-            tin: entry.payee.tin || '000-000-000-000',
-            atc: atcCode,
-            grossAmount: grossPayout,
-            taxWithheld: ewtAmount
-         });
-      }
-    });
+            const inputVatLines = await prisma.journalLine.findMany({
+                where: { account_id: '1140', debit: { gt: 0 }, entry: { date: { gte: startDate, lte: endDate }, status: 'ACTIVE' } }
+            });
+            const inputVat = inputVatLines.reduce((sum, line) => sum + Number(line.debit), 0);
 
-    const vatableSales = outputVat / 0.12;
-    const vatablePurchases = inputVat / 0.12;
-    const netVatPayable = outputVat - inputVat - creditableVatWithheld;
+            const purchaseEntries = await prisma.journalEntry.findMany({
+                where: { date: { gte: startDate, lte: endDate }, status: 'ACTIVE', lines: { some: { account_id: '1140' } } },
+                include: { lines: true }
+            });
 
-    return {
-      year,
-      quarter,
-      vatableSales,
-            netSales: vatableSales,
-            grossSales: vatableSales + outputVat,
-      exemptSales,
-      outputVat,
-      vatablePurchases,
-            netPurchases: vatablePurchases,
-            grossPurchases: vatablePurchases + inputVat,
-      inputVat,
-      creditableVatWithheld,
-      netVatPayable,
-      ewtWithheld,
-      qapList 
-    };
-  },
+            let vatablePurchases = 0;
+            purchaseEntries.forEach(entry => {
+                const expenseLines = entry.lines.filter(l => l.account_id !== '1140' && l.account_id !== '1010' && l.account_id !== '2010' && Number(l.debit) > 0);
+                vatablePurchases += expenseLines.reduce((sum, l) => sum + Number(l.debit), 0);
+            });
 
-  async generateReliefAnnexes(year: number, quarter: number) {
-    let startDate: Date;
-    let endDate: Date;
+            const netPurchases = vatablePurchases;
+            const grossPurchases = netPurchases + inputVat;
 
-    // ---> NEW: If quarter is 0, fetch the entire year! <---
-    if (quarter === 0) {
-        startDate = new Date(year, 0, 1);
-        endDate = new Date(year, 11, 31, 23, 59, 59);
-    } else {
-        const startMonth = (quarter - 1) * 3;
-        startDate = new Date(year, startMonth, 1);
-        endDate = new Date(year, startMonth + 3, 0, 23, 59, 59);
+            const cwtLines = await prisma.journalLine.findMany({
+                where: { account_id: '1150', debit: { gt: 0 }, entry: { date: { gte: startDate, lte: endDate }, status: 'ACTIVE' } }
+            });
+            const creditableVatWithheld = cwtLines.reduce((sum, line) => sum + Number(line.debit), 0);
+            const netVatPayable = outputVat - inputVat - creditableVatWithheld;
+
+            return { grossSales, netSales, vatableSales, exemptSales, outputVat, grossPurchases, netPurchases, vatablePurchases, inputVat, creditableVatWithheld, netVatPayable };
+        } catch (error: any) { return { error: error.message }; }
     }
 
-    const entries = await prisma.journalEntry.findMany({
-      where: { date: { gte: startDate, lte: endDate }, payee_id: { not: null } },
-      include: { lines: true, payee: true }
-    });
+    // 2. RELIEF / DAT FILE GENERATOR (Annex B)
+    static async generateReliefAnnexes(year: number, quarter: number) {
+        try {
+            const startMonth = (quarter - 1) * 3;
+            const startDate = new Date(year, startMonth, 1);
+            const endDate = new Date(year, startMonth + 3, 0, 23, 59, 59, 999);
 
-    const annexB_Purchases: any[] = [];
+            const purchaseEntries = await prisma.journalEntry.findMany({
+                where: { date: { gte: startDate, lte: endDate }, status: 'ACTIVE', lines: { some: { account_id: '1140' } } },
+                include: { lines: true, payee: true }
+            });
 
-    entries.forEach(entry => {
-      let hasInputVat = false;
-      let inputVatAmount = 0;
-      let grossAmount = 0;
+            const annexB_Purchases: any[] = [];
+            purchaseEntries.forEach(entry => {
+                const inputVatLine = entry.lines.find(l => l.account_id === '1140');
+                if (!inputVatLine) return;
+                const tax = Number(inputVatLine.debit);
+                const expenseLines = entry.lines.filter(l => l.account_id !== '1140' && Number(l.debit) > 0);
+                const netAmount = expenseLines.reduce((sum, l) => sum + Number(l.debit), 0);
 
-      entry.lines.forEach(line => {
-        if (line.account_id === '1300' && Number(line.debit) > 0) {
-            hasInputVat = true;
-            inputVatAmount = Number(line.debit);
-        }
-        if (Number(line.credit) > 0 && line.account_id === '1010') {
-            grossAmount += Number(line.credit);
-        }
-      });
+                annexB_Purchases.push({ date: entry.date, supplierName: entry.payee?.name || 'Unknown Supplier', tin: entry.payee?.tin || '000-000-000-000', netAmount: netAmount, tax: tax, grossAmount: netAmount + tax });
+            });
+            return { annexB_Purchases };
+        } catch (error: any) { return { error: error.message }; }
+    }
 
-      if (hasInputVat && entry.payee) {
-        annexB_Purchases.push({
-            date: entry.date,
-            supplierName: entry.payee.name,
-            tin: entry.payee.tin || '000-000-000-000',
-            grossAmount: grossAmount,
-            netAmount: grossAmount - inputVatAmount,
-            tax: inputVatAmount
-        });
-      }
-    });
+    // 3. MONTHLY EXPANDED WITHHOLDING TAX (Form 0619-E)
+    static async generate0619E(year: number, month: number) {
+        try {
+            const startDate = new Date(year, month - 1, 1);
+            const endDate = new Date(year, month, 0, 23, 59, 59, 999);
 
-    return { annexB_Purchases };
-  }
-};
+            const ewtLines = await prisma.journalLine.findMany({
+                where: { account_id: '2050', credit: { gt: 0 }, entry: { date: { gte: startDate, lte: endDate }, status: 'ACTIVE' } },
+                // 🔥 THE FIX: Added `lines: true` below to prevent the crash
+                include: { entry: { include: { payee: true, lines: true } } }
+            });
+
+            let ewtWithheld = 0; const qapList: any[] = [];
+            for (const line of ewtLines) {
+                ewtWithheld += Number(line.credit);
+                const expenseLine = line.entry.lines.find(l => Number(l.debit) > 0);
+                qapList.push({
+                    date: line.entry.date, payeeName: line.entry.payee?.name || 'Unknown', tin: line.entry.payee?.tin || '000-000-000-000',
+                    atc: 'WI010', grossAmount: expenseLine ? Number(expenseLine.debit) : 0, taxWithheld: Number(line.credit)
+                });
+            }
+            return { ewtWithheld, qapList };
+        } catch (error: any) { return { error: error.message }; }
+    }
+
+    // 4. QUARTERLY EXPANDED WITHHOLDING TAX (Form 1601-EQ / 1604-E)
+    static async generate1601EQ(year: number, quarter: number) {
+        try {
+            let startDate, endDate;
+            if (quarter === 0) { // Annual Form 1604-E
+                startDate = new Date(year, 0, 1);
+                endDate = new Date(year, 11, 31, 23, 59, 59, 999);
+            } else {
+                const startMonth = (quarter - 1) * 3;
+                startDate = new Date(year, startMonth, 1);
+                endDate = new Date(year, startMonth + 3, 0, 23, 59, 59, 999);
+            }
+
+            const ewtLines = await prisma.journalLine.findMany({
+                where: { account_id: '2050', credit: { gt: 0 }, entry: { date: { gte: startDate, lte: endDate }, status: 'ACTIVE' } },
+                include: { entry: { include: { payee: true, lines: true } } }
+            });
+
+            let ewtWithheld = 0; const qapList: any[] = [];
+            for (const line of ewtLines) {
+                ewtWithheld += Number(line.credit);
+                const expenseLine = line.entry.lines.find(l => Number(l.debit) > 0);
+                qapList.push({
+                    date: line.entry.date, payeeName: line.entry.payee?.name || 'Unknown', tin: line.entry.payee?.tin || '000-000-000-000',
+                    atc: 'WI010', grossAmount: expenseLine ? Number(expenseLine.debit) : 0, taxWithheld: Number(line.credit)
+                });
+            }
+            return { ewtWithheld, qapList };
+        } catch (error: any) { return { error: error.message }; }
+    }
+}

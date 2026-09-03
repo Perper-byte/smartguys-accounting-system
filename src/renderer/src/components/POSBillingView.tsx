@@ -30,7 +30,10 @@ export function POSBillingView({ userId }: { userId: string }) {
   const [referenceNo, setReferenceNo] = useState('')
   
   const [loaNumber, setLoaNumber] = useState('')
-  const [manualInvoiceNo, setManualInvoiceNo] = useState('')
+
+  // 🔥 UPDATED: Locked to INV- only
+  const [refPrefix] = useState('INV-')
+  const [invoiceSequence, setInvoiceSequence] = useState('')
   
   const [isSCPWD, setIsSCPWD] = useState(false)
   const [discountType, setDiscountType] = useState('Senior Citizen')
@@ -79,6 +82,18 @@ export function POSBillingView({ userId }: { userId: string }) {
 
   useEffect(() => { loadInitialData() }, [])
 
+  // Automatically fetch the next sequence number (e.g. 001) for the POS
+  useEffect(() => {
+    const fetchNextSeq = async () => {
+      try {
+        const api = (window as any).api || (window as any).electronAPI
+        const nextSeq = await api.getNextSequence(refPrefix)
+        setInvoiceSequence(nextSeq)
+      } catch (error) { console.error(error) }
+    }
+    if (!successData) fetchNextSeq()
+  }, [refPrefix, successData])
+
   // ============================================================
   // AUTO-FILL HMO / GUARANTOR WHEN PATIENT IS SELECTED
   // ============================================================
@@ -96,7 +111,6 @@ export function POSBillingView({ userId }: { userId: string }) {
         selectedPatient.hmo_name || 
         selectedPatient.hmoName;
 
-      // CRASH PROOFING: Ensure hmoName is treated strictly as a string
       if (hmoName && String(hmoName).trim() !== '') {
         const hmoSearchStr = String(hmoName).toLowerCase().trim()
         const match = payees.find(
@@ -204,7 +218,7 @@ export function POSBillingView({ userId }: { userId: string }) {
   const closePayeeDropdown = () => { setIsPayeeDropdownOpen(false); setPayeeSearchQuery('') }
 
   const resetForm = () => {
-    setSuccessData(null); setPatientId(''); setPayeeId(''); setPaymentMethod(''); setLoaNumber(''); setReferenceNo(''); setManualInvoiceNo('')
+    setSuccessData(null); setPatientId(''); setPayeeId(''); setPaymentMethod(''); setLoaNumber(''); setReferenceNo(''); 
     setIsSCPWD(false); setScPwdId(''); setAmountTendered(''); setGcashAmount(''); setPatientSearchQuery(''); setPayeeSearchQuery('')
     setIsPatientDropdownOpen(false); setIsPayeeDropdownOpen(false); setActiveLabRow(null); setLabDropdownPosition(null)
     const defaultCode = revenueAccounts.find((a) => a.code === '4010')?.code || (revenueAccounts.length > 0 ? revenueAccounts[0].code : '')
@@ -300,13 +314,11 @@ export function POSBillingView({ userId }: { userId: string }) {
     if (patientShare > 0 && !paymentMethod) return alert('Please select a Payment Method for the patient balance!')
     if (isSCPWD && !scPwdId.trim()) return alert('SC/PWD ID is required.')
     
-    // Strict A/R Validation
     if (hasHmoCoveredItem) {
         if (!payeeId) return alert('A Guarantor / HMO must be selected for covered items.')
         if (selectedPayee?.type === 'HMO' && !loaNumber.trim()) return alert('LOA Number is required for HMO claims.')
     }
 
-    // Strict Patient Payment Validation
     if (patientShare > 0) {
         if (paymentMethod === 'CASH' && tendered < patientShare) return alert('Amount tendered is insufficient.')
         if (paymentMethod === 'GCASH' && !referenceNo.trim()) return alert('GCash Reference Number is required.')
@@ -374,7 +386,7 @@ export function POSBillingView({ userId }: { userId: string }) {
       const hmoDesc = hasHmoCoveredItem ? `| A/R: ${selectedPayeeName}${selectedPayee?.type === 'HMO' ? ` (LOA: ${loaNumber})` : ''}` : ''
       const description = `Patient: ${selectedPatientName} ${hmoDesc} ${paymentDesc}`
 
-      const finalReferenceNo = manualInvoiceNo.trim() ? manualInvoiceNo.trim() : `SYS-${Math.floor(Date.now() / 1000).toString().slice(-6)}`
+      const finalReferenceNo = `${refPrefix}${invoiceSequence.trim().padStart(3, '0')}`;
       
       const entryData = {
         date: new Date().toISOString(),
@@ -445,7 +457,7 @@ export function POSBillingView({ userId }: { userId: string }) {
             )}
           </div>
           <div className="flex w-full gap-5">
-            <button type="button" className="flex-1 py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl flex justify-center items-center gap-2 transition-colors text-lg"><Printer className="w-5 h-5" /> Print Receipt</button>
+            <button type="button" onClick={() => window.print()} className="flex-1 py-4 bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold rounded-xl flex justify-center items-center gap-2 transition-colors text-lg"><Printer className="w-5 h-5" /> Print Receipt</button>
             <button type="button" onClick={resetForm} className="flex-1 py-4 bg-[#1B9387] hover:bg-[#15796f] text-white font-bold rounded-xl shadow-lg shadow-[#1B9387]/20 transition-all uppercase tracking-wider text-lg">New Transaction</button>
           </div>
         </div>
@@ -473,9 +485,7 @@ export function POSBillingView({ userId }: { userId: string }) {
         <form onSubmit={handleCheckoutClick} className="flex-1 grid grid-cols-1 xl:grid-cols-12 gap-8 xl:gap-10 pb-10">
           
           <div className="xl:col-span-4 space-y-8">
-            {/* 🔥 REMOVED "overflow-hidden" FROM THIS WRAPPER SO THE DROPDOWN CAN ESCAPE */}
             <div className="bg-white rounded-2xl border border-[#B0DCDA] shadow-sm">
-              {/* 🔥 ADDED "rounded-t-2xl" HERE TO MAINTAIN CORNERS */}
               <div className="px-8 py-5 border-b border-gray-100 bg-[#FBF8F8] rounded-t-2xl flex items-center gap-3">
                 <div className="w-6 h-6 rounded-full bg-[#1B9387] text-white flex items-center justify-center text-sm font-black">1</div>
                 <h2 className="text-sm font-black text-[#1B9387] uppercase tracking-wider">Patient Details</h2>
@@ -510,7 +520,6 @@ export function POSBillingView({ userId }: { userId: string }) {
                   </div>
                 </div>
 
-                {/* 🔥 REMOVED "overflow-hidden" FROM SC/PWD DIV IN CASE IT CLIPS LATER */}
                 <div className="border border-gray-200 rounded-xl transition-all bg-gray-50/50">
                   <div className="px-5 py-4 flex items-center gap-4 cursor-pointer hover:bg-gray-100 transition-colors rounded-xl" onClick={() => setIsSCPWD(!isSCPWD)}>
                     <input type="checkbox" checked={isSCPWD} readOnly className="w-5 h-5 text-[#1B9387] rounded border-gray-300 focus:ring-[#1B9387]" />
@@ -550,10 +559,22 @@ export function POSBillingView({ userId }: { userId: string }) {
                   )}
                 </div>
 
+                {/* 🔥 UPDATED: Locked to INV- only, and made read-only */}
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Invoice / OR Number (Optional)</label>
-                  <input type="text" placeholder="Auto-generated if left blank" className="w-full px-4 py-3.5 bg-white border border-gray-300 rounded-xl text-base font-mono font-medium focus:outline-none focus:ring-2 focus:ring-[#E9FAFA] focus:border-[#1B9387] shadow-sm placeholder:font-sans" value={manualInvoiceNo} onChange={(e) => setManualInvoiceNo(e.target.value)} />
+                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Invoice Number</label>
+                  <div className="flex shadow-sm rounded-xl">
+                     <span className="bg-gray-100 border border-gray-300 border-r-0 rounded-l-xl px-4 py-3.5 text-sm font-bold text-gray-500 select-none flex flex-col justify-center">
+                         INV-
+                     </span>
+                     <input 
+                        type="text" 
+                        readOnly 
+                        value={invoiceSequence} 
+                        className="w-full px-4 py-3.5 bg-gray-50 border border-gray-300 rounded-r-xl text-base font-mono font-bold text-gray-500 focus:outline-none cursor-not-allowed select-none" 
+                     />
+                  </div>
                 </div>
+
               </div>
             </div>
           </div>

@@ -67,6 +67,28 @@ app.whenReady().then(() => {
         } catch (err: any) { return { success: false, error: err.message }; } 
     });
 
+    ipcMain.handle('tax:generate0619E', async (e, year, month) => { 
+    try { 
+        const result = typeof TaxService.generate0619E === 'function' 
+            ? await TaxService.generate0619E(year, month) 
+            : { error: "Backend function missing" }; 
+        await AuditService.logAction('SYSTEM', 'TAX COMPLIANCE', `Generated BIR Form 0619-E`); 
+        return result; 
+    } catch (err: any) { 
+        return { error: err.message }; 
+    } 
+});
+
+ipcMain.handle('tax:generate1601EQ', async (e, year, quarter) => { 
+    try { 
+        return typeof TaxService.generate1601EQ === 'function' 
+            ? await TaxService.generate1601EQ(year, quarter) 
+            : { error: "Backend function missing" }; 
+    } catch (err: any) { 
+        return { error: err.message }; 
+    } 
+});
+
     ipcMain.handle('delete-inventory-item', async (e, id) => { 
         try { 
             return typeof InventoryService.deleteItem === 'function' ? await InventoryService.deleteItem(id) : { success: false }; 

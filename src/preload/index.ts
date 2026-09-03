@@ -1,3 +1,4 @@
+// src/preload/index.ts
 import { contextBridge, ipcRenderer } from 'electron';
 
 export const api = {
@@ -33,24 +34,20 @@ export const api = {
 
   // Payees
   getPayees: (typeFilter?: string) => ipcRenderer.invoke('get-payees', typeFilter),
-    createPayee: (
-        name: string, 
-        type: string, 
-        tin: string, 
-        email: string, 
-        phone: string, 
-        address: string, 
-        hmoAffiliation?: string, 
-        hmoCardNo?: string, 
-        hmoExpiry?: string
-    ) => ipcRenderer.invoke(
-        'create-payee', 
-        name, type, tin, email, phone, address, hmoAffiliation, hmoCardNo, hmoExpiry
-    ),
-
-    // Inside contextBridge.exposeInMainWorld('api', { ... })
-    updateInventoryItem: (id: string, data: any) => ipcRenderer.invoke('update-inventory-item', id, data),
-    deleteInventoryItem: (id: string) => ipcRenderer.invoke('delete-inventory-item', id),
+  createPayee: (
+      name: string, 
+      type: string, 
+      tin: string, 
+      email: string, 
+      phone: string, 
+      address: string, 
+      hmoAffiliation?: string, 
+      hmoCardNo?: string, 
+      hmoExpiry?: string
+  ) => ipcRenderer.invoke(
+      'create-payee', 
+      name, type, tin, email, phone, address, hmoAffiliation, hmoCardNo, hmoExpiry
+  ),
   importPayees: (data: any[]) => ipcRenderer.invoke('import-payees', data),
   getPayeeBalance: (payeeId: string) => ipcRenderer.invoke('get-payee-balance', payeeId),
   updatePayeeTin: (payeeId: string, tin: string) => ipcRenderer.invoke('update-payee-tin', payeeId, tin),
@@ -65,6 +62,8 @@ export const api = {
   // Inventory
   getInventoryItems: () => ipcRenderer.invoke('get-inventory-items'),
   createInventoryItem: (data: any) => ipcRenderer.invoke('create-inventory-item', data),
+  updateInventoryItem: (id: string, data: any) => ipcRenderer.invoke('update-inventory-item', id, data),
+  deleteInventoryItem: (id: string) => ipcRenderer.invoke('delete-inventory-item', id),
   getInventoryLogs: (itemId: string) => ipcRenderer.invoke('get-inventory-logs', itemId),
   addInventoryLog: (data: any) => ipcRenderer.invoke('add-inventory-log', data),
 
@@ -102,7 +101,7 @@ export const api = {
   processPayroll: (data: any) => ipcRenderer.invoke('process-payroll', data),
   toggleEmployeeStatus: (id: string, isActive: boolean) => ipcRenderer.invoke('toggle-employee-status', id, isActive),
   getPayrollHistory: () => ipcRenderer.invoke('get-payroll-history'),
-  updateEmployee: (id: string, data: any) => ipcRenderer.invoke('update-employee', id, data), // ADD THIS LINE
+  updateEmployee: (id: string, data: any) => ipcRenderer.invoke('update-employee', id, data),
 
   // Audit Logs
   logAction: (userId: string, action: string, details: string) => ipcRenderer.invoke('log-action', userId, action, details),
@@ -112,8 +111,10 @@ export const api = {
   triggerBackup: () => ipcRenderer.invoke('backup:triggerBackup'),
   generate2550Q: (year: number, quarter: number) => ipcRenderer.invoke('tax:generate2550Q', year, quarter),
   generateRelief: (year: number, quarter: number) => ipcRenderer.invoke('tax:generateRelief', year, quarter),
+  generate0619E: (year: number, month: number) => ipcRenderer.invoke('tax:generate0619E', year, month),
+  generate1601EQ: (year: number, quarter: number) => ipcRenderer.invoke('tax:generate1601EQ', year, quarter),
 
-  // 🔥 DASHBOARD ANALYTICS (ADDED THESE TWO LINES)
+  // Dashboard Analytics
   getTodayStats: () => ipcRenderer.invoke('get-today-stats'),
   getRecentTransactions: () => ipcRenderer.invoke('get-recent-transactions'),
   getAnalyticsMetrics: (timeframe: string) => ipcRenderer.invoke('analytics:getMetrics', timeframe),
