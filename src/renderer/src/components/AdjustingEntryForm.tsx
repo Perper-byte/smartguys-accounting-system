@@ -1,4 +1,4 @@
-// src/renderer/src/components/JournalEntryForm.tsx
+// src/renderer/src/components/AdjustingEntryForm.tsx
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { NewContactModal } from './NewContactModal';
@@ -6,22 +6,26 @@ import { UploadCloud, File as FileIcon, X, Image as ImageIcon } from 'lucide-rea
 
 const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
-export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
+export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
     const [accounts, setAccounts] = useState<any[]>([]);
+    const [pastEntries, setPastEntries] = useState<any[]>([]); 
     const [payees, setPayees] = useState<any[]>([]);
 
     const [date, setDate] = useState(getLocalDateString());
-    const [refPrefix, setRefPrefix] = useState('JV-');
+    
+    // Hardcoded to ADJ-
+    const [refPrefix] = useState('ADJ-');
     const [refSequence, setRefSequence] = useState('');
-    const [description, setDescription] = useState('');
+    const [description, setDescription] = useState('Adjusting Entry: ');
 
-    const [vatType, setVatType] = useState('VATABLE');
+    const [vatType, setVatType] = useState('EXEMPT');
     const [payeeId, setPayeeId] = useState(''); 
     
     const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false);
     
     const [isPayeeDropdownOpen, setIsPayeeDropdownOpen] = useState(false);
     const [payeeSearchQuery, setPayeeSearchQuery] = useState('');
+    const [isRefDropdownOpen, setIsRefDropdownOpen] = useState(false); 
     const [activeAccountRow, setActiveAccountRow] = useState<number | null>(null); 
     const [accountSearchQuery, setAccountSearchQuery] = useState(''); 
     
@@ -39,6 +43,7 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
         if (api) {
             if (api.getAccounts) api.getAccounts().then((res: any) => setAccounts(Array.isArray(res) ? res : [])).catch(() => setAccounts([]));
             if (api.getPayees) api.getPayees().then((res: any) => setPayees(Array.isArray(res) ? res : [])).catch(() => setPayees([]));
+            if (api.getAllJournalEntries) api.getAllJournalEntries().then((res: any) => setPastEntries(Array.isArray(res) ? res : [])).catch(() => setPastEntries([]));
         }
     }, []);
 
@@ -170,12 +175,16 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
 
             if (result.success) {
                 setStatus({ type: 'success', msg: `Entry ${result.referenceNo} posted successfully!` });
-                setDescription('');
-                setVatType('VATABLE'); 
+                setDescription('Adjusting Entry: ');
+                setVatType('EXEMPT'); 
                 setPayeeId(''); 
                 setPayeeSearchQuery(''); 
                 setLines([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
                 setAttachments([]); 
+                
+                if (api.getAllJournalEntries) {
+                    api.getAllJournalEntries().then((res: any) => setPastEntries(Array.isArray(res) ? res : []));
+                }
             } else {
                 setStatus({ type: 'error', msg: result.error });
             }
@@ -194,14 +203,14 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
     const selectedPayeeName = payees.find(p => p.id === payeeId)?.name || '-- No Sub-Account Tagged --';
 
     return (
-        <div className="w-full h-full p-4 lg:p-8 animate-in fade-in duration-300 flex justify-center items-start">
-            <div className="w-full max-w-4xl bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
+        <div className="w-full min-h-[calc(100vh-64px)] p-6 md:p-10 bg-[#f9fafb] animate-in fade-in duration-300">
+            <div className="max-w-5xl mx-auto bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm">
 
                 {/* HEADER */}
                 <div className="flex justify-between items-center mb-6 border-b border-[#B0DCDA] pb-4">
-                    <h2 className="text-xl font-extrabold text-gray-800 tracking-wide">New Journal Entry</h2>
+                    <h2 className="text-xl font-extrabold text-gray-800 tracking-wide">Record Adjusting Entry</h2>
                     <span className="bg-[#E9FAFA] text-[#1B9387] text-xs px-4 py-1.5 rounded-full font-bold uppercase tracking-widest border border-[#B0DCDA]">
-                        General Journal
+                        Adjusting Journal
                     </span>
                 </div>
 
@@ -211,42 +220,60 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                     </div>
                 )}
 
-                <div className="grid gap-6 mb-6 grid-cols-3">
+                <div className="grid gap-6 mb-6 grid-cols-2">
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Date</label>
                         <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition cursor-pointer" />
                     </div>
 
                     <div className="relative">
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Reference No.</label>
+                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Reference No. (Correction)</label>
                         <div className="flex bg-[#FBF8F8] border border-[#B0DCDA] rounded-md focus-within:border-[#1B9387] focus-within:ring-2 focus-within:ring-[#E9FAFA] transition">
-                            <select 
-                                value={refPrefix} 
-                                onChange={e => setRefPrefix(e.target.value)}
-                                className="bg-gray-50 border-r border-[#B0DCDA] rounded-l-md px-2 py-3 text-xs font-bold text-gray-600 outline-none cursor-pointer"
-                            >
-                                <option value="JV-">JV-</option>
-                                <option value="PJ-">PJ-</option>
-                            </select>
+                            <span className="bg-gray-50 border-r border-[#B0DCDA] rounded-l-md px-4 py-3 text-xs font-bold text-gray-600 flex items-center justify-center pointer-events-none">
+                                ADJ-
+                            </span>
                             <input 
                                 type="text" 
                                 value={refSequence} 
-                                onChange={e => setRefSequence(e.target.value)} 
-                                placeholder="001" 
+                                onChange={e => { setRefSequence(e.target.value); setIsRefDropdownOpen(true); }} 
+                                onFocus={() => setIsRefDropdownOpen(true)}
+                                onBlur={() => setTimeout(() => setIsRefDropdownOpen(false), 200)}
+                                placeholder="Search (e.g. OR-1001)" 
                                 className="w-full bg-transparent p-3 text-sm font-mono text-gray-800 font-bold outline-none" 
                             />
+                            <button
+                                type="button"
+                                onClick={() => setIsRefDropdownOpen(!isRefDropdownOpen)}
+                                className="px-4 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] rounded-r-md transition cursor-pointer"
+                                title="Search Past Transactions"
+                            >
+                                🔍
+                            </button>
                         </div>
-                    </div>
 
-                    <div>
-                        <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">VAT Type</label>
-                        <div className="relative">
-                            <select value={vatType} onChange={e => setVatType(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 pr-10 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition appearance-none cursor-pointer">
-                                <option value="VATABLE">Vatable (12%)</option>
-                                <option value="EXEMPT">VAT-Exempt</option>
-                                <option value="ZERO_RATED">Zero-Rated (0%)</option>
-                            </select>
-                        </div>
+                        {isRefDropdownOpen && (
+                            <ul className="absolute z-50 w-full mt-1 bg-white border border-[#B0DCDA] rounded-md shadow-xl max-h-48 overflow-y-auto">
+                                <li className="p-2 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider sticky top-0">Recent Database Entries</li>
+                                {pastEntries
+                                    .filter(e => e && e.reference_no && String(e.reference_no).toLowerCase().includes(String(refSequence || '').toLowerCase()))
+                                    .map(entry => (
+                                        <li
+                                            key={entry.id}
+                                            onMouseDown={() => {
+                                                const cleanRef = String(entry.reference_no).replace('ADJ-', '');
+                                                setRefSequence(cleanRef);
+                                                if (description === 'Adjusting Entry: ') {
+                                                    setDescription(`Adjusting Entry to correct ${entry.reference_no}: ${entry.description || ''}`);
+                                                }
+                                            }}
+                                            className="p-3 text-sm text-gray-800 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-b border-gray-50 last:border-0"
+                                        >
+                                            <span className="font-mono font-bold text-[#1B9387] mr-2">{entry.reference_no}</span>
+                                            <span className="text-gray-500 truncate">{entry.description}</span>
+                                        </li>
+                                    ))}
+                            </ul>
+                        )}
                     </div>
                 </div>
 
@@ -282,13 +309,6 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                                 </div>
                             )}
                         </div>
-
-                        {payeeBalance && (
-                            <div className="mt-3 flex gap-3 text-xs">
-                                {payeeBalance.receivable > 0 && <span className="text-red-600 font-bold bg-red-50 px-3 py-1.5 rounded border border-red-200">⚠️ They owe clinic: ₱{payeeBalance.receivable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>}
-                                {payeeBalance.payable > 0 && <span className="text-amber-600 font-bold bg-amber-50 px-3 py-1.5 rounded border border-amber-200">⚠️ Clinic owes them: ₱{payeeBalance.payable.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>}
-                            </div>
-                        )}
                     </div>
 
                     <div>
@@ -336,21 +356,18 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                                             </div>
                                         )}
                                     </td>
-
                                     <td className="p-0 border-r border-[#B0DCDA] align-top">
                                         <div className="relative flex items-center h-full">
                                             <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
                                             <input type="number" min="0" step="0.01" value={line.debit === 0 ? '' : line.debit} placeholder="0.00" onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)} className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" />
                                         </div>
                                     </td>
-                                    
                                     <td className="p-0 border-r border-[#B0DCDA] align-top">
                                         <div className="relative flex items-center h-full">
                                             <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
                                             <input type="number" min="0" step="0.01" value={line.credit === 0 ? '' : line.credit} placeholder="0.00" onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" />
                                         </div>
                                     </td>
-                                    
                                     <td className="p-2 text-center align-middle">
                                         <button type="button" onClick={() => removeLine(idx)} disabled={lines.length <= 2} className="text-red-400 hover:text-red-600 disabled:opacity-20 transition cursor-pointer font-bold">✕</button>
                                     </td>
@@ -372,8 +389,8 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                         <p className="text-sm font-bold text-gray-600">Drag and drop or upload attachments here</p>
                         <p className="text-xs text-gray-400 mt-1">JPG, PNG, PDF, XLSX, ZIP. Max 10mb each.</p>
                         
-                        <input type="file" multiple id="file-upload" className="hidden" onChange={handleFileSelect} accept=".jpg,.jpeg,.png,.pdf,.zip,.xlsx" />
-                        <label htmlFor="file-upload" className="mt-4 cursor-pointer bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-md text-xs font-bold hover:bg-gray-50 transition shadow-sm">
+                        <input type="file" multiple id="file-upload-adj" className="hidden" onChange={handleFileSelect} accept=".jpg,.jpeg,.png,.pdf,.zip,.xlsx" />
+                        <label htmlFor="file-upload-adj" className="mt-4 cursor-pointer bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-md text-xs font-bold hover:bg-gray-50 transition shadow-sm">
                             Browse Files
                         </label>
                     </div>
@@ -427,7 +444,7 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                     onClick={handleSubmit}
                     className="w-full mt-8 bg-[#1B9387] disabled:bg-gray-200 disabled:text-gray-500 disabled:shadow-none text-white font-bold py-4 rounded-md transition hover:bg-[#28958B] uppercase tracking-widest shadow-md flex justify-center items-center cursor-pointer disabled:cursor-not-allowed"
                 >
-                    {loading ? 'Processing...' : 'Post Journal Entry'}
+                    {loading ? 'Processing...' : 'Post Adjusting Entry'}
                 </button>
             </div>
             
