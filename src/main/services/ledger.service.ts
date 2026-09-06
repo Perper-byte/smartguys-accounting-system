@@ -52,7 +52,7 @@ export const LedgerService = {
 
         const transactions = await prisma.bankTransaction.findMany({
             where: { bank_account_id: bankAccountId, status: { not: 'DELETED' }, transaction_date: { gte: startDate, lte: endDate } },
-            include: { reconciliation: { include: { journal_entry: true } } },
+            include: { reconciliations: { include: { journal_entry: true } } },
             orderBy: { transaction_date: 'desc' }
         });
         const entries = await prisma.journalEntry.findMany({
@@ -168,21 +168,27 @@ export const LedgerService = {
     },
 
     // --- RECONCILIATION MATCHING FUNCTIONS ---
-    async matchBankTransaction(bankTxId: string, journalEntryId: string, userId: string) {
+   // --- RECONCILIATION MATCHING FUNCTIONS ---
+    async matchBankTransaction(bankTxId: string, journalEntryIds: string | string[], userId: string) {
         try {
+            const ids = Array.isArray(journalEntryIds) ? journalEntryIds : [journalEntryIds];
+            
             return await prisma.$transaction(async (tx) => {
-                const recon = await tx.reconciliation.create({
-                    data: {
-                        bank_transaction_id: bankTxId,
-                        journal_entry_id: journalEntryId,
-                        matched_by: userId
-                    }
-                });
+                // Loop through and attach all selected ledger items to the single bank transaction
+                for (const jId of ids) {
+                    await tx.reconciliation.create({
+                        data: {
+                            bank_transaction_id: bankTxId,
+                            journal_entry_id: jId,
+                            matched_by: userId
+                        }
+                    });
+                }
                 await tx.bankTransaction.update({
                     where: { id: bankTxId },
                     data: { status: 'MATCHED' }
                 });
-                return { success: true, reconciliation: recon };
+                return { success: true };
             });
         } catch (error: any) {
             console.error("Match Error:", error);
@@ -361,6 +367,11 @@ export const LedgerService = {
             phone: p.phone_number,
             tin: p.tin,
             address: p.address,
+
+            // 🔥 THESE 3 LINES ARE REQUIRED FOR IT TO SHOW UP ON THE FRONTEND
+            hmo_affiliation: p.hmo_affiliation,
+            hmo_card_no: p.hmo_card_no,
+            hmo_expiry_date: p.hmo_expiry_date,
 
             youOwe: balances[p.id]?.payable || 0,
             theyOwe: balances[p.id]?.receivable || 0

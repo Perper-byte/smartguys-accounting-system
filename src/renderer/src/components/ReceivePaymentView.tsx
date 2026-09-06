@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Search, CheckCircle, History,
-  Info, X, Wallet, Smartphone, Landmark, Printer, CheckSquare
+  Info, X, Wallet, Smartphone, Landmark, Printer, CheckSquare, Receipt
 } from 'lucide-react';
 
 export function ReceivePaymentView({ userId }: { userId: string }) {
@@ -14,13 +14,18 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
 
   const [outstandingBalance, setOutstandingBalance] = useState(0);
   
-  // NEW: Invoice Tracking States
+  // Invoice Tracking States
   const [unpaidInvoices, setUnpaidInvoices] = useState<any[]>([]);
   const [checkedInvoiceIds, setCheckedInvoiceIds] = useState<string[]>([]);
   const [fetchingInvoices, setFetchingInvoices] = useState(false);
 
+  // Payment & Deduction States
   const [amountReceived, setAmountReceived] = useState<number | ''>('');
   const [cwtAmount, setCwtAmount] = useState<number | ''>('');
+  
+  // 🔥 NEW: Bank Fees (MDR) & Write-offs (Short Payments)
+  const [bankFeeAmount, setBankFeeAmount] = useState<number | ''>('');
+  const [writeOffAmount, setWriteOffAmount] = useState<number | ''>('');
 
   const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentReference, setPaymentReference] = useState('');
@@ -41,16 +46,18 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   // --- Computations ---
   const received = Number(amountReceived) || 0;
   const tax = Number(cwtAmount) || 0;
-  const totalCredit = received + tax;
-  const remainingBalance = Math.max(0, outstandingBalance - totalCredit);
-
-  // NEW: Sum of checked invoices
+  const fee = Number(bankFeeAmount) || 0;
+  const writeOff = Number(writeOffAmount) || 0;
+  
+  // Total value applied against the A/R
+  const totalCredit = received + tax + fee + writeOff;
+  
   const selectedTotal = unpaidInvoices
     .filter(inv => checkedInvoiceIds.includes(inv.referenceNo))
     .reduce((sum, inv) => sum + inv.balance, 0);
 
-  // Determines what amount the auto-compute buttons should use
   const targetAmount = selectedTotal > 0 ? selectedTotal : outstandingBalance;
+  const remainingBalance = Math.max(0, outstandingBalance - totalCredit);
 
   // Validation
   const isValid =
@@ -92,12 +99,13 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
     if (!successData) fetchNextSeq();
   }, [refPrefix, successData]);
 
-  // Fetch Balances AND Unpaid Invoices when Payee is selected
   useEffect(() => {
     if (!payeeId) {
       setOutstandingBalance(0);
       setAmountReceived('');
       setCwtAmount('');
+      setBankFeeAmount('');
+      setWriteOffAmount('');
       setPaymentReference('');
       setUnpaidInvoices([]);
       setCheckedInvoiceIds([]);
@@ -109,23 +117,22 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
       try {
         const api = (window as any).api || (window as any).electronAPI;
         
-        // 1. Fetch total balance
         const bal = await api.getPayeeBalance(payeeId);
         setOutstandingBalance(bal?.receivable || 0);
         
-        // 2. Fetch specific unpaid invoices for this payee
         const tracker = await api.getInvoiceTracker();
         const selectedName = payees.find(p => p.id === payeeId)?.name;
         
-        // Filter invoices belonging to this payee that still have a balance
         const pending = tracker.filter((inv: any) => 
             inv.payeeName === selectedName && inv.balance > 0
         );
         
         setUnpaidInvoices(pending);
-        setCheckedInvoiceIds([]); // Reset checks
+        setCheckedInvoiceIds([]); 
         setAmountReceived('');
         setCwtAmount('');
+        setBankFeeAmount('');
+        setWriteOffAmount('');
       } catch (error) { 
         console.error(error); 
       } finally {
@@ -154,15 +161,17 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   const handleAutoComputeTax = () => {
     if (targetAmount > 0) {
       const computedTax = targetAmount * 0.02;
-      const netAmount = targetAmount - computedTax;
+      // Also account for fees/writeoffs if user filled them first
+      const currentDeductions = fee + writeOff;
+      const netAmount = targetAmount - computedTax - currentDeductions;
       setCwtAmount(Number(computedTax.toFixed(2)));
-      setAmountReceived(Number(netAmount.toFixed(2)));
+      setAmountReceived(netAmount > 0 ? Number(netAmount.toFixed(2)) : 0);
     }
   };
 
   const handleExactAmount = () => {
-    const currentTax = Number(cwtAmount) || 0;
-    const netAmount = targetAmount - currentTax;
+    const currentDeductions = tax + fee + writeOff;
+    const netAmount = targetAmount - currentDeductions;
     setAmountReceived(netAmount > 0 ? Number(netAmount.toFixed(2)) : targetAmount);
   };
 
@@ -179,15 +188,25 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
     try {
       const lines: any[] = [];
       const debitAccount = paymentMethod === 'CASH' ? '1020' : '1010';
+      
+      // 1. Debit Cash/Bank
       lines.push({ accountId: debitAccount, debit: received, credit: 0 });
 
+      // 2. Debit Withholding Tax (Asset)
       if (tax > 0) lines.push({ accountId: '1310', debit: tax, credit: 0 });
+      
+      // 3. Debit Bank Charges/MDR Fee (Expense) -> Assuming '6000' or similar. We'll use a generic expense code if unknown, typically '6000' or '6170'
+      if (fee > 0) lines.push({ accountId: '6000', debit: fee, credit: 0 }); // Bank Charges
+      
+      // 4. Debit Sales Discount/Write-Off (Expense/Contra-Revenue)
+      if (writeOff > 0) lines.push({ accountId: '4050', debit: writeOff, credit: 0 }); // Discounts/Adjustments
+
+      // 5. Credit Accounts Receivable
       lines.push({ accountId: '1200', debit: 0, credit: totalCredit });
 
       const selectedName = payees.find(p => p.id === payeeId)?.name;
       const fullReferenceNo = `${refPrefix}${refSequence.padStart(3, '0')}`;
 
-      // Insert the specific invoices covered into the description for accounting audit logs
       const invList = checkedInvoiceIds.length > 0 ? ` [Invs: ${checkedInvoiceIds.join(', ')}]` : '';
       const description = `Collection of A/R from ${selectedName}${invList} via ${paymentMethod} ${paymentReference ? `(Ref: ${paymentReference})` : ''}`;
 
@@ -214,6 +233,9 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
         orNo: fullReferenceNo,
         name: selectedName,
         amount: received,
+        tax: tax,
+        fee: fee,
+        writeOff: writeOff,
         method: paymentMethod,
         ref: paymentReference,
         remaining: remainingBalance,
@@ -282,16 +304,26 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               <span className="text-slate-800 font-bold">{successData.orNo}</span>
             </div>
             <div className="flex justify-between text-sm">
-              <span className="text-slate-500">Payment Method</span>
+              <span className="text-slate-500">Method</span>
               <span className="text-slate-800 font-bold">{successData.method} {successData.ref && `(${successData.ref})`}</span>
             </div>
+            
+            {/* Show Deductions if they exist */}
+            {(successData.tax > 0 || successData.fee > 0 || successData.writeOff > 0) && (
+              <div className="border-t border-slate-200 pt-3 space-y-2">
+                {successData.tax > 0 && <div className="flex justify-between text-xs"><span className="text-slate-500">2% Withholding Tax</span><span className="text-slate-600 font-mono">₱ {successData.tax.toLocaleString()}</span></div>}
+                {successData.fee > 0 && <div className="flex justify-between text-xs"><span className="text-slate-500">Bank/MDR Fee</span><span className="text-slate-600 font-mono">₱ {successData.fee.toLocaleString()}</span></div>}
+                {successData.writeOff > 0 && <div className="flex justify-between text-xs"><span className="text-slate-500">Dispute/Write-off</span><span className="text-slate-600 font-mono">₱ {successData.writeOff.toLocaleString()}</span></div>}
+              </div>
+            )}
+
             {successData.invoicesCovered?.length > 0 && (
-              <div className="flex justify-between text-sm">
-                <span className="text-slate-500">Invoices</span>
+              <div className="border-t border-slate-200 pt-3 flex justify-between text-sm">
+                <span className="text-slate-500">Invoices Cleared</span>
                 <span className="text-indigo-600 font-mono font-bold text-right max-w-[200px]">{successData.invoicesCovered.join(', ')}</span>
               </div>
             )}
-            <div className="border-t border-slate-200 pt-4 flex justify-between text-sm">
+            <div className="border-t border-slate-200 pt-3 flex justify-between text-sm">
               <span className="text-slate-500">Remaining Balance</span>
               <span className="text-slate-800 font-bold">₱ {successData.remaining.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
             </div>
@@ -320,8 +352,8 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
         {/* Header */}
         <div className="flex justify-between items-center p-6 lg:px-10 border-b border-slate-100">
           <h2 className="text-xl font-bold text-slate-800 tracking-wide">Receive Payment (Collections)</h2>
-          <span className="bg-emerald-50 text-emerald-600 text-xs px-3 py-1.5 rounded font-bold uppercase tracking-widest border border-emerald-200">
-            Payment Collection
+          <span className="bg-emerald-50 text-emerald-600 text-xs px-3 py-1.5 rounded font-bold uppercase tracking-widest border border-emerald-200 flex items-center gap-2">
+            <Receipt size={14}/> Payment Collection
           </span>
         </div>
 
@@ -363,15 +395,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                     </div>
                   )}
                 </div>
-
-                {payeeId && (
-                  <div className="mt-3 flex justify-between items-center px-1">
-                    <span className="text-xs text-slate-400 font-mono">ID: {payeeId.slice(0, 8).toUpperCase()}</span>
-                    <button type="button" onClick={() => setIsHistoryModalOpen(true)} className="text-xs text-[#1B9387] hover:text-[#157a70] flex items-center gap-1 font-bold transition">
-                      <History size={14} /> View History
-                    </button>
-                  </div>
-                )}
               </div>
 
               <div className="flex flex-col justify-end">
@@ -391,7 +414,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                   2. Select Unpaid Invoices
                 </label>
                 <div className="text-xs font-bold text-slate-500 flex items-center gap-2">
-                   Selected Total: 
+                   Selected Target: 
                    <span className={`text-sm font-mono transition-colors ${checkedInvoiceIds.length > 0 ? 'text-emerald-600 font-black' : 'text-slate-400'}`}>
                      ₱ {selectedTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                    </span>
@@ -421,7 +444,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                         </th>
                         <th className="p-3">Reference No.</th>
                         <th className="p-3">Date</th>
-                        {/* 🔥 NEW COLUMN ADDED HERE */}
                         <th className="p-3">Patient & Details</th>
                         <th className="p-3 text-right">Invoice Total</th>
                         <th className="p-3 text-right text-red-500">Balance Due</th>
@@ -444,8 +466,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                           </td>
                           <td className="p-3 font-mono font-bold text-indigo-700 text-xs">{inv.referenceNo}</td>
                           <td className="p-3 text-slate-500 text-xs">{new Date(inv.date).toLocaleDateString()}</td>
-                          
-                          {/* 🔥 NEW DESCRIPTION/PATIENT PARSER HERE */}
                           <td className="p-3 text-xs w-1/3">
                               <div className="flex flex-col max-w-[250px] overflow-hidden" title={inv.description || ''}>
                                   <span className="text-slate-800 font-bold truncate">
@@ -458,7 +478,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                                   )}
                               </div>
                           </td>
-
                           <td className="p-3 text-right font-mono text-slate-400 text-xs">₱ {inv.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                           <td className="p-3 text-right font-mono font-bold text-red-500">₱ {inv.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                         </tr>
@@ -480,6 +499,8 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               )}
 
               <div className="space-y-10">
+                
+                {/* Method & Receipt Row */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                   <div>
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Official Receipt No.</label>
@@ -488,17 +509,8 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                         {refPrefix}
                       </span>
                       <div className="relative w-full flex">
-                        <input
-                          type="text"
-                          required
-                          value={refSequence}
-                          onChange={e => setRefSequence(e.target.value)}
-                          placeholder="000"
-                          className="w-full bg-white border border-slate-300 rounded-r-lg p-3 text-base font-mono text-slate-800 focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 uppercase tracking-wider font-bold select-none pointer-events-none">
-                          Auto-Generated
-                        </span>
+                        <input type="text" required value={refSequence} onChange={e => setRefSequence(e.target.value)} placeholder="000" className="w-full bg-white border border-slate-300 rounded-r-lg p-3 text-base font-mono text-slate-800 focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition" />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 uppercase tracking-wider font-bold select-none pointer-events-none">Auto-Generated</span>
                       </div>
                     </div>
                   </div>
@@ -507,83 +519,106 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                     <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Payment Method</label>
                     <div className="grid grid-cols-3 gap-3">
                       <button type="button" onClick={() => setPaymentMethod('CASH')} className={`flex justify-center items-center gap-2 cursor-pointer py-3 text-xs font-bold rounded-lg border transition-all ${paymentMethod === 'CASH' ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}><Wallet size={16} /> CASH</button>
-                      <button type="button" onClick={() => setPaymentMethod('GCASH')} className={`flex justify-center items-center gap-2 cursor-pointer py-3 text-xs font-bold rounded-lg border transition-all ${paymentMethod === 'GCASH' ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}><Smartphone size={16} /> GCASH</button>
+                      <button type="button" onClick={() => setPaymentMethod('GCASH')} className={`flex justify-center items-center gap-2 cursor-pointer py-3 text-xs font-bold rounded-lg border transition-all ${paymentMethod === 'GCASH' ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}><Smartphone size={16} /> E-WALLET</button>
                       <button type="button" onClick={() => setPaymentMethod('BANK')} className={`flex justify-center items-center gap-2 cursor-pointer py-3 text-xs font-bold rounded-lg border transition-all ${paymentMethod === 'BANK' ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}><Landmark size={16} /> BANK</button>
                     </div>
 
                     {(paymentMethod === 'GCASH' || paymentMethod === 'BANK') && (
                       <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                        <input
-                          type="text"
-                          placeholder={paymentMethod === 'GCASH' ? "Enter GCash Reference No." : "Enter Bank Transfer Ref No."}
-                          value={paymentReference}
-                          onChange={(e) => setPaymentReference(e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-lg p-3 text-sm text-slate-800 focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition shadow-sm"
-                        />
+                        <input type="text" placeholder={paymentMethod === 'GCASH' ? "Enter GCash/Maya Reference No." : "Enter Bank Transfer Ref No."} value={paymentReference} onChange={(e) => setPaymentReference(e.target.value)} className="w-full bg-white border border-slate-300 rounded-lg p-3 text-sm text-slate-800 focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition shadow-sm" />
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-start">
+                {/* Amounts & Deductions Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start bg-slate-50/50 p-6 rounded-xl border border-slate-100">
+                  
+                  {/* Amount Received (Primary) */}
                   <div>
                     <div className="flex justify-between items-center mb-2">
-                      <label className="block text-xs font-bold text-[#10b981] uppercase tracking-wider">Amount Received</label>
+                      <label className="block text-xs font-bold text-[#10b981] uppercase tracking-wider">Amount Received (Actual)</label>
                       {targetAmount > 0 && (
-                        <button type="button" onClick={handleExactAmount} className={`text-[10px] font-bold px-3 py-1 rounded-full transition ${checkedInvoiceIds.length > 0 ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
-                          Use Exact Amount
+                        <button type="button" onClick={handleExactAmount} className={`text-[10px] font-bold px-3 py-1 rounded-full transition cursor-pointer ${checkedInvoiceIds.length > 0 ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}>
+                          Fill Remaining
                         </button>
                       )}
                     </div>
-                    <div className="relative shadow-sm rounded-lg">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl text-slate-400 font-mono">₱</span>
-                      <input type="number" min="0.01" step="0.01" value={amountReceived} onChange={e => setAmountReceived(parseFloat(e.target.value) || '')} placeholder="0.00" className="w-full bg-white border-2 border-[#34d399] rounded-lg py-5 pl-12 pr-6 text-3xl text-slate-800 font-mono text-right focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/20 outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                    <div className="relative shadow-sm rounded-lg mb-2">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl text-emerald-500/50 font-mono">₱</span>
+                      <input type="number" min="0" step="0.01" value={amountReceived} onChange={e => setAmountReceived(parseFloat(e.target.value) || '')} placeholder="0.00" className="w-full bg-white border-2 border-[#34d399] rounded-lg py-5 pl-12 pr-6 text-3xl text-slate-800 font-mono font-bold text-right focus:border-[#10b981] focus:ring-2 focus:ring-[#10b981]/20 outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                     </div>
                   </div>
 
-                  <div>
-                    <div className="flex justify-between items-center mb-2">
-                      <div className="flex items-center gap-1 group relative cursor-help">
-                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">2% Withholding Tax <span className="lowercase font-normal text-slate-400">(Optional)</span></label>
-                        <Info size={14} className="text-slate-400 group-hover:text-slate-700 transition" />
-                        <div className="absolute top-full left-0 mt-1 w-56 bg-slate-800 text-xs text-white p-3 rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition pointer-events-none z-50">
-                          Usually applicable only for HMOs and corporate accounts.
+                  {/* Deductions (Secondary) */}
+                  <div className="space-y-4">
+                    {/* Tax */}
+                    <div>
+                      <div className="flex justify-between items-center mb-1">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">2% Withholding Tax <span className="lowercase font-normal text-slate-400">(HMO/Corp)</span></label>
+                        {targetAmount > 0 && (
+                          <button type="button" onClick={handleAutoComputeTax} className="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-600 font-bold px-2 py-0.5 rounded transition cursor-pointer">
+                            Auto-Compute
+                          </button>
+                        )}
+                      </div>
+                      <div className="relative rounded-lg">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-mono">₱</span>
+                        <input type="number" min="0" step="0.01" value={cwtAmount} onChange={e => setCwtAmount(parseFloat(e.target.value) || '')} placeholder="0.00" className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-8 pr-3 text-sm text-slate-800 font-mono font-bold text-right focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                      </div>
+                    </div>
+
+                    {/* Bank Fee */}
+                    <div>
+                      <div className="flex items-center gap-1 mb-1 group relative cursor-help w-fit">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bank / MDR Fee</label>
+                        <Info size={12} className="text-slate-400" />
+                        <div className="absolute top-full left-0 mt-1 w-48 bg-slate-800 text-xs text-white p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 transition pointer-events-none z-50">
+                          e.g., Terminal fees subtracted by Maya/GCash before deposit.
                         </div>
                       </div>
-
-                      {targetAmount > 0 && (
-                        <button type="button" onClick={handleAutoComputeTax} className="text-[10px] bg-[#1B9387]/10 hover:bg-[#1B9387]/20 text-[#1B9387] font-bold px-3 py-1 rounded-full transition">
-                          Auto-Compute
-                        </button>
-                      )}
+                      <div className="relative rounded-lg">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-mono">₱</span>
+                        <input type="number" min="0" step="0.01" value={bankFeeAmount} onChange={e => setBankFeeAmount(parseFloat(e.target.value) || '')} placeholder="0.00" className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-8 pr-3 text-sm text-slate-800 font-mono font-bold text-right focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                      </div>
                     </div>
-                    <div className="relative shadow-sm rounded-lg">
-                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-lg text-slate-400 font-mono">₱</span>
-                      <input type="number" min="0" step="0.01" value={cwtAmount} onChange={e => setCwtAmount(parseFloat(e.target.value) || '')} placeholder="0.00" className="w-full bg-white border border-slate-300 rounded-lg py-4 pl-12 pr-6 text-xl text-slate-800 font-mono text-right focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+
+                    {/* Write-off */}
+                    <div>
+                       <div className="flex items-center gap-1 mb-1 group relative cursor-help w-fit">
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Dispute / Write-Off</label>
+                        <Info size={12} className="text-slate-400" />
+                        <div className="absolute top-full left-0 mt-1 w-56 bg-slate-800 text-xs text-white p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 transition pointer-events-none z-50">
+                          Use this if an HMO short-pays due to disputes or invalid claims to clear the invoice.
+                        </div>
+                      </div>
+                      <div className="relative rounded-lg">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-mono">₱</span>
+                        <input type="number" min="0" step="0.01" value={writeOffAmount} onChange={e => setWriteOffAmount(parseFloat(e.target.value) || '')} placeholder="0.00" className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-8 pr-3 text-sm text-slate-800 font-mono font-bold text-right focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                      </div>
                     </div>
                   </div>
+
                 </div>
 
                 {/* Remaining Balance Summary Box */}
-                {payeeId && (received > 0 || tax > 0) && (
-                  <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 font-mono text-sm animate-in fade-in slide-in-from-bottom-2 duration-300 shadow-inner">
-                    <div className="flex justify-between text-slate-500 mb-2">
-                      <span>Outstanding Balance</span>
-                      <span>₱ {outstandingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                    </div>
-                    {tax > 0 && (
-                      <div className="flex justify-between text-amber-600 mb-2">
-                        <span>Withholding Tax (2%)</span>
-                        <span>- ₱ {tax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                {payeeId && totalCredit > 0 && (
+                  <div className="bg-slate-800 rounded-lg p-5 font-mono text-sm shadow-xl flex justify-between items-center text-white">
+                    <div className="space-y-1 text-xs text-slate-300">
+                      <div className="flex gap-4">
+                        <span className="w-24 uppercase tracking-widest text-[9px] font-bold text-slate-400">Target</span>
+                        <span>₱ {targetAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                       </div>
-                    )}
-                    <div className="flex justify-between text-emerald-600 mb-4">
-                      <span>Payment Received</span>
-                      <span>- ₱ {received.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      <div className="flex gap-4">
+                        <span className="w-24 uppercase tracking-widest text-[9px] font-bold text-slate-400">Total Credits</span>
+                        <span className="text-emerald-400">- ₱ {totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                      </div>
                     </div>
-                    <div className="border-t border-slate-200 pt-3 flex justify-between text-slate-800 font-bold text-lg">
-                      <span>Remaining Balance</span>
-                      <span>₱ {remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                    <div className="text-right">
+                      <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Unpaid Balance</span>
+                      <span className={`text-xl font-bold ${remainingBalance > 0 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        ₱ {remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -595,7 +630,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               {loading ? 'Processing...' : (
                 <>
                   <CheckCircle size={24} />
-                  {isValid ? `Confirm & Collect ₱ ${received.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : 'Confirm Collection'}
+                  {isValid ? `Record ₱ ${totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })} Credit to Account` : 'Complete Form to Proceed'}
                 </>
               )}
             </button>
@@ -620,32 +655,36 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                 <p className="text-slate-500 text-xs uppercase tracking-wider font-bold mb-1">Patient / Entity</p>
                 <p className="text-slate-800 font-bold text-lg">{selectedPayee?.name}</p>
                 {checkedInvoiceIds.length > 0 && (
-                  <p className="text-indigo-600 text-xs font-mono font-bold mt-1">Paying {checkedInvoiceIds.length} invoice(s): {checkedInvoiceIds.join(', ')}</p>
+                  <p className="text-indigo-600 text-xs font-mono font-bold mt-1">Paying {checkedInvoiceIds.length} invoice(s)</p>
                 )}
               </div>
 
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3 font-mono shadow-inner">
-                <div className="flex justify-between text-slate-500">
-                  <span>Outstanding</span>
-                  <span>₱ {outstandingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                </div>
                 <div className="flex justify-between text-emerald-600 font-bold">
-                  <span>Amount Received</span>
+                  <span>Actual Cash Received</span>
                   <span>₱ {received.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 </div>
                 {tax > 0 && (
-                  <div className="flex justify-between text-amber-600">
-                    <span>2% Tax</span>
+                  <div className="flex justify-between text-slate-500 text-xs">
+                    <span>2% Tax Credit</span>
                     <span>₱ {tax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                   </div>
                 )}
-                <div className="flex justify-between text-slate-500">
-                  <span>Method</span>
-                  <span>{paymentMethod} {paymentReference && `(${paymentReference})`}</span>
-                </div>
-                <div className="border-t border-slate-200 pt-3 flex justify-between text-slate-800 font-bold text-base mt-2">
-                  <span>Remaining Balance</span>
-                  <span>₱ {remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                {fee > 0 && (
+                  <div className="flex justify-between text-slate-500 text-xs">
+                    <span>Bank/MDR Fee</span>
+                    <span>₱ {fee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                {writeOff > 0 && (
+                  <div className="flex justify-between text-slate-500 text-xs">
+                    <span>Write-off / Discount</span>
+                    <span>₱ {writeOff.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
+                <div className="border-t border-slate-200 pt-3 flex justify-between text-indigo-700 font-bold text-base mt-2">
+                  <span>Total Value Cleared</span>
+                  <span>₱ {totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
             </div>
@@ -656,44 +695,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               <button onClick={handleActualSubmit} className="flex-1 bg-[#10b981] hover:bg-[#059669] text-white py-3 rounded-lg font-bold tracking-wide transition shadow-md cursor-pointer">
                 Confirm & Record
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================== */}
-      {/* PAYMENT HISTORY MODAL                        */}
-      {/* ========================================== */}
-      {isHistoryModalOpen && (
-        <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="bg-slate-50 px-6 py-5 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-slate-800 font-bold tracking-wide flex items-center gap-2"><History size={18} className="text-[#1B9387]" /> Payment History</h3>
-              <button onClick={() => setIsHistoryModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition bg-white rounded-full p-1 border border-slate-200 shadow-sm cursor-pointer">
-                <X size={18} />
-              </button>
-            </div>
-            <div className="p-6">
-              <p className="text-slate-500 text-sm mb-5">Recent collections for <strong className="text-slate-800">{selectedPayee?.name}</strong></p>
-
-              <div className="space-y-3">
-                {[
-                  { date: 'Aug 20, 2026', or: 'OR-00182', amount: 1000, method: 'CASH' },
-                  { date: 'Aug 12, 2026', or: 'OR-00151', amount: 2500, method: 'GCASH' },
-                  { date: 'Aug 03, 2026', or: 'OR-00112', amount: 500, method: 'CASH' },
-                ].map((hist, i) => (
-                  <div key={i} className="flex justify-between items-center bg-white border border-slate-200 p-4 rounded-xl shadow-sm font-mono text-sm">
-                    <div className="flex flex-col">
-                      <span className="text-slate-400 text-xs mb-1 font-sans font-bold">{hist.date}</span>
-                      <span className="text-slate-800 font-bold">{hist.or}</span>
-                    </div>
-                    <div className="flex items-center gap-5">
-                      <span className="text-slate-400 text-xs font-sans font-bold bg-slate-50 px-2 py-1 rounded">{hist.method}</span>
-                      <span className="text-[#10b981] font-bold text-base">₱ {hist.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
             </div>
           </div>
         </div>

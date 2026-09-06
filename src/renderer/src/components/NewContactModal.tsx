@@ -263,7 +263,7 @@ export function NewContactModal({
                         {/* 🔥 THE MISSING HMO AFFILIATION BLOCK */}
                         {formData.type === 'PATIENT' && (
                             <div className="bg-blue-50/40 border border-blue-200 rounded-lg p-5">
-                                <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Primary HMO Carrier (Optional)</label>
+                                <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">Primary HMO Carrier / Primary Corporate (Optional)</label>
                                 <select 
                                     value={hmoAffiliation} 
                                     onChange={e => { 

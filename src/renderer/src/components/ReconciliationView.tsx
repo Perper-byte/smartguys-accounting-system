@@ -1,3 +1,4 @@
+// src/renderer/src/components/ReconciliationView.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import * as XLSX from 'xlsx';
 
@@ -17,7 +18,11 @@ export function ReconciliationView({ userId }: { userId: string }) {
   const [accountId, setAccountId] = useState('');
   const [transactions, setTransactions] = useState<BankTransaction[]>([]);
   const [entries, setEntries] = useState<LedgerEntry[]>([]);
+  
   const [selectedTransactionId, setSelectedTransactionId] = useState('');
+  // 🔥 NEW: Array to hold multiple selected ledger entries for One-to-Many matching
+  const [selectedEntryIds, setSelectedEntryIds] = useState<string[]>([]);
+
   const [startDate, setStartDate] = useState(dateValue(new Date(today.getFullYear(), today.getMonth(), 1)));
   const [endDate, setEndDate] = useState(dateValue(today));
   const [loading, setLoading] = useState(false);
@@ -67,6 +72,20 @@ export function ReconciliationView({ userId }: { userId: string }) {
   useEffect(() => { loadAccounts().catch(() => setStatus({ type: 'error', message: 'Could not load bank accounts.' })); }, [loadAccounts]);
   useEffect(() => { loadData(); }, [loadData]);
 
+  // 🔥 NEW: Auto-select if there is a perfect 1-to-1 match to save clicks
+  useEffect(() => {
+    if (selectedTransactionId) {
+      const tx = transactions.find(t => t.id === selectedTransactionId);
+      if (tx) {
+        const perfectMatch = entries.find(e => Math.abs(e.amount - tx.amount) < 0.01);
+        if (perfectMatch) setSelectedEntryIds([perfectMatch.id]);
+        else setSelectedEntryIds([]);
+      }
+    } else {
+      setSelectedEntryIds([]);
+    }
+  }, [selectedTransactionId, transactions, entries]);
+
   const unmatched = transactions.filter(transaction => transaction.status === 'UNMATCHED');
   const matched = transactions.filter(transaction => transaction.status === 'MATCHED');
   const unmatchedBankTotal = unmatched.reduce((total, transaction) => total + transaction.amount, 0);
@@ -86,6 +105,16 @@ export function ReconciliationView({ userId }: { userId: string }) {
     };
     return [...entries].sort((a, b) => score(b) - score(a));
   }, [entries, selectedTransaction]);
+
+  // 🔥 NEW: Dynamic Math for the Variance Counter
+  const targetAmount = selectedTransaction ? selectedTransaction.amount : 0;
+  const selectedSum = entries.filter(e => selectedEntryIds.includes(e.id)).reduce((sum, e) => sum + e.amount, 0);
+  const variance = targetAmount - selectedSum;
+  const isPerfectMatch = selectedEntryIds.length > 0 && Math.abs(variance) < 0.01;
+
+  const toggleEntry = (id: string) => {
+    setSelectedEntryIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
 
   const createAccount = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -111,11 +140,17 @@ export function ReconciliationView({ userId }: { userId: string }) {
     await loadData();
   };
 
-  const match = async (entryId: string) => {
-    if (!selectedTransactionId) return;
-    const result = await api.matchBankTransaction(selectedTransactionId, entryId, userId);
-    if (!result?.success) return setStatus({ type: 'error', message: result?.error || 'Could not match transaction.' });
+  const matchSelected = async () => {
+    if (!selectedTransactionId || selectedEntryIds.length === 0) return;
+    setLoading(true);
+    // Send array of selected entries to backend
+    const result = await api.matchBankTransaction(selectedTransactionId, selectedEntryIds, userId);
+    if (!result?.success) {
+      setLoading(false);
+      return setStatus({ type: 'error', message: result?.error || 'Could not match transaction.' });
+    }
     setSelectedTransactionId('');
+    setSelectedEntryIds([]);
     setStatus({ type: 'success', message: 'Transaction reconciled.' });
     await loadData();
   };
@@ -221,6 +256,58 @@ export function ReconciliationView({ userId }: { userId: string }) {
     await loadData();
   };
 
+  const handleExport = () => {
+    if (!accountId) return;
+    try {
+      const accountName = accounts.find(a => a.id === accountId)?.name || 'Account';
+      const bankBal = Number(statementClosing) || 0;
+      const bookBal = bankBal + candidateTotal - unmatchedBankTotal;
+      const mismatchAmt = bankBal - bookBal;
+
+      const aoaData: any[][] = [
+        ["BANK RECONCILIATION TEMPLATE"],
+        [],
+        ["Cash balance as per bank accounts", bankBal],
+        ["Cash balance as per company records", bookBal],
+        ["Mismatch", mismatchAmt === 0 ? "MATCH" : "MISMATCH"],
+        ["Mismatch amount", mismatchAmt],
+        [],
+        [`Below is the bank statement of ${accountName}`],
+        [],
+        ["Date", "Transactions", "Withdrawals/Subtractions", "Deposits/Addition", "Balance", "Reconciliation notes"]
+      ];
+
+      const sortedTxs = [...transactions].sort((a, b) => new Date(a.transaction_date).getTime() - new Date(b.transaction_date).getTime());
+      let runningBal = Number(statementOpening) || 0;
+      aoaData.push([new Date(startDate).toLocaleDateString(), "Opening Balance", "", "", runningBal, "Records match"]);
+
+      sortedTxs.forEach(tx => {
+        const isDeposit = tx.amount >= 0;
+        runningBal += tx.amount;
+        const desc = tx.reference_no ? `${tx.description} (Ref: ${tx.reference_no})` : tx.description;
+        const notes = tx.status === 'MATCHED' ? 'Records match' : 'Mismatch. Please check';
+        aoaData.push([new Date(tx.transaction_date).toLocaleDateString(), desc, !isDeposit ? Math.abs(tx.amount) : "", isDeposit ? tx.amount : "", runningBal, notes]);
+      });
+
+      const wb = XLSX.utils.book_new();
+      const wsRecon = XLSX.utils.aoa_to_sheet(aoaData);
+      wsRecon['!cols'] = [{ wch: 15 }, { wch: 50 }, { wch: 25 }, { wch: 20 }, { wch: 20 }, { wch: 30 }];
+      XLSX.utils.book_append_sheet(wb, wsRecon, "Reconciliation Report");
+
+      const wsUnclearedLedger = XLSX.utils.json_to_sheet(entries.map(e => ({ Date: new Date(e.date).toLocaleDateString(), Description: e.description, 'Reference No': e.referenceNo, Amount: e.amount })));
+      wsUnclearedLedger['!cols'] = [{ wch: 15 }, { wch: 50 }, { wch: 20 }, { wch: 15 }];
+      XLSX.utils.book_append_sheet(wb, wsUnclearedLedger, "Uncleared Ledger");
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `Bank_Recon_${accountName.replace(/[^a-zA-Z0-9]/g, '_')}_${todayStr}.xlsx`);
+      
+      setStatus({ type: 'success', message: 'Reconciliation template exported successfully.' });
+    } catch (error) {
+      console.error(error);
+      setStatus({ type: 'error', message: 'Failed to export Excel file.' });
+    }
+  };
+
   return (
     <div className="w-full h-full flex items-center justify-center p-4 lg:p-8 bg-gray-50/30">
       <div className="w-full max-w-7xl h-full flex flex-col font-sans text-gray-800 bg-white shadow-sm border border-transparent rounded-xl p-6">
@@ -232,10 +319,8 @@ export function ReconciliationView({ userId }: { userId: string }) {
             <p className="text-sm text-gray-500 mt-1 font-medium">Match bank activity to posted ledger entries and keep the cash balance explainable.</p>
           </div>
           
-          {/* UX FIX: Only show Import and Add Account actions if accounts exist */}
           {accounts.length > 0 && (
             <div className="flex items-center gap-3">
-              {/* UX FIX: CSV Date format is strictly tied to importing. Moved it here and clarified the label. */}
               <select 
                 title="Format parsing for CSV imports"
                 value={dateFormat} 
@@ -247,10 +332,14 @@ export function ReconciliationView({ userId }: { userId: string }) {
                 <option value="DMY">CSV Date: DD/MM/YY</option>
               </select>
               
-              <label className="px-5 py-2.5 bg-white hover:bg-[#FBF8F8] border border-[#B0DCDA] rounded-md text-sm font-bold text-[#1B9387] cursor-pointer transition shadow-sm uppercase tracking-wider">
-                Import Statement
+              <label className="px-5 py-2.5 bg-white hover:bg-[#FBF8F8] border border-[#B0DCDA] rounded-md text-sm font-bold text-[#1B9387] cursor-pointer transition shadow-sm uppercase tracking-wider flex items-center gap-2">
+                <span>📥</span> Import Statement
                 <input type="file" accept=".csv,.xls,.xlsx" onChange={handleImportFile} className="hidden" />
               </label>
+
+              <button onClick={handleExport} className="px-5 py-2.5 bg-white hover:bg-[#FBF8F8] border border-[#B0DCDA] rounded-md text-sm font-bold text-[#1B9387] cursor-pointer transition shadow-sm uppercase tracking-wider flex items-center gap-2">
+                <span>📤</span> Export
+              </button>
               
               <button onClick={() => setShowSetup(true)} className="px-5 py-2.5 bg-[#1B9387] hover:bg-[#28958B] border border-transparent rounded-md text-sm font-bold text-white transition cursor-pointer shadow-sm uppercase tracking-wider">
                 + Bank Account
@@ -267,7 +356,6 @@ export function ReconciliationView({ userId }: { userId: string }) {
         )}
 
         {!accounts.length ? (
-          // UX FIX: True Empty State. Removes all confusing/premature filters.
           <div className="flex-1 bg-[#FBF8F8] border border-[#B0DCDA] rounded-xl flex flex-col items-center justify-center text-center p-12">
             <span className="text-4xl mb-4">🏦</span>
             <p className="text-gray-800 font-extrabold text-xl tracking-wide">Set up a bank account to begin</p>
@@ -284,7 +372,6 @@ export function ReconciliationView({ userId }: { userId: string }) {
                 <option value="">Select bank account</option>
                 {accounts.map(account => <option key={account.id} value={account.id}>{account.name} ({account.ledger_account})</option>)}
               </select>
-              {/* Date Format moved up to Header Actions */}
               <input type="date" value={startDate} onChange={event => setStartDate(event.target.value)} className="bg-white border border-[#B0DCDA] rounded-md px-3 py-2.5 text-sm text-gray-800 font-medium outline-none focus:border-[#1B9387] transition shadow-sm" />
               <input type="date" value={endDate} onChange={event => setEndDate(event.target.value)} className="bg-white border border-[#B0DCDA] rounded-md px-3 py-2.5 text-sm text-gray-800 font-medium outline-none focus:border-[#1B9387] transition shadow-sm" />
               <button onClick={loadData} disabled={loading} className="px-5 py-2.5 bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] rounded-md text-sm font-bold transition disabled:opacity-50 cursor-pointer shadow-sm uppercase tracking-wider">
@@ -338,19 +425,23 @@ export function ReconciliationView({ userId }: { userId: string }) {
                     {unmatched.length} Unmatched
                   </span>
                 </div>
-                <div className="overflow-auto bg-gray-50/30">
+                <div className="overflow-auto bg-gray-50/30 flex-1">
                   {transactions.map(transaction => {
                     const isSelected = selectedTransactionId === transaction.id;
                     const isMatched = transaction.status === 'MATCHED';
                     return (
                       <button 
                         key={transaction.id} 
-                        onClick={() => !isMatched && setSelectedTransactionId(transaction.id)} 
+                        onClick={() => {
+                          if (!isMatched) {
+                            setSelectedTransactionId(prev => prev === transaction.id ? '' : transaction.id);
+                          }
+                        }} 
                         className={`w-full text-left p-4 border-b border-gray-100 transition-all ${isSelected ? 'bg-[#E9FAFA] border-l-4 border-l-[#1B9387] shadow-inner' : 'hover:bg-white border-l-4 border-l-transparent'} ${isMatched ? 'opacity-60 bg-gray-100/50 cursor-default' : 'cursor-pointer'}`}
                       >
                         <div className="flex justify-between items-center">
                           <span className={`text-xs font-bold ${isSelected ? 'text-[#1B9387]' : 'text-gray-500'}`}>{new Date(transaction.transaction_date).toLocaleDateString()} <span className="ml-2 font-mono text-gray-400">{transaction.reference_no || ''}</span></span>
-                          <span className={`font-mono font-black tabular-nums ${transaction.amount >= 0 ? 'text-emerald-600' : 'text-gray-800'}`}>
+                          <span className={`font-mono font-black tabular-nums ${transaction.amount >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                             {transaction.amount >= 0 ? '+' : '-'}{money(transaction.amount)}
                           </span>
                         </div>
@@ -375,29 +466,74 @@ export function ReconciliationView({ userId }: { userId: string }) {
               
               {/* RIGHT: LEDGER CANDIDATES */}
               <section className="bg-white border border-[#B0DCDA] rounded-xl overflow-hidden flex flex-col shadow-sm">
-                <div className="p-4 border-b border-[#B0DCDA] bg-[#FBF8F8] shrink-0">
-                  <h3 className="font-extrabold text-gray-800 uppercase tracking-wide">Ledger Candidates</h3>
-                  <p className="text-xs text-gray-500 mt-1 font-medium">
-                    {selectedTransaction ? <>Matching against <strong className="text-gray-800 font-mono bg-white px-1 border border-gray-200 rounded">{money(selectedTransaction.amount)}</strong></> : 'Select a bank line on the left to begin matching.'}
-                  </p>
-                </div>
-                <div className="overflow-auto bg-gray-50/30">
-                  {suggestedEntries.map(entry => (
-                    <div key={entry.id} className="p-4 border-b border-gray-100 flex justify-between gap-4 bg-white hover:bg-gray-50 transition">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-bold text-gray-500">{new Date(entry.date).toLocaleDateString()} <span className="ml-2 font-mono text-gray-400">{entry.referenceNo}</span></p>
-                        <p className="text-sm text-gray-800 font-bold mt-1.5 truncate">{entry.description}</p>
-                      </div>
-                      <div className="text-right shrink-0 flex flex-col justify-between items-end">
-                        <p className="text-sm font-mono font-black text-blue-600 tabular-nums">{money(entry.amount)}</p>
-                        <button disabled={!selectedTransaction} onClick={() => match(entry.id)} className="mt-2 px-4 py-1.5 text-[10px] uppercase tracking-wider font-extrabold rounded-md bg-[#1B9387] text-white hover:bg-[#28958B] disabled:bg-gray-200 disabled:text-gray-400 transition cursor-pointer disabled:cursor-not-allowed shadow-sm">
-                          Match
-                        </button>
-                      </div>
+                
+                {/* 🔥 DYNAMIC TARGET HEADER */}
+                <div className="p-4 border-b border-[#B0DCDA] bg-[#FBF8F8] shrink-0 flex justify-between items-center">
+                  <div>
+                    <h3 className="font-extrabold text-gray-800 uppercase tracking-wide">Ledger Candidates</h3>
+                    <p className="text-xs text-gray-500 mt-1 font-medium">
+                      {selectedTransaction ? <>Matching against <strong className="text-gray-800 font-mono bg-white px-1 border border-gray-200 rounded">{money(targetAmount)}</strong></> : 'Select a bank line on the left to begin matching.'}
+                    </p>
+                  </div>
+                  {/* Variance Counter */}
+                  {selectedTransaction && (
+                    <div className="text-right">
+                      <p className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">Variance</p>
+                      <p className={`text-lg font-mono font-black tabular-nums leading-none ${isPerfectMatch ? 'text-emerald-600' : 'text-orange-500'}`}>
+                        {variance === 0 ? '₱ 0.00' : (variance > 0 ? '+' : '-') + money(variance)}
+                      </p>
                     </div>
-                  ))}
+                  )}
+                </div>
+
+                {/* 🔥 ONE-TO-MANY CHECKBOX LIST */}
+                <div className="overflow-auto bg-gray-50/30 flex-1">
+                  {suggestedEntries.map(entry => {
+                    const isChecked = selectedEntryIds.includes(entry.id);
+                    return (
+                      <div 
+                        key={entry.id} 
+                        onClick={() => selectedTransaction && toggleEntry(entry.id)} 
+                        className={`p-4 border-b border-gray-100 flex justify-between items-center gap-4 transition ${selectedTransaction ? 'cursor-pointer hover:bg-gray-50' : 'opacity-50 pointer-events-none'} ${isChecked ? 'bg-emerald-50 border-l-4 border-l-emerald-400' : 'bg-white border-l-4 border-l-transparent'}`}
+                      >
+                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                          <input 
+                            type="checkbox" 
+                            checked={isChecked} 
+                            readOnly 
+                            className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 pointer-events-none shrink-0" 
+                          />
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-xs font-bold ${isChecked ? 'text-emerald-700' : 'text-gray-500'}`}>
+                              {new Date(entry.date).toLocaleDateString()} <span className={`ml-2 font-mono ${isChecked ? 'text-emerald-600' : 'text-gray-400'}`}>{entry.referenceNo}</span>
+                            </p>
+                            <p className="text-sm text-gray-800 font-bold mt-1.5 truncate">{entry.description}</p>
+                          </div>
+                        </div>
+                        <p className={`text-sm font-mono font-black tabular-nums shrink-0 ${entry.amount >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                          {entry.amount >= 0 ? '+' : '-'}{money(entry.amount)}
+                        </p>
+                      </div>
+                    )
+                  })}
                   {!suggestedEntries.length && <p className="p-12 text-center text-sm font-medium text-gray-400 italic">No unreconciled ledger entries in this period.</p>}
                 </div>
+
+                {/* 🔥 BULK MATCH BUTTON */}
+                {selectedTransaction && (
+                  <div className={`p-4 border-t border-[#B0DCDA] flex justify-between items-center shrink-0 transition-colors ${isPerfectMatch ? 'bg-emerald-50' : 'bg-[#FBF8F8]'}`}>
+                    <span className={`text-xs font-bold ${isPerfectMatch ? 'text-emerald-700' : 'text-gray-500'}`}>
+                      {selectedEntryIds.length} items selected ({money(selectedSum)})
+                    </span>
+                    <button
+                      disabled={!isPerfectMatch || loading}
+                      onClick={matchSelected}
+                      className="px-6 py-2 text-xs uppercase tracking-wider font-extrabold rounded-md bg-[#1B9387] text-white hover:bg-[#28958B] disabled:bg-gray-200 disabled:text-gray-400 transition cursor-pointer disabled:cursor-not-allowed shadow-sm"
+                    >
+                      {loading ? 'Processing...' : isPerfectMatch ? 'Reconcile Selected' : 'Select items to match'}
+                    </button>
+                  </div>
+                )}
               </section>
             </div>
 
@@ -439,7 +575,7 @@ export function ReconciliationView({ userId }: { userId: string }) {
                           <td className="p-3 font-medium text-gray-600 whitespace-nowrap">{row.date}</td>
                           <td className="p-3 font-bold text-gray-800">{row.description}</td>
                           <td className="p-3 font-mono text-gray-500 text-xs">{row.referenceNo || '—'}</td>
-                          <td className={`p-3 text-right font-mono font-black tabular-nums ${row.amount >= 0 ? 'text-emerald-600' : 'text-gray-800'}`}>
+                          <td className={`p-3 text-right font-mono font-black tabular-nums ${row.amount >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
                             {row.amount >= 0 ? '+' : '-'}{money(row.amount)}
                           </td>
                         </tr>
@@ -513,4 +649,4 @@ function Metric({ label, value, detail, tone }: { label: string; value: number; 
       <p className="text-xs text-gray-500 mt-1 font-bold">{detail}</p>
     </div>
   ); 
-} 
+}

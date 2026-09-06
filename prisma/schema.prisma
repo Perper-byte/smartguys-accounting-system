@@ -17,7 +17,6 @@ model User {
   role          Role    @default(CASHIER)
   is_active     Boolean @default(true)
 
-  // 🔥 NEW: Custom Access Control List
   permissions Json?
 
   journal_entries JournalEntry[]
@@ -226,18 +225,19 @@ model BankAccount {
 }
 
 model BankTransaction {
-  id               String    @id @default(uuid()) @db.VarChar(50)
-  bank_account_id  String    @db.VarChar(50)
-  transaction_date DateTime  @db.DateTime
-  description      String    @db.Text
-  reference_no     String?   @db.VarChar(100)
-  amount           Decimal   @db.Decimal(15, 2)
-  status           String    @default("UNMATCHED") @db.VarChar(20)
-  created_at       DateTime  @default(now())
+  id               String   @id @default(uuid()) @db.VarChar(50)
+  bank_account_id  String   @db.VarChar(50)
+  transaction_date DateTime @db.DateTime
+  description      String   @db.Text
+  reference_no     String?  @db.VarChar(100)
+  amount           Decimal  @db.Decimal(15, 2)
+  status           String   @default("UNMATCHED") @db.VarChar(20)
+  created_at       DateTime @default(now())
   removed_at       DateTime?
 
-  bank_account   BankAccount     @relation(fields: [bank_account_id], references: [id], onDelete: Cascade)
-  reconciliation Reconciliation?
+  bank_account   BankAccount      @relation(fields: [bank_account_id], references: [id], onDelete: Cascade)
+  
+  reconciliations Reconciliation[] 
 
   @@index([bank_account_id, transaction_date])
   @@index([status])
@@ -259,7 +259,8 @@ model ServiceItem {
 
 model Reconciliation {
   id                  String   @id @default(uuid()) @db.VarChar(50)
-  bank_transaction_id String   @unique @db.VarChar(50)
+  // 🔥 CHANGED: Removed @unique so multiple records can share the same bank_transaction_id
+  bank_transaction_id String   @db.VarChar(50) 
   journal_entry_id    String   @unique @db.VarChar(50)
   matched_at          DateTime @default(now())
   matched_by          String   @db.VarChar(50)
