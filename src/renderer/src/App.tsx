@@ -12,6 +12,8 @@ import {
 
 // Screens
 import { LoginScreen } from './components/LoginScreen'
+import { Lock } from 'lucide-react'; // Add Lock to your lucide-react imports
+import { SystemSettingsView } from './components/SystemSettingsView';
 import { WelcomeView } from './components/WelcomeView'
 import { DashboardView } from './components/DashboardView'
 import { POSBillingView } from './components/POSBillingView'
@@ -37,6 +39,7 @@ import UserManagementView from './components/UserManagementView'
 import { DatabaseBackupView } from './components/DatabaseBackupView'
 import { ChartOfAccountsView } from './components/ChartOfAccountsView'
 import { ServicesManagerView } from './components/ServicesManagerView'
+import { SystemsSettingsView } from './components/SystemSettingsView'
 
 import logoImage from './assets/smartguys_logo.jpg'
 
@@ -58,6 +61,13 @@ const GROUP_ORDER = ['Home', 'Clinic Operations', 'Accounting', 'Reports & Taxes
 const ALL_TABS = [
   { id: 'home', label: 'Home', icon: Home, group: 'Home', allowedRoles: ROLES.ALL },
   { id: 'billing', label: 'Patient Billing', icon: CreditCard, group: 'Clinic Operations', allowedRoles: ROLES.CASHIER_ONLY },
+  {
+    id: 'settings',
+    label: 'Security Settings',
+    icon: Lock,
+    group: 'System Admin',
+    allowedRoles: ROLES.MANAGER_ONLY
+  },
   { id: 'collections', label: 'Receive Payments', icon: DollarSign, group: 'Clinic Operations', allowedRoles: ROLES.OPS_FINANCE },
   { id: 'directory', label: 'Contact Directory', icon: Contact, group: 'Clinic Operations', allowedRoles: ROLES.ALL },
   { id: 'history', label: 'Transaction History', icon: LineChart, group: 'Clinic Operations', allowedRoles: ROLES.CASHIER_ONLY },
@@ -266,6 +276,7 @@ export default function App() {
           ) : (
             <div className="h-full animate-in fade-in duration-300">
               {activeTab === 'home' && <WelcomeView username={currentUser.username} role={currentUser.role} onNavigate={setActiveTab} />}
+              {activeTab === 'settings' && <SystemSettingsView />}
               {activeTab === 'analytics' && <DashboardView />}
               {activeTab === 'reconciliation' && <ReconciliationView userId={currentUser.id} />}
               {activeTab === 'books' && <BooksOfAccountsView />}

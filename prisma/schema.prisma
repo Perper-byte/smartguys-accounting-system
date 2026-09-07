@@ -272,6 +272,17 @@ model Reconciliation {
   @@map("reconciliations")
 }
 
+// ------------------------------------------
+// 7. SYSTEM CONFIGURATION
+// ------------------------------------------
+model SystemSetting {
+  id            String    @id @default(uuid())
+  lock_date     DateTime? @db.Date
+  auto_lock_day Int?      
+  override_pin  String?   @db.VarChar(50) // 🔥 NEW: Admin Override PIN
+
+  @@map("system_settings")
+}
 model Payslip {
   id               String   @id @default(uuid()) @db.VarChar(50)
   employee_id      Int

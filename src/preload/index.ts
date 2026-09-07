@@ -71,7 +71,7 @@ export const api = {
   requestVoid: (id: string, reason: string) => ipcRenderer.invoke('request-void', id, reason),
   getPendingVoids: () => ipcRenderer.invoke('get-pending-voids'),
   rejectVoid: (id: string) => ipcRenderer.invoke('reject-void', id),
-  approveVoid: (id: string, managerId: string) => ipcRenderer.invoke('approve-void', id, managerId),
+  approveVoid: (id: string, managerId: string, overridePin?: string) => ipcRenderer.invoke('approve-void', id, managerId, overridePin),
 
   // POS & Transactions
   getNextSequence: (prefix: string) => ipcRenderer.invoke('get-next-sequence', prefix),
@@ -106,6 +106,8 @@ export const api = {
   // Audit Logs
   logAction: (userId: string, action: string, details: string) => ipcRenderer.invoke('log-action', userId, action, details),
   getAuditLogs: (startDate: string, endDate: string) => ipcRenderer.invoke('get-audit-logs', startDate, endDate),
+  getLockDate: () => ipcRenderer.invoke('get-lock-date'),
+  setLockDate: (date: string | null) => ipcRenderer.invoke('set-lock-date', date),
 
   // Backups & Tax
   triggerBackup: () => ipcRenderer.invoke('backup:triggerBackup'),

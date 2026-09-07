@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { NewContactModal } from './NewContactModal';
-import { UploadCloud, File as FileIcon, X, Image as ImageIcon } from 'lucide-react';
+import { UploadCloud, File as FileIcon, X, Image as ImageIcon, Lock } from 'lucide-react';
 
 const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
@@ -20,6 +20,9 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
 
     const [vatType, setVatType] = useState('EXEMPT');
     const [payeeId, setPayeeId] = useState(''); 
+    
+    const [lockDate, setLockDate] = useState<string | null>(null);
+    const [overridePin, setOverridePin] = useState('');
     
     const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false);
     
@@ -44,6 +47,12 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
             if (api.getAccounts) api.getAccounts().then((res: any) => setAccounts(Array.isArray(res) ? res : [])).catch(() => setAccounts([]));
             if (api.getPayees) api.getPayees().then((res: any) => setPayees(Array.isArray(res) ? res : [])).catch(() => setPayees([]));
             if (api.getAllJournalEntries) api.getAllJournalEntries().then((res: any) => setPastEntries(Array.isArray(res) ? res : [])).catch(() => setPastEntries([]));
+            
+            if (api.getLockDate) {
+                api.getLockDate().then((res: any) => {
+                    if (res?.lockDate) setLockDate(res.lockDate.split('T')[0]);
+                }).catch(console.error);
+            }
         }
     }, []);
 
@@ -124,7 +133,6 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
             alert('You can only upload a maximum of 10 attachments per entry.');
             return;
         }
-
         setAttachments(prev => [...prev, ...validFiles]);
     };
 
@@ -146,6 +154,8 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
     const totalDebit = lines.reduce((sum, ln) => sum + (Number(ln.debit) || 0), 0);
     const totalCredit = lines.reduce((sum, ln) => sum + (Number(ln.credit) || 0), 0);
     const isBalanced = totalDebit > 0 && totalDebit.toFixed(2) === totalCredit.toFixed(2);
+    
+    const isLocked = lockDate ? new Date(date) <= new Date(lockDate) : false;
 
     const handleSubmit = async () => {
         setStatus(null);
@@ -154,6 +164,10 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
         try {
             if (!refSequence.trim()) throw new Error("Please enter a Sequence Number for the Reference.");
             
+            if (isLocked && !overridePin.trim()) {
+                throw new Error("An Override PIN is required to post into a locked period.");
+            }
+
             const validLines = lines.filter(l => l.accountId !== '' && (l.debit > 0 || l.credit > 0));
             const api = (window as any).electronAPI || (window as any).api;
             
@@ -170,7 +184,8 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
                 payeeId: payeeId === '' ? undefined : payeeId,
                 userId,
                 lines: validLines,
-                attachments: processedAttachments 
+                attachments: processedAttachments,
+                overridePin: isLocked ? overridePin : undefined 
             });
 
             if (result.success) {
@@ -181,6 +196,7 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
                 setPayeeSearchQuery(''); 
                 setLines([{ accountId: '', debit: 0, credit: 0 }, { accountId: '', debit: 0, credit: 0 }]);
                 setAttachments([]); 
+                setOverridePin(''); 
                 
                 if (api.getAllJournalEntries) {
                     api.getAllJournalEntries().then((res: any) => setPastEntries(Array.isArray(res) ? res : []));
@@ -223,7 +239,7 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
                 <div className="grid gap-6 mb-6 grid-cols-2">
                     <div>
                         <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Date</label>
-                        <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition cursor-pointer" />
+                        <input type="date" value={date} onChange={e => setDate(e.target.value)} className={`w-full bg-[#FBF8F8] border ${isLocked ? 'border-red-300 focus:ring-red-100' : 'border-[#B0DCDA] focus:ring-[#E9FAFA]'} rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 outline-none transition cursor-pointer`} />
                     </div>
 
                     <div className="relative">
@@ -241,18 +257,13 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
                                 placeholder="Search (e.g. OR-1001)" 
                                 className="w-full bg-transparent p-3 text-sm font-mono text-gray-800 font-bold outline-none" 
                             />
-                            <button
-                                type="button"
-                                onClick={() => setIsRefDropdownOpen(!isRefDropdownOpen)}
-                                className="px-4 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] rounded-r-md transition cursor-pointer"
-                                title="Search Past Transactions"
-                            >
+                            <button type="button" onClick={() => setIsRefDropdownOpen(!isRefDropdownOpen)} className="px-4 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] rounded-r-md transition cursor-pointer">
                                 🔍
                             </button>
                         </div>
 
                         {isRefDropdownOpen && (
-                            <ul className="absolute z-50 w-full mt-1 bg-white border border-[#B0DCDA] rounded-md shadow-xl max-h-48 overflow-y-auto">
+                            <ul className="absolute z-50 w-full mt-1 bg-white border border-[#B0DCDA] rounded-md shadow-xl max-h-60 overflow-y-auto">
                                 <li className="p-2 bg-gray-50 border-b border-gray-100 text-xs font-bold text-gray-400 uppercase tracking-wider sticky top-0">Recent Database Entries</li>
                                 {pastEntries
                                     .filter(e => e && e.reference_no && String(e.reference_no).toLowerCase().includes(String(refSequence || '').toLowerCase()))
@@ -260,22 +271,69 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
                                         <li
                                             key={entry.id}
                                             onMouseDown={() => {
+                                                // 1. Set the sequence
                                                 const cleanRef = String(entry.reference_no).replace('ADJ-', '');
                                                 setRefSequence(cleanRef);
+                                                
+                                                // 2. Set the description
                                                 if (description === 'Adjusting Entry: ') {
                                                     setDescription(`Adjusting Entry to correct ${entry.reference_no}: ${entry.description || ''}`);
+                                                }
+
+                                                // 🔥 3. AUTO-FILL PAYEE
+                                                if (entry.payee_id || entry.payeeId) {
+                                                    setPayeeId(entry.payee_id || entry.payeeId);
+                                                }
+
+                                                // 🔥 4. AUTO-FILL JOURNAL LINES
+                                                if (entry.lines && entry.lines.length > 0) {
+                                                    const prefilledLines = entry.lines.map((l: any) => ({
+                                                        accountId: l.account_id || l.accountId, 
+                                                        debit: Number(l.debit) || 0,
+                                                        credit: Number(l.credit) || 0
+                                                    }));
+                                                    
+                                                    // Ensure there are always at least 2 empty boxes for UI purposes
+                                                    while (prefilledLines.length < 2) {
+                                                        prefilledLines.push({ accountId: '', debit: 0, credit: 0 });
+                                                    }
+                                                    setLines(prefilledLines);
                                                 }
                                             }}
                                             className="p-3 text-sm text-gray-800 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-b border-gray-50 last:border-0"
                                         >
-                                            <span className="font-mono font-bold text-[#1B9387] mr-2">{entry.reference_no}</span>
-                                            <span className="text-gray-500 truncate">{entry.description}</span>
+                                            <div className="flex justify-between items-center mb-1">
+                                                <span className="font-mono font-bold text-[#1B9387]">{entry.reference_no}</span>
+                                                <span className="text-[10px] text-gray-400 font-bold">{new Date(entry.date).toLocaleDateString()}</span>
+                                            </div>
+                                            <span className="text-gray-500 truncate block">{entry.description}</span>
                                         </li>
                                     ))}
                             </ul>
                         )}
                     </div>
                 </div>
+
+                {/* OVERRIDE PIN UI */}
+                {isLocked && (
+                    <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4 animate-in fade-in flex items-center justify-between gap-4 shadow-sm">
+                        <div className="flex-1">
+                            <h4 className="text-red-700 font-bold text-sm flex items-center gap-2">
+                                <Lock size={16} /> Period is Locked
+                            </h4>
+                            <p className="text-xs text-red-600/80 font-medium mt-1">
+                                You are backdating into a closed accounting period. A Manager Override PIN is required.
+                            </p>
+                        </div>
+                        <input 
+                            type="password" 
+                            placeholder="Enter PIN" 
+                            value={overridePin}
+                            onChange={e => setOverridePin(e.target.value)}
+                            className="w-40 bg-white border border-red-300 rounded p-2.5 text-sm font-mono font-bold text-center text-gray-800 outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 shadow-sm"
+                        />
+                    </div>
+                )}
 
                 <div className="mb-6 border-b border-[#B0DCDA] pb-6 relative">
                     <div className="mb-6">
@@ -388,11 +446,8 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
                         <UploadCloud className={`mb-3 ${isDragging ? 'text-[#1B9387]' : 'text-gray-400'}`} size={32} />
                         <p className="text-sm font-bold text-gray-600">Drag and drop or upload attachments here</p>
                         <p className="text-xs text-gray-400 mt-1">JPG, PNG, PDF, XLSX, ZIP. Max 10mb each.</p>
-                        
                         <input type="file" multiple id="file-upload-adj" className="hidden" onChange={handleFileSelect} accept=".jpg,.jpeg,.png,.pdf,.zip,.xlsx" />
-                        <label htmlFor="file-upload-adj" className="mt-4 cursor-pointer bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-md text-xs font-bold hover:bg-gray-50 transition shadow-sm">
-                            Browse Files
-                        </label>
+                        <label htmlFor="file-upload-adj" className="mt-4 cursor-pointer bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-md text-xs font-bold hover:bg-gray-50 transition shadow-sm">Browse Files</label>
                     </div>
 
                     {attachments.length > 0 && (
@@ -405,9 +460,7 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
                                             <span className="text-sm font-bold text-gray-700 truncate">{file.name}</span>
                                         </div>
                                     </div>
-                                    <button type="button" onClick={() => removeAttachment(i)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition cursor-pointer shrink-0">
-                                        <X size={16} />
-                                    </button>
+                                    <button type="button" onClick={() => removeAttachment(i)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition cursor-pointer shrink-0"><X size={16} /></button>
                                 </div>
                             ))}
                         </div>
@@ -440,20 +493,14 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
 
                 <button
                     type="button"
-                    disabled={!isBalanced || !refSequence || loading}
+                    disabled={!isBalanced || !refSequence || loading || (isLocked && !overridePin)}
                     onClick={handleSubmit}
                     className="w-full mt-8 bg-[#1B9387] disabled:bg-gray-200 disabled:text-gray-500 disabled:shadow-none text-white font-bold py-4 rounded-md transition hover:bg-[#28958B] uppercase tracking-widest shadow-md flex justify-center items-center cursor-pointer disabled:cursor-not-allowed"
                 >
                     {loading ? 'Processing...' : 'Post Adjusting Entry'}
                 </button>
             </div>
-            
-            <NewContactModal
-                isOpen={isNewContactModalOpen}
-                onClose={() => setIsNewContactModalOpen(false)}
-                onSaveSuccess={handleContactSaved}
-                defaultType="PATIENT"
-            />
+            <NewContactModal isOpen={isNewContactModalOpen} onClose={() => setIsNewContactModalOpen(false)} onSaveSuccess={handleContactSaved} defaultType="PATIENT" />
         </div>
     );
 };

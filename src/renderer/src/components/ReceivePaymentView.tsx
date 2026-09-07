@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Search, CheckCircle, History,
-  Info, X, Wallet, Smartphone, Landmark, Printer, CheckSquare, Receipt
+  Info, X, Wallet, Smartphone, Landmark, Printer, Receipt
 } from 'lucide-react';
 
 export function ReceivePaymentView({ userId }: { userId: string }) {
@@ -23,7 +23,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   const [amountReceived, setAmountReceived] = useState<number | ''>('');
   const [cwtAmount, setCwtAmount] = useState<number | ''>('');
   
-  // 🔥 NEW: Bank Fees (MDR) & Write-offs (Short Payments)
+  // Bank Fees (MDR) & Write-offs (Short Payments)
   const [bankFeeAmount, setBankFeeAmount] = useState<number | ''>('');
   const [writeOffAmount, setWriteOffAmount] = useState<number | ''>('');
 
@@ -161,7 +161,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   const handleAutoComputeTax = () => {
     if (targetAmount > 0) {
       const computedTax = targetAmount * 0.02;
-      // Also account for fees/writeoffs if user filled them first
       const currentDeductions = fee + writeOff;
       const netAmount = targetAmount - computedTax - currentDeductions;
       setCwtAmount(Number(computedTax.toFixed(2)));
@@ -189,19 +188,12 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
       const lines: any[] = [];
       const debitAccount = paymentMethod === 'CASH' ? '1020' : '1010';
       
-      // 1. Debit Cash/Bank
       lines.push({ accountId: debitAccount, debit: received, credit: 0 });
 
-      // 2. Debit Withholding Tax (Asset)
       if (tax > 0) lines.push({ accountId: '1310', debit: tax, credit: 0 });
-      
-      // 3. Debit Bank Charges/MDR Fee (Expense) -> Assuming '6000' or similar. We'll use a generic expense code if unknown, typically '6000' or '6170'
-      if (fee > 0) lines.push({ accountId: '6000', debit: fee, credit: 0 }); // Bank Charges
-      
-      // 4. Debit Sales Discount/Write-Off (Expense/Contra-Revenue)
-      if (writeOff > 0) lines.push({ accountId: '4050', debit: writeOff, credit: 0 }); // Discounts/Adjustments
+      if (fee > 0) lines.push({ accountId: '6000', debit: fee, credit: 0 }); 
+      if (writeOff > 0) lines.push({ accountId: '4050', debit: writeOff, credit: 0 }); 
 
-      // 5. Credit Accounts Receivable
       lines.push({ accountId: '1200', debit: 0, credit: totalCredit });
 
       const selectedName = payees.find(p => p.id === payeeId)?.name;
@@ -308,7 +300,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               <span className="text-slate-800 font-bold">{successData.method} {successData.ref && `(${successData.ref})`}</span>
             </div>
             
-            {/* Show Deductions if they exist */}
             {(successData.tax > 0 || successData.fee > 0 || successData.writeOff > 0) && (
               <div className="border-t border-slate-200 pt-3 space-y-2">
                 {successData.tax > 0 && <div className="flex justify-between text-xs"><span className="text-slate-500">2% Withholding Tax</span><span className="text-slate-600 font-mono">₱ {successData.tax.toLocaleString()}</span></div>}
@@ -407,7 +398,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               </div>
             </div>
 
-            {/* STEP 2: SELECT INVOICES (BULK PAYMENT LOGIC) */}
+            {/* STEP 2: SELECT INVOICES */}
             <div className={`bg-white p-8 border ${checkedInvoiceIds.length > 0 ? 'border-emerald-300 ring-1 ring-emerald-100' : 'border-slate-200'} shadow-sm rounded-xl relative transition-all`}>
               <div className="flex justify-between items-end border-b border-slate-100 pb-4 mb-6">
                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
@@ -552,10 +543,13 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
 
                   {/* Deductions (Secondary) */}
                   <div className="space-y-4">
-                    {/* Tax */}
+                    {/* 🔥 FIXED: Native HTML 'title' tooltip for Tax */}
                     <div>
                       <div className="flex justify-between items-center mb-1">
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">2% Withholding Tax <span className="lowercase font-normal text-slate-400">(HMO/Corp)</span></label>
+                        <div className="flex items-center gap-1 cursor-help w-fit" title="Usually applicable only for HMOs and corporate accounts.">
+                            <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">2% Withholding Tax <span className="lowercase font-normal text-slate-400">(HMO/Corp)</span></label>
+                            <Info size={12} className="text-slate-400 hover:text-slate-600 transition" />
+                        </div>
                         {targetAmount > 0 && (
                           <button type="button" onClick={handleAutoComputeTax} className="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-600 font-bold px-2 py-0.5 rounded transition cursor-pointer">
                             Auto-Compute
@@ -568,14 +562,11 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                       </div>
                     </div>
 
-                    {/* Bank Fee */}
+                    {/* 🔥 FIXED: Native HTML 'title' tooltip for Bank Fee */}
                     <div>
-                      <div className="flex items-center gap-1 mb-1 group relative cursor-help w-fit">
+                      <div className="flex items-center gap-1 mb-1 cursor-help w-fit" title="e.g., Terminal fees subtracted by Maya/GCash before deposit.">
                         <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Bank / MDR Fee</label>
-                        <Info size={12} className="text-slate-400" />
-                        <div className="absolute top-full left-0 mt-1 w-48 bg-slate-800 text-xs text-white p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 transition pointer-events-none z-50">
-                          e.g., Terminal fees subtracted by Maya/GCash before deposit.
-                        </div>
+                        <Info size={12} className="text-slate-400 hover:text-slate-600 transition" />
                       </div>
                       <div className="relative rounded-lg">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-mono">₱</span>
@@ -583,14 +574,11 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                       </div>
                     </div>
 
-                    {/* Write-off */}
+                    {/* 🔥 FIXED: Native HTML 'title' tooltip for Write-off */}
                     <div>
-                       <div className="flex items-center gap-1 mb-1 group relative cursor-help w-fit">
+                       <div className="flex items-center gap-1 mb-1 cursor-help w-fit" title="Use this if an HMO short-pays due to disputes or invalid claims to clear the invoice.">
                         <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Dispute / Write-Off</label>
-                        <Info size={12} className="text-slate-400" />
-                        <div className="absolute top-full left-0 mt-1 w-56 bg-slate-800 text-xs text-white p-2 rounded shadow-xl opacity-0 group-hover:opacity-100 transition pointer-events-none z-50">
-                          Use this if an HMO short-pays due to disputes or invalid claims to clear the invoice.
-                        </div>
+                        <Info size={12} className="text-slate-400 hover:text-slate-600 transition" />
                       </div>
                       <div className="relative rounded-lg">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-mono">₱</span>

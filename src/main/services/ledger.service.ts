@@ -3,7 +3,6 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
-// 🔥 UPDATE: Added attachments to the Input Type
 export type JournalEntryInput = {
     date: Date;
     referenceNo: string;
@@ -13,9 +12,61 @@ export type JournalEntryInput = {
     vatType?: string;
     lines: Array<{ accountId: string; debit: number; credit: number }>;
     attachments?: Array<{ name: string; type: string; size: number; data: string }>;
+    overridePin?: string; // 🔥 NEW
 };
 
 export const LedgerService = {
+
+   async evaluateAutoLock() {
+        const setting = await prisma.systemSetting.findFirst();
+        if (!setting || !setting.auto_lock_day) return;
+
+        const today = new Date();
+        const currentDay = today.getDate();
+        
+        if (currentDay > setting.auto_lock_day) {
+            const lastDayOfPrevMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+            if (!setting.lock_date || setting.lock_date < lastDayOfPrevMonth) {
+                await prisma.systemSetting.update({
+                    where: { id: setting.id },
+                    data: { lock_date: lastDayOfPrevMonth }
+                });
+            }
+        }
+    },
+
+    async getLockDate() {
+        await this.evaluateAutoLock();
+        const setting = await prisma.systemSetting.findFirst();
+        return {
+            lockDate: setting?.lock_date ? setting.lock_date.toISOString() : null,
+            autoLockDay: setting?.auto_lock_day || null,
+            hasOverridePin: !!setting?.override_pin
+        };
+    },
+
+    async setLockDate(data: { lockDate: string | null, autoLockDay: number | null, overridePin: string | null }) {
+        let setting = await prisma.systemSetting.findFirst();
+        if (!setting) {
+            setting = await prisma.systemSetting.create({ 
+                data: { 
+                    lock_date: data.lockDate ? new Date(data.lockDate) : null,
+                    auto_lock_day: data.autoLockDay,
+                    override_pin: data.overridePin || null
+                } 
+            });
+        } else {
+            setting = await prisma.systemSetting.update({ 
+                where: { id: setting.id }, 
+                data: { 
+                    lock_date: data.lockDate ? new Date(data.lockDate) : null,
+                    auto_lock_day: data.autoLockDay,
+                    override_pin: data.overridePin || null
+                } 
+            });
+        }
+        return { success: true };
+    },
 
     async getAccounts() {
         return await prisma.account.findMany({ include: { account_type: true }, orderBy: { code: 'asc' } });
@@ -168,7 +219,6 @@ export const LedgerService = {
     },
 
     // --- RECONCILIATION MATCHING FUNCTIONS ---
-   // --- RECONCILIATION MATCHING FUNCTIONS ---
     async matchBankTransaction(bankTxId: string, journalEntryIds: string | string[], userId: string) {
         try {
             const ids = Array.isArray(journalEntryIds) ? journalEntryIds : [journalEntryIds];
@@ -276,8 +326,18 @@ export const LedgerService = {
         return { receivable, payable };
     },
 
-    // 🔥 UPDATE: Added attachments block to save logic
-    async createJournalEntry(data: JournalEntryInput) {
+    // 🔥 UPGRADED: Added Month-End Lock Security Check
+   async createJournalEntry(data: JournalEntryInput) {
+        const entryDate = new Date(data.date);
+        
+        // 1. Check Lock Date & PIN
+        const setting = await prisma.systemSetting.findFirst();
+        if (setting?.lock_date && entryDate <= setting.lock_date) {
+            if (!data.overridePin || data.overridePin !== setting.override_pin) {
+                throw new Error(`PERIOD LOCKED: You cannot post transactions on or before ${setting.lock_date.toISOString().split('T')[0]}. Invalid or missing Override PIN.`);
+            }
+        }
+
         const validLines = data.lines.filter(line => line.accountId && (Number(line.debit) > 0 || Number(line.credit) > 0));
         
         if (data.lines.some(line => Number(line.debit) < 0 || Number(line.credit) < 0)) {
@@ -293,7 +353,7 @@ export const LedgerService = {
         
         const entry = await prisma.journalEntry.create({
             data: {
-                date: new Date(data.date),
+                date: entryDate,
                 reference_no: data.referenceNo,
                 description: data.description,
                 vat_type: data.vatType || 'EXEMPT',
@@ -306,7 +366,6 @@ export const LedgerService = {
                         credit: l.credit
                     }))
                 },
-                // Save base64 files if present
                 attachments: data.attachments && data.attachments.length > 0 ? {
                     create: data.attachments.map((att) => ({
                         fileName: att.name,
@@ -368,7 +427,6 @@ export const LedgerService = {
             tin: p.tin,
             address: p.address,
 
-            // 🔥 THESE 3 LINES ARE REQUIRED FOR IT TO SHOW UP ON THE FRONTEND
             hmo_affiliation: p.hmo_affiliation,
             hmo_card_no: p.hmo_card_no,
             hmo_expiry_date: p.hmo_expiry_date,
@@ -435,8 +493,6 @@ export const LedgerService = {
     },
 
     async getNextReferenceSequence(prefix: string) {
-        // 🔥 THE FIX: Changed orderBy to 'created_at' to ensure we ALWAYS 
-        // get the most recently created record, regardless of the journal date.
         const lastEntry = await prisma.journalEntry.findFirst({ 
             where: { reference_no: { startsWith: prefix } }, 
             orderBy: { created_at: 'desc' } 
@@ -537,9 +593,24 @@ export const LedgerService = {
         });
     },
 
-    async approveVoid(entryId: string, managerId: string) {
-        const original = await prisma.journalEntry.findUnique({ where: { id: entryId }, include: { lines: true } });
+    // 🔥 UPGRADED: Added Month-End Lock Security Check
+   async approveVoid(entryId: string, managerId: string, overridePin?: string) {
+        // 🔥 Includes reconciliation to check if it's matched to a bank feed
+        const original = await prisma.journalEntry.findUnique({ where: { id: entryId }, include: { lines: true, reconciliation: true } });
         if (!original) throw new Error("Entry not found.");
+
+        // 🔥 SAFEGUARD 1: RECONCILIATION LOCK
+        if (original.reconciliation) {
+            throw new Error("RECONCILIATION LOCK: This transaction is already matched to a Bank Statement. You must unmatch it in the Bank Reconciliation screen before you can void it.");
+        }
+
+        // 🔥 SAFEGUARD 2: PERIOD LOCK
+        const setting = await prisma.systemSetting.findFirst();
+        if (setting?.lock_date && original.date <= setting.lock_date) {
+            if (!overridePin || overridePin !== setting.override_pin) {
+                throw new Error(`PERIOD LOCKED: Transaction is from a locked period. Invalid or missing Override PIN.`);
+            }
+        }
 
         await prisma.journalEntry.create({
             data: {

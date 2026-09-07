@@ -1,3 +1,4 @@
+// src/main/main.ts
 import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 import './env';
@@ -51,60 +52,17 @@ app.whenReady().then(() => {
     ipcMain.handle('ledger:getAccountTypes', async () => { try { return typeof LedgerService.getAccountTypes === 'function' ? await LedgerService.getAccountTypes() : []; } catch (err) { return []; } });
     ipcMain.handle('ledger:createAccount', async (e, data) => { try { const result = typeof LedgerService.createAccount === 'function' ? await LedgerService.createAccount(data) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Added COA: ${data.code}`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('get-payees', async (e, typeFilter) => { try { return await LedgerService.getPayees(typeFilter); } catch (err) { return []; } });
-   ipcMain.handle('create-payee', async (e, name: string, type: string, tin?: string, email?: string, phone?: string, address?: string, hmo?: string, hmoCardNo?: string, hmoExpiryDate?: string) => { 
-      const result = await LedgerService.createPayee(name, type, tin, email, phone, address, hmo, hmoCardNo, hmoExpiryDate); 
-      if (result.success) {
-          const hmoLog = hmo ? ` (Linked to HMO: ${hmo})` : '';
-          await AuditService.logAction('SYSTEM', 'CREATE CONTACT', `Added new ${type}: ${name}${hmoLog}`);
-      }
-      return result;
-  });
-
-  // Add these under your existing Inventory handlers
-    ipcMain.handle('update-inventory-item', async (e, id, data) => { 
-        try { 
-            return typeof InventoryService.updateItem === 'function' ? await InventoryService.updateItem(id, data) : { success: false }; 
-        } catch (err: any) { return { success: false, error: err.message }; } 
-    });
-
-    ipcMain.handle('tax:generate0619E', async (e, year, month) => { 
-    try { 
-        const result = typeof TaxService.generate0619E === 'function' 
-            ? await TaxService.generate0619E(year, month) 
-            : { error: "Backend function missing" }; 
-        await AuditService.logAction('SYSTEM', 'TAX COMPLIANCE', `Generated BIR Form 0619-E`); 
-        return result; 
-    } catch (err: any) { 
-        return { error: err.message }; 
-    } 
-});
-
-ipcMain.handle('tax:generate1601EQ', async (e, year, quarter) => { 
-    try { 
-        return typeof TaxService.generate1601EQ === 'function' 
-            ? await TaxService.generate1601EQ(year, quarter) 
-            : { error: "Backend function missing" }; 
-    } catch (err: any) { 
-        return { error: err.message }; 
-    } 
-});
-
-    ipcMain.handle('delete-inventory-item', async (e, id) => { 
-        try { 
-            return typeof InventoryService.deleteItem === 'function' ? await InventoryService.deleteItem(id) : { success: false }; 
-        } catch (err: any) { return { success: false, error: err.message }; } 
+    ipcMain.handle('create-payee', async (e, name: string, type: string, tin?: string, email?: string, phone?: string, address?: string, hmo?: string, hmoCardNo?: string, hmoExpiryDate?: string) => { 
+        const result = await LedgerService.createPayee(name, type, tin, email, phone, address, hmo, hmoCardNo, hmoExpiryDate); 
+        if (result.success) {
+            const hmoLog = hmo ? ` (Linked to HMO: ${hmo})` : '';
+            await AuditService.logAction('SYSTEM', 'CREATE CONTACT', `Added new ${type}: ${name}${hmoLog}`);
+        }
+        return result;
     });
     ipcMain.handle('import-payees', async (e, data) => { try { const result = typeof LedgerService.importPayees === 'function' ? await LedgerService.importPayees(data) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'IMPORT CONTACTS', `Imported ${result.count} contacts.`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('get-payee-balance', async (e, payeeId: string) => { return await LedgerService.getPayeeBalance(payeeId); });
-    ipcMain.handle('update-payee-tin', async (_, payeeId: string, tin: string) => {
-        try {
-            const result = await LedgerService.updatePayeeTin(payeeId, tin);
-            return { success: true, data: result };
-        } catch (error: any) {
-            console.error('Update TIN Error:', error);
-            return { success: false, error: error.message };
-        }
-    });
+    ipcMain.handle('update-payee-tin', async (_, payeeId: string, tin: string) => { try { const result = await LedgerService.updatePayeeTin(payeeId, tin); return { success: true, data: result }; } catch (error: any) { return { success: false, error: error.message }; } });
     ipcMain.handle('get-contacts-with-balances', async () => { try { return typeof LedgerService.getContactsWithBalances === 'function' ? await LedgerService.getContactsWithBalances() : []; } catch (err) { return []; } });
 
     // Services
@@ -120,43 +78,7 @@ ipcMain.handle('tax:generate1601EQ', async (e, year, quarter) => {
     ipcMain.handle('get-payout-history', async () => { try { return await LedgerService.getPayoutHistory(); } catch (err) { return []; } });
     ipcMain.handle('get-full-ledger-report', async (e, startDate, endDate) => { try { return await LedgerService.getFullLedgerReport(startDate, endDate); } catch (err: any) { return { error: err.message }; } });
     ipcMain.handle('ledger:getAllJournalEntries', async () => { try { return await LedgerService.getAllJournalEntries(); } catch (error) { return []; } });
-    ipcMain.handle(
-        'get-user-sales-history',
-        async (e, userId) => {
-            try {
-
-                console.log(
-                    '[IPC] get-user-sales-history:',
-                    userId
-                );
-
-                const result =
-                    await LedgerService.getUserSalesHistory(
-                        userId
-                    );
-
-                return {
-                    success: true,
-                    data: result
-                };
-
-            } catch (err: any) {
-
-                console.error(
-                    '[IPC] Transaction history error:',
-                    err
-                );
-
-                return {
-                    success: false,
-                    error:
-                        err.message ||
-                        'Unable to load transaction history.',
-                    data: []
-                };
-            }
-        }
-    );
+    ipcMain.handle('get-user-sales-history', async (e, userId) => { try { const result = await LedgerService.getUserSalesHistory(userId); return { success: true, data: result }; } catch (err: any) { return { success: false, error: err.message || 'Unable to load transaction history.', data: [] }; } });
 
     // Bank Reconciliation
     ipcMain.handle('get-bank-accounts', async () => { try { return typeof LedgerService.getBankAccounts === 'function' ? await LedgerService.getBankAccounts() : []; } catch (err) { return []; } });
@@ -171,6 +93,8 @@ ipcMain.handle('tax:generate1601EQ', async (e, year, quarter) => {
     // Inventory
     ipcMain.handle('get-inventory-items', async () => { try { return typeof InventoryService.getItems === 'function' ? await InventoryService.getItems() : []; } catch (err) { return []; } });
     ipcMain.handle('create-inventory-item', async (e, data) => { try { return typeof InventoryService.createItem === 'function' ? await InventoryService.createItem(data) : { success: false }; } catch (err: any) { return { success: false, error: err.message }; } });
+    ipcMain.handle('update-inventory-item', async (e, id, data) => { try { return typeof InventoryService.updateItem === 'function' ? await InventoryService.updateItem(id, data) : { success: false }; } catch (err: any) { return { success: false, error: err.message }; } });
+    ipcMain.handle('delete-inventory-item', async (e, id) => { try { return typeof InventoryService.deleteItem === 'function' ? await InventoryService.deleteItem(id) : { success: false }; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('get-inventory-logs', async (e, itemId) => { try { return typeof InventoryService.getLogs === 'function' ? await InventoryService.getLogs(itemId) : []; } catch (err) { return []; } });
     ipcMain.handle('add-inventory-log', async (e, data) => { try { const result = typeof InventoryService.addLog === 'function' ? await InventoryService.addLog(data) : { success: false }; if (result.success) await AuditService.logAction(data.userId || 'SYSTEM', 'INVENTORY', `Updated stock`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
 
@@ -178,7 +102,7 @@ ipcMain.handle('tax:generate1601EQ', async (e, year, quarter) => {
     ipcMain.handle('request-void', async (e, id, reason) => { try { await LedgerService.requestVoid(id, reason); await AuditService.logAction('SYSTEM', "VOID REQUESTED", `Void requested`); return { success: true }; } catch (err: any) { return { error: err.message }; } });
     ipcMain.handle('get-pending-voids', async () => { try { return await LedgerService.getPendingVoids(); } catch (err: any) { return []; } });
     ipcMain.handle('reject-void', async (e, id) => { try { await LedgerService.rejectVoid(id); await AuditService.logAction('SYSTEM', "VOID REJECTED", `Void rejected`); return { success: true }; } catch (err: any) { return { error: err.message }; } });
-    ipcMain.handle('approve-void', async (e, id, managerId) => { try { const result = await LedgerService.approveVoid(id, managerId); await AuditService.logAction(managerId || 'SYSTEM', "VOID APPROVED", `Approved void`); return result; } catch (err: any) { return { error: err.message }; } });
+    ipcMain.handle('approve-void', async (e, id, managerId, overridePin) => { try { const result = await LedgerService.approveVoid(id, managerId, overridePin); await AuditService.logAction(managerId || 'SYSTEM', "VOID APPROVED", `Approved void`); return result; } catch (err: any) { return { error: err.message }; } });
 
     // Reports
     ipcMain.handle('reports:getTrialBalance', async (event, year, month) => { try { let endDate; if (year && month) endDate = new Date(year, month, 0, 23, 59, 59); return await ReportsService.getTrialBalance(undefined, endDate); } catch (error: any) { return { error: error.message }; } });
@@ -195,32 +119,7 @@ ipcMain.handle('tax:generate1601EQ', async (e, year, quarter) => {
     ipcMain.handle('create-employee', async (e, data) => { try { const result = typeof PayrollService.createEmployee === 'function' ? await PayrollService.createEmployee(data) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'HR RECORD', `Created employee`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('process-payroll', async (e, data) => { try { const result = typeof PayrollService.processPayroll === 'function' ? await PayrollService.processPayroll(data) : { success: false }; if (result.success) await AuditService.logAction(data.userId || 'SYSTEM', 'PAYROLL PROCESSED', `Processed payroll`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('toggle-employee-status', async (e, id, isActive) => { try { const result = typeof PayrollService.toggleEmployeeStatus === 'function' ? await PayrollService.toggleEmployeeStatus(id, isActive) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'HR RECORD', `Changed employee status`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
-    ipcMain.handle('update-employee', async (_, id: string, data: any) => {
-        try {
-            await prisma.employee.update({
-                where: { id: id },
-                data: {
-                    first_name: data.firstName,
-                    last_name: data.lastName,
-                    position: data.position,
-                    monthly_salary: Number(data.monthlySalary),
-                    tin: data.tin || null,
-                    sss_no: data.sss || null,
-                    philhealth_no: data.philhealth || null,
-                    pagibig_no: data.pagibig || null,
-                }
-            });
-
-            // 🔥 THE FIX: Just return success: true without the raw Prisma object!
-            return { success: true };
-
-        } catch (error: any) {
-            console.error('Update Employee Error:', error);
-            return { success: false, error: error.message };
-        }
-    });
-
-    // 🔥 RESTORED PAYROLL HISTORY HANDLER!
+    ipcMain.handle('update-employee', async (_, id: string, data: any) => { try { await prisma.employee.update({ where: { id: id }, data: { first_name: data.firstName, last_name: data.lastName, position: data.position, monthly_salary: Number(data.monthlySalary), tin: data.tin || null, sss_no: data.sss || null, philhealth_no: data.philhealth || null, pagibig_no: data.pagibig || null, }}); return { success: true }; } catch (error: any) { return { success: false, error: error.message }; } });
     ipcMain.handle('get-payroll-history', async () => { try { return typeof PayrollService.getPayrollHistory === 'function' ? await PayrollService.getPayrollHistory() : []; } catch (err) { return []; } });
 
     // Exporters
@@ -243,6 +142,8 @@ ipcMain.handle('tax:generate1601EQ', async (e, year, quarter) => {
     // Tax
     ipcMain.handle('tax:generate2550Q', async (e, year, quarter) => { try { const result = typeof TaxService.generate2550Q === 'function' ? await TaxService.generate2550Q(year, quarter) : { error: "Backend function missing" }; await AuditService.logAction('SYSTEM', 'TAX COMPLIANCE', `Generated BIR Form 2550Q`); return result; } catch (err: any) { return { error: err.message }; } });
     ipcMain.handle('tax:generateRelief', async (e, year, quarter) => { try { const result = typeof TaxService.generateReliefAnnexes === 'function' ? await TaxService.generateReliefAnnexes(year, quarter) : { error: "Backend function missing" }; await AuditService.logAction('SYSTEM', 'TAX COMPLIANCE', `Generated BIR RELIEF`); return result; } catch (err: any) { return { error: err.message }; } });
+    ipcMain.handle('tax:generate0619E', async (e, year, month) => { try { const result = typeof TaxService.generate0619E === 'function' ? await TaxService.generate0619E(year, month) : { error: "Backend function missing" }; await AuditService.logAction('SYSTEM', 'TAX COMPLIANCE', `Generated BIR Form 0619-E`); return result; } catch (err: any) { return { error: err.message }; } });
+    ipcMain.handle('tax:generate1601EQ', async (e, year, quarter) => { try { return typeof TaxService.generate1601EQ === 'function' ? await TaxService.generate1601EQ(year, quarter) : { error: "Backend function missing" }; } catch (err: any) { return { error: err.message }; } });
 
     // Analytics & Backups
     ipcMain.handle('analytics:getMetrics', async (event, timeframe?: string) => { try { return await AnalyticsService.getDashboardMetrics(timeframe as any); } catch (error: any) { return { error: error.message }; } });
@@ -252,26 +153,12 @@ ipcMain.handle('tax:generate1601EQ', async (e, year, quarter) => {
     ipcMain.handle('get-today-stats', async () => { try { return await AnalyticsService.getTodayStats(); } catch (err) { return { sales: 0, payments: 0, transactions: 0 }; } });
     ipcMain.handle('get-recent-transactions', async () => { try { return await AnalyticsService.getRecentTransactions(); } catch (err) { return []; } });
 
-    // Network Settings
-    ipcMain.handle('config:getServerIp', () => {
-        const configPath = path.join(app.getPath('userData'), 'server-config.json');
-        if (fs.existsSync(configPath)) { const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); return config.serverIp || 'localhost'; }
-        return 'localhost';
-    });
-
-    ipcMain.handle('update-reference-number', async (e, entryId, newRef) => {
-        try {
-            const result = typeof LedgerService.updateReferenceNumber === 'function' ? await LedgerService.updateReferenceNumber(entryId, newRef) : { success: false };
-            if (result.success) await AuditService.logAction('SYSTEM', 'EDIT TRANSACTION', `Changed reference number to ${newRef} for entry ID: ${entryId}`);
-            return result;
-        } catch (err: any) { return { success: false, error: err.message }; }
-    });
-    ipcMain.handle('config:setServerIp', async (event, ip: string) => {
-        const configPath = path.join(app.getPath('userData'), 'server-config.json');
-        fs.writeFileSync(configPath, JSON.stringify({ serverIp: ip }));
-        await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `LAN IP updated to: ${ip}`);
-        if (app.isPackaged) { app.relaunch(); app.exit(0); return { success: true, restarted: true }; } else { return { success: true, restarted: false }; }
-    });
+    // Settings & System
+    ipcMain.handle('get-lock-date', async () => await LedgerService.getLockDate());
+    ipcMain.handle('set-lock-date', async (_, data) => await LedgerService.setLockDate(data));
+    ipcMain.handle('config:getServerIp', () => { const configPath = path.join(app.getPath('userData'), 'server-config.json'); if (fs.existsSync(configPath)) { const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')); return config.serverIp || 'localhost'; } return 'localhost'; });
+    ipcMain.handle('update-reference-number', async (e, entryId, newRef) => { try { const result = typeof LedgerService.updateReferenceNumber === 'function' ? await LedgerService.updateReferenceNumber(entryId, newRef) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'EDIT TRANSACTION', `Changed reference number to ${newRef} for entry ID: ${entryId}`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
+    ipcMain.handle('config:setServerIp', async (event, ip: string) => { const configPath = path.join(app.getPath('userData'), 'server-config.json'); fs.writeFileSync(configPath, JSON.stringify({ serverIp: ip })); await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `LAN IP updated to: ${ip}`); if (app.isPackaged) { app.relaunch(); app.exit(0); return { success: true, restarted: true }; } else { return { success: true, restarted: false }; } });
     ipcMain.handle('system:ping', async () => { return await AuthService.pingDatabase(); });
 
     console.log("✅ ALL HANDLERS REGISTERED SUCCESSFULLY");
