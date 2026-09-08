@@ -27,6 +27,7 @@ export const IPC_CHANNELS = {
   },
   BACKUP: {
     TRIGGER: 'backup:triggerBackup',
+    RESTORE: 'backup:restore',
   },
   EXPORT: {
     TRIAL_BALANCE_EXCEL: 'export:trialBalanceExcel',

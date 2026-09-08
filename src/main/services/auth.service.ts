@@ -1,41 +1,54 @@
-// src/main/services/auth.service.ts
-import { PrismaClient } from '@prisma/client'
-import * as crypto from 'crypto'; // Native Node module for basic hashing
+import crypto from 'crypto';
+import bcrypt from 'bcrypt';
+import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
+const SALT_ROUNDS = 12;
 
-export const AuthService = {
-    async login(username: string, passwordInput: string) {
-        const user = await prisma.user.findUnique({ where: { username } });
-        if (!user) throw new Error("Invalid username or password.");
-        if (!user.is_active) throw new Error("This account has been disabled.");
+export class AuthService {
+  static async login(usernameInput: string, passwordInput: string) {
+    const user = await prisma.user.findUnique({ where: { username: usernameInput } });
+    if (!user) throw new Error("Invalid username or password.");
 
-        const hash = crypto.createHash('sha256').update(passwordInput).digest('hex');
-        if (user.password_hash !== hash) throw new Error("Invalid username or password.");
+    // Detect if the hash is legacy SHA-256 (64 hex characters)
+    const isLegacyHash = /^[a-f0-9]{64}$/i.test(user.password_hash);
 
-        let parsedPerms = [];
-        if (user.permissions) {
-            try {
-                parsedPerms = typeof user.permissions === 'string' ? JSON.parse(user.permissions) : user.permissions;
-            } catch (e) { parsedPerms = []; }
-        }
+    if (isLegacyHash) {
+      // 1. Check against the old SHA-256 method
+      const legacyHash = crypto.createHash('sha256').update(passwordInput).digest('hex');
 
-        // 🔥 CRITICAL FIX: Send the custom permissions back to the frontend on login!
-        return {
-            id: user.id,
-            username: user.username,
-            role: user.role,
-            permissions: parsedPerms 
-        };
-    },
+      // Use timingSafeEqual to prevent timing attacks
+      const match = crypto.timingSafeEqual(
+        Buffer.from(legacyHash),
+        Buffer.from(user.password_hash)
+      );
 
-   async pingDatabase(): Promise<boolean> {
+      if (!match) throw new Error("Invalid username or password.");
+
+      // 2. LAZY MIGRATION: Re-hash with bcrypt and update DB silently
+      const newBcryptHash = await bcrypt.hash(passwordInput, SALT_ROUNDS);
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { password_hash: newBcryptHash }
+      });
+
+      return user;
+    } else {
+      // Standard bcrypt check for all new/migrated passwords
+      const match = await bcrypt.compare(passwordInput, user.password_hash);
+      if (!match) throw new Error("Invalid username or password.");
+
+      return user;
+    }
+  }
+
+  // RESTORED: This was missing and causing the 'system:ping' crash
+  static async pingDatabase() {
     try {
-      // A tiny, fast query just to prove the connection is alive
-      await prisma.user.findFirst();
-      return true;
-    } catch (error) {
-      return false; // Returns false if the ethernet cable is unplugged!
+      await prisma.$queryRaw`SELECT 1`;
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
     }
   }
 }

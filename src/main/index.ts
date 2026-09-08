@@ -52,8 +52,8 @@ app.whenReady().then(() => {
     ipcMain.handle('ledger:getAccountTypes', async () => { try { return typeof LedgerService.getAccountTypes === 'function' ? await LedgerService.getAccountTypes() : []; } catch (err) { return []; } });
     ipcMain.handle('ledger:createAccount', async (e, data) => { try { const result = typeof LedgerService.createAccount === 'function' ? await LedgerService.createAccount(data) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Added COA: ${data.code}`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('get-payees', async (e, typeFilter) => { try { return await LedgerService.getPayees(typeFilter); } catch (err) { return []; } });
-    ipcMain.handle('create-payee', async (e, name: string, type: string, tin?: string, email?: string, phone?: string, address?: string, hmo?: string, hmoCardNo?: string, hmoExpiryDate?: string) => { 
-        const result = await LedgerService.createPayee(name, type, tin, email, phone, address, hmo, hmoCardNo, hmoExpiryDate); 
+    ipcMain.handle('create-payee', async (e, name: string, type: string, tin?: string, email?: string, phone?: string, address?: string, hmo?: string, hmoCardNo?: string, hmoExpiryDate?: string) => {
+        const result = await LedgerService.createPayee(name, type, tin, email, phone, address, hmo, hmoCardNo, hmoExpiryDate);
         if (result.success) {
             const hmoLog = hmo ? ` (Linked to HMO: ${hmo})` : '';
             await AuditService.logAction('SYSTEM', 'CREATE CONTACT', `Added new ${type}: ${name}${hmoLog}`);
@@ -119,7 +119,7 @@ app.whenReady().then(() => {
     ipcMain.handle('create-employee', async (e, data) => { try { const result = typeof PayrollService.createEmployee === 'function' ? await PayrollService.createEmployee(data) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'HR RECORD', `Created employee`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('process-payroll', async (e, data) => { try { const result = typeof PayrollService.processPayroll === 'function' ? await PayrollService.processPayroll(data) : { success: false }; if (result.success) await AuditService.logAction(data.userId || 'SYSTEM', 'PAYROLL PROCESSED', `Processed payroll`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('toggle-employee-status', async (e, id, isActive) => { try { const result = typeof PayrollService.toggleEmployeeStatus === 'function' ? await PayrollService.toggleEmployeeStatus(id, isActive) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'HR RECORD', `Changed employee status`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
-    ipcMain.handle('update-employee', async (_, id: string, data: any) => { try { await prisma.employee.update({ where: { id: id }, data: { first_name: data.firstName, last_name: data.lastName, position: data.position, monthly_salary: Number(data.monthlySalary), tin: data.tin || null, sss_no: data.sss || null, philhealth_no: data.philhealth || null, pagibig_no: data.pagibig || null, }}); return { success: true }; } catch (error: any) { return { success: false, error: error.message }; } });
+    ipcMain.handle('update-employee', async (_, id: string, data: any) => { try { await prisma.employee.update({ where: { id: id }, data: { first_name: data.firstName, last_name: data.lastName, position: data.position, monthly_salary: Number(data.monthlySalary), tin: data.tin || null, sss_no: data.sss || null, philhealth_no: data.philhealth || null, pagibig_no: data.pagibig || null, } }); return { success: true }; } catch (error: any) { return { success: false, error: error.message }; } });
     ipcMain.handle('get-payroll-history', async () => { try { return typeof PayrollService.getPayrollHistory === 'function' ? await PayrollService.getPayrollHistory() : []; } catch (err) { return []; } });
 
     // Exporters
@@ -148,6 +148,23 @@ app.whenReady().then(() => {
     // Analytics & Backups
     ipcMain.handle('analytics:getMetrics', async (event, timeframe?: string) => { try { return await AnalyticsService.getDashboardMetrics(timeframe as any); } catch (error: any) { return { error: error.message }; } });
     ipcMain.handle('backup:triggerBackup', async () => { const result = await BackupService.executeBackup(); if (result.success) await AuditService.logAction('SYSTEM', 'SYSTEM BACKUP', `Generated backup`); return result; });
+    ipcMain.handle('backup:restore', async () => {
+        const { filePaths } = await dialog.showOpenDialog({
+            title: 'Select Backup File to Restore',
+            properties: ['openFile'],
+            filters: [{ name: 'SQL Dump Files', extensions: ['sql'] }]
+        });
+
+        if (!filePaths || filePaths.length === 0) {
+            return { success: false, error: 'Restore cancelled by administrator.' };
+        }
+
+        const result = await BackupService.executeRestore(filePaths[0]);
+        if (result.success) {
+            await AuditService.logAction('SYSTEM', 'SYSTEM RESTORE', `Database restored from backup`);
+        }
+        return result;
+    });
     ipcMain.handle('log-action', async (e, userId, action, details) => { return await AuditService.logAction(userId, action, details); });
     ipcMain.handle('get-audit-logs', async (e, startDate, endDate) => { try { return await AuditService.getAuditLogs(startDate, endDate); } catch (err: any) { return []; } });
     ipcMain.handle('get-today-stats', async () => { try { return await AnalyticsService.getTodayStats(); } catch (err) { return { sales: 0, payments: 0, transactions: 0 }; } });

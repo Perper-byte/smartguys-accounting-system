@@ -111,10 +111,12 @@ export const api = {
 
   // Backups & Tax
   triggerBackup: () => ipcRenderer.invoke('backup:triggerBackup'),
+  restoreBackup: () => ipcRenderer.invoke('backup:restore'), 
   generate2550Q: (year: number, quarter: number) => ipcRenderer.invoke('tax:generate2550Q', year, quarter),
   generateRelief: (year: number, quarter: number) => ipcRenderer.invoke('tax:generateRelief', year, quarter),
   generate0619E: (year: number, month: number) => ipcRenderer.invoke('tax:generate0619E', year, month),
   generate1601EQ: (year: number, quarter: number) => ipcRenderer.invoke('tax:generate1601EQ', year, quarter),
+  
 
   // Dashboard Analytics
   getTodayStats: () => ipcRenderer.invoke('get-today-stats'),
