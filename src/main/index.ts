@@ -5,6 +5,7 @@ import './env';
 import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import * as fs from 'fs';
+import cron from 'node-cron';
 
 // Services
 import { AnalyticsService } from './services/analytics.service';
@@ -177,6 +178,21 @@ app.whenReady().then(() => {
     ipcMain.handle('update-reference-number', async (e, entryId, newRef) => { try { const result = typeof LedgerService.updateReferenceNumber === 'function' ? await LedgerService.updateReferenceNumber(entryId, newRef) : { success: false }; if (result.success) await AuditService.logAction('SYSTEM', 'EDIT TRANSACTION', `Changed reference number to ${newRef} for entry ID: ${entryId}`); return result; } catch (err: any) { return { success: false, error: err.message }; } });
     ipcMain.handle('config:setServerIp', async (event, ip: string) => { const configPath = path.join(app.getPath('userData'), 'server-config.json'); fs.writeFileSync(configPath, JSON.stringify({ serverIp: ip })); await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `LAN IP updated to: ${ip}`); if (app.isPackaged) { app.relaunch(); app.exit(0); return { success: true, restarted: true }; } else { return { success: true, restarted: false }; } });
     ipcMain.handle('system:ping', async () => { return await AuthService.pingDatabase(); });
+
+    // --- AUTOMATED BACKUP SCHEDULER ---
+    // '59 23 * * *' translates to 11:59 PM every day.
+    cron.schedule('59 23 * * *', async () => {
+        console.log('⏳ Running automated daily background backup...');
+        const result = await BackupService.executeScheduledBackup();
+
+        if (result.success) {
+            await AuditService.logAction('SYSTEM', 'AUTO BACKUP', `Automated daily backup securely saved to ${result.filePath}`);
+            console.log('✅ Automated backup successful.');
+        } else {
+            await AuditService.logAction('SYSTEM', 'AUTO BACKUP FAILED', `Failed to generate automated backup: ${result.error}`);
+            console.error('❌ Automated backup failed:', result.error);
+        }
+    });
 
     console.log("✅ ALL HANDLERS REGISTERED SUCCESSFULLY");
 });

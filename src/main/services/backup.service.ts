@@ -1,6 +1,7 @@
 import { execFile } from 'child_process';
 import * as fs from 'fs';
-import { dialog } from 'electron';
+import * as path from 'path';
+import { dialog, app } from 'electron';
 
 export class BackupService {
     private static parseDatabaseUrl(): { user: string; pass: string; host: string; port: string; db: string } {
@@ -67,6 +68,54 @@ export class BackupService {
                     } else {
                         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
                         resolve({ success: false, error: "Integrity Scan Failed: Truncated file." });
+                    }
+                });
+            });
+        } catch (e: any) {
+            return { success: false, error: e.message };
+        }
+    }
+
+    static async executeScheduledBackup(): Promise<{ success: boolean; filePath?: string; error?: string }> {
+        try {
+            const dbConfig = this.parseDatabaseUrl();
+
+            // Automatically create an "AutomatedBackups" folder inside the app's hidden user data directory
+            const backupDir = path.join(app.getPath('userData'), 'AutomatedBackups');
+            if (!fs.existsSync(backupDir)) {
+                fs.mkdirSync(backupDir, { recursive: true });
+            }
+
+            // Name the file based on today's date
+            const fileName = `smartguys_auto_backup_${new Date().toISOString().split('T')[0]}.sql`;
+            const filePath = path.join(backupDir, fileName);
+
+            let dumpExecutable = 'mysqldump';
+            if (process.platform === 'win32') {
+                const xamppPath = 'C:\\xampp\\mysql\\bin\\mysqldump.exe';
+                if (fs.existsSync(xamppPath)) dumpExecutable = xamppPath;
+            }
+
+            const args = [
+                `-h`, dbConfig.host,
+                `-P`, dbConfig.port,
+                `-u`, dbConfig.user,
+                `--result-file=${filePath}`,
+                dbConfig.db
+            ];
+
+            if (dbConfig.pass) args.splice(4, 0, `-p${dbConfig.pass}`);
+
+            return new Promise((resolve) => {
+                execFile(dumpExecutable, args, async (err) => {
+                    if (err) return resolve({ success: false, error: err.message });
+
+                    const isValid = await this.verifyBackupIntegrity(filePath);
+                    if (isValid) {
+                        resolve({ success: true, filePath });
+                    } else {
+                        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                        resolve({ success: false, error: "Integrity Scan Failed" });
                     }
                 });
             });
