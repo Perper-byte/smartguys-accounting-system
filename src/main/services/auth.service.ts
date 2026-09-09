@@ -45,7 +45,15 @@ export class AuthService {
   // RESTORED: This was missing and causing the 'system:ping' crash
   static async pingDatabase() {
     try {
-      await prisma.$queryRaw`SELECT 1`;
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Connection timed out')), 2000)
+      );
+
+      await Promise.race([
+        prisma.$queryRaw`SELECT 1`,
+        timeout
+      ]);
+
       return { success: true };
     } catch (error: any) {
       return { success: false, error: error.message };

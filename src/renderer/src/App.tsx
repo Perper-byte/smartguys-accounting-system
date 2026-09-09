@@ -101,16 +101,40 @@ export default function App() {
 
   useEffect(() => {
     const checkConnection = async () => {
+
+      if (!navigator.onLine) {
+        setIsOnline(false);
+        return;
+      }
+
       const api = (window as any).electronAPI || (window as any).api
       if (api && api.pingDatabase) {
-        const ok = await api.pingDatabase()
-        setIsOnline(ok)
+        try {
+          const res = await api.pingDatabase();
+          const active = res === true || res?.success === true
+          setIsOnline(Boolean(active));
+        } catch {
+            setIsOnline(false);
+        }
       }
     }
-    checkConnection()
-    const interval = setInterval(checkConnection, 30000)
-    return () => clearInterval(interval)
-  }, [])
+    
+    checkConnection();
+
+    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => checkConnection();
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+
+    const interval = setInterval(checkConnection, 2000);
+
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+      clearInterval(interval);
+    }
+  }, []);
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user)
