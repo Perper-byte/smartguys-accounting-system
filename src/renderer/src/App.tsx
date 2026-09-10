@@ -39,7 +39,6 @@ import UserManagementView from './components/UserManagementView'
 import { DatabaseBackupView } from './components/DatabaseBackupView'
 import { ChartOfAccountsView } from './components/ChartOfAccountsView'
 import { ServicesManagerView } from './components/ServicesManagerView'
-import { SystemsSettingsView } from './components/SystemSettingsView'
 
 import logoImage from './assets/smartguys_logo.jpg'
 

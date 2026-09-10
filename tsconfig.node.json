@@ -1,10 +1,18 @@
 {
   "extends": "@electron-toolkit/tsconfig/tsconfig.node.json",
-  "include": ["electron.vite.config.*", "src/main/**/*", "src/preload/**/*", "src/shared/**/*", "prisma/seed.ts"],
   "compilerOptions": {
     "composite": true,
     "types": ["electron-vite/node", "node", "jest"],
-    "noUnusedParameters": false,
-    "noUnusedLocals": false
-  }
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": [
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/shared/**/*"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
 }

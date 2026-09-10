@@ -17,13 +17,13 @@ export type JournalEntryInput = {
 
 export const LedgerService = {
 
-   async evaluateAutoLock() {
+    async evaluateAutoLock() {
         const setting = await prisma.systemSetting.findFirst();
         if (!setting || !setting.auto_lock_day) return;
 
         const today = new Date();
         const currentDay = today.getDate();
-        
+
         if (currentDay > setting.auto_lock_day) {
             const lastDayOfPrevMonth = new Date(today.getFullYear(), today.getMonth(), 0);
             if (!setting.lock_date || setting.lock_date < lastDayOfPrevMonth) {
@@ -48,21 +48,21 @@ export const LedgerService = {
     async setLockDate(data: { lockDate: string | null, autoLockDay: number | null, overridePin: string | null }) {
         let setting = await prisma.systemSetting.findFirst();
         if (!setting) {
-            setting = await prisma.systemSetting.create({ 
-                data: { 
+            setting = await prisma.systemSetting.create({
+                data: {
                     lock_date: data.lockDate ? new Date(data.lockDate) : null,
                     auto_lock_day: data.autoLockDay,
                     override_pin: data.overridePin || null
-                } 
+                }
             });
         } else {
-            setting = await prisma.systemSetting.update({ 
-                where: { id: setting.id }, 
-                data: { 
+            setting = await prisma.systemSetting.update({
+                where: { id: setting.id },
+                data: {
                     lock_date: data.lockDate ? new Date(data.lockDate) : null,
                     auto_lock_day: data.autoLockDay,
                     override_pin: data.overridePin || null
-                } 
+                }
             });
         }
         return { success: true };
@@ -122,7 +122,7 @@ export const LedgerService = {
             transactions: transactions.map(transaction => ({
                 ...transaction,
                 amount: Number(transaction.amount),
-                matchedEntry: transaction.reconciliation?.journal_entry || null
+                matchedEntry: transaction.reconciliations?.[0]?.journal_entry || null
             })),
             entries: entries.map(entry => ({
                 id: entry.id,
@@ -222,7 +222,7 @@ export const LedgerService = {
     async matchBankTransaction(bankTxId: string, journalEntryIds: string | string[], userId: string) {
         try {
             const ids = Array.isArray(journalEntryIds) ? journalEntryIds : [journalEntryIds];
-            
+
             return await prisma.$transaction(async (tx) => {
                 // Loop through and attach all selected ledger items to the single bank transaction
                 for (const jId of ids) {
@@ -289,8 +289,8 @@ export const LedgerService = {
     async createPayee(name: string, type: string = 'PATIENT', tin?: string, email?: string, phone?: string, address?: string, hmoAffiliation?: string, hmoCardNo?: string, hmoExpiryDate?: string) {
         try {
             const newPayee = await prisma.payee.create({
-                data: { 
-                    name, 
+                data: {
+                    name,
                     type,
                     tin: tin || null,
                     email: email || null,
@@ -327,9 +327,9 @@ export const LedgerService = {
     },
 
     // 🔥 UPGRADED: Added Month-End Lock Security Check
-   async createJournalEntry(data: JournalEntryInput) {
+    async createJournalEntry(data: JournalEntryInput) {
         const entryDate = new Date(data.date);
-        
+
         // 1. Check Lock Date & PIN
         const setting = await prisma.systemSetting.findFirst();
         if (setting?.lock_date && entryDate <= setting.lock_date) {
@@ -339,18 +339,18 @@ export const LedgerService = {
         }
 
         const validLines = data.lines.filter(line => line.accountId && (Number(line.debit) > 0 || Number(line.credit) > 0));
-        
+
         if (data.lines.some(line => Number(line.debit) < 0 || Number(line.credit) < 0)) {
             throw new Error('Validation Error: Debit and Credit values cannot be negative');
         }
-        
+
         const totalDebit = validLines.reduce((sum, line) => sum + Number(line.debit), 0);
         const totalCredit = validLines.reduce((sum, line) => sum + Number(line.credit), 0);
-        
+
         if (!validLines.length || Math.abs(totalDebit - totalCredit) > 0.005) {
             throw new Error('Validation Error: Journal entry must be balanced');
         }
-        
+
         const entry = await prisma.journalEntry.create({
             data: {
                 date: entryDate,
@@ -375,7 +375,7 @@ export const LedgerService = {
                 } : undefined
             }
         });
-        
+
         return { success: true, referenceNo: entry.reference_no, entryId: entry.id };
     },
 
@@ -455,7 +455,7 @@ export const LedgerService = {
         for (const acc of accounts) {
             const normalBalance = acc.account_type.normal_balance;
 
-            const accPriorLines = priorLines.filter(l => l.account_id === acc.code && l.entry.status === 'ACTIVE');
+            const accPriorLines = priorLines.filter(l => l.account_id === acc.code && (l as any).entry?.status === 'ACTIVE');
             let openingBalance = 0;
             for (const l of accPriorLines) {
                 if (normalBalance === 'DEBIT') openingBalance += (Number(l.debit) - Number(l.credit));
@@ -493,16 +493,16 @@ export const LedgerService = {
     },
 
     async getNextReferenceSequence(prefix: string) {
-        const lastEntry = await prisma.journalEntry.findFirst({ 
-            where: { reference_no: { startsWith: prefix } }, 
-            orderBy: { created_at: 'desc' } 
+        const lastEntry = await prisma.journalEntry.findFirst({
+            where: { reference_no: { startsWith: prefix } },
+            orderBy: { created_at: 'desc' }
         });
-        
+
         if (!lastEntry) return '001';
-        
+
         const lastSeqNum = parseInt(lastEntry.reference_no.replace(prefix, ''), 10);
         if (isNaN(lastSeqNum) || lastSeqNum > 999999) return '001';
-        
+
         return (lastSeqNum + 1).toString().padStart(3, '0');
     },
 
@@ -547,7 +547,7 @@ export const LedgerService = {
             include: {
                 payee: true,
                 lines: { include: { account: true } },
-                attachments: true 
+                attachments: true
             }
         });
 
@@ -594,7 +594,7 @@ export const LedgerService = {
     },
 
     // 🔥 UPGRADED: Added Month-End Lock Security Check
-   async approveVoid(entryId: string, managerId: string, overridePin?: string) {
+    async approveVoid(entryId: string, managerId: string, overridePin?: string) {
         // 🔥 Includes reconciliation to check if it's matched to a bank feed
         const original = await prisma.journalEntry.findUnique({ where: { id: entryId }, include: { lines: true, reconciliation: true } });
         if (!original) throw new Error("Entry not found.");
