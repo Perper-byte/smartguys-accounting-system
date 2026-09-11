@@ -280,28 +280,54 @@ export class ReportsService {
     }
 
     static async getAgedReceivables() {
+        // 1. Fetch only ACTIVE (non-voided) A/R lines
         const lines = await prisma.journalLine.findMany({
-            where: { account_id: '1200', entry: { payee_id: { not: null } } },
+            where: {
+                account_id: '1200',
+                entry: {
+                    payee_id: { not: null },
+                    status: { not: 'VOIDED' }
+                }
+            },
             include: { entry: { include: { payee: true } } },
-            orderBy: { entry: { date: 'asc' } } // Sort oldest to newest for FIFO
+            orderBy: { entry: { date: 'asc' } }
         });
 
-        const payeeMap: Record<string, { name: string, invoices: any[], totalPayments: number }> = {};
+        // 2. Group debits (invoices) and credits (payments) by payee
+        const payeeMap: Record<string, {
+            name: string,
+            invoices: any[],
+            payments: any[]
+        }> = {};
 
         for (const line of lines) {
             const payeeId = line.entry.payee_id!.toString();
             if (!payeeMap[payeeId]) {
-                payeeMap[payeeId] = { name: line.entry.payee!.name, invoices: [], totalPayments: 0 };
+                payeeMap[payeeId] = {
+                    name: line.entry.payee!.name,
+                    invoices: [],
+                    payments: []
+                };
             }
             if (Number(line.debit) > 0) {
                 payeeMap[payeeId].invoices.push({
                     invoiceNo: line.entry.reference_no || 'N/A',
+                    description: line.entry.description || '',
                     date: line.entry.date,
-                    amount: Number(line.debit),
+                    originalAmount: Number(line.debit),
+                    amount: Number(line.debit), // Remaining balance to track
+                    paidAmount: 0,
                     dueDate: new Date(new Date(line.entry.date).getTime() + (30 * 24 * 60 * 60 * 1000))
                 });
             }
-            if (Number(line.credit) > 0) payeeMap[payeeId].totalPayments += Number(line.credit);
+            if (Number(line.credit) > 0) {
+                payeeMap[payeeId].payments.push({
+                    referenceNo: line.entry.reference_no || '',
+                    description: line.entry.description || '',
+                    amount: Number(line.credit),
+                    remainingAmount: Number(line.credit)
+                });
+            }
         }
 
         const today = new Date();
@@ -310,43 +336,106 @@ export class ReportsService {
 
         for (const payeeId in payeeMap) {
             const p = payeeMap[payeeId];
-            let remainingPayments = p.totalPayments;
-            let current = 0; let days30 = 0; let days60 = 0; let days90 = 0;
 
-            const unpaidInvoices: any[] = []; 
+            // 🎯 PASS 1: Match payments that explicitly mention the invoice reference (e.g. "INV-004")
+            for (const pmt of p.payments) {
+                if (pmt.remainingAmount <= 0) continue;
+
+                for (const inv of p.invoices) {
+                    if (inv.amount <= 0) continue;
+
+                    const desc = (pmt.description || '').toUpperCase();
+                    const ref = (pmt.referenceNo || '').toUpperCase();
+                    const invNo = inv.invoiceNo.toUpperCase();
+
+                    if (desc.includes(invNo) || ref.includes(invNo)) {
+                        const deduction = Math.min(pmt.remainingAmount, inv.amount);
+                        inv.amount -= deduction;
+                        inv.paidAmount += deduction;
+                        pmt.remainingAmount -= deduction;
+                    }
+                }
+            }
+
+            // 🎯 PASS 2: Match by exact payment amount (e.g. ₱350 payment directly clears ₱350 invoice)
+            for (const pmt of p.payments) {
+                if (pmt.remainingAmount <= 0) continue;
+
+                for (const inv of p.invoices) {
+                    if (inv.amount <= 0) continue;
+
+                    if (Math.abs(inv.amount - pmt.remainingAmount) < 0.01) {
+                        inv.paidAmount += pmt.remainingAmount;
+                        inv.amount = 0;
+                        pmt.remainingAmount = 0;
+                        break;
+                    }
+                }
+            }
+
+            // 🎯 PASS 3: FIFO for any remaining unallocated payments
+            for (const pmt of p.payments) {
+                if (pmt.remainingAmount <= 0) continue;
+
+                for (const inv of p.invoices) {
+                    if (inv.amount <= 0) continue;
+
+                    const deduction = Math.min(pmt.remainingAmount, inv.amount);
+                    inv.amount -= deduction;
+                    inv.paidAmount += deduction;
+                    pmt.remainingAmount -= deduction;
+
+                    if (pmt.remainingAmount <= 0) break;
+                }
+            }
+
+            // 3. Compute Aging Buckets and Final Statuses
+            let current = 0; let days30 = 0; let days60 = 0; let days90 = 0;
+            const invoiceDetails: any[] = [];
 
             for (const inv of p.invoices) {
-                if (remainingPayments >= inv.amount) {
-                    remainingPayments -= inv.amount;
-                    continue;
+                const unpaidAmount = Number(inv.amount.toFixed(2));
+                let status = 'Unpaid';
+                if (unpaidAmount <= 0) {
+                    status = 'Paid';
+                } else if (inv.paidAmount > 0) {
+                    status = 'Partially Paid';
                 }
 
-                const unpaidAmount = inv.amount - remainingPayments;
-                const status = remainingPayments > 0 ? 'Partially Paid' : 'Unpaid';
-                remainingPayments = 0;
+                // Add to aging categories only if there is an unpaid balance
+                if (unpaidAmount > 0) {
+                    const invDate = new Date(inv.date);
+                    invDate.setHours(0, 0, 0, 0);
+                    const diffTime = today.getTime() - invDate.getTime();
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-                const invDate = new Date(inv.date);
-                invDate.setHours(0, 0, 0, 0);
-                const diffTime = today.getTime() - invDate.getTime();
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                    if (diffDays <= 30) current += unpaidAmount;
+                    else if (diffDays <= 60) days30 += unpaidAmount;
+                    else if (diffDays <= 90) days60 += unpaidAmount;
+                    else days90 += unpaidAmount;
+                }
 
-                if (diffDays <= 30) current += unpaidAmount;
-                else if (diffDays <= 60) days30 += unpaidAmount;
-                else if (diffDays <= 90) days60 += unpaidAmount;
-                else days90 += unpaidAmount;
-
-                unpaidInvoices.push({
+                invoiceDetails.push({
                     invoiceNo: inv.invoiceNo,
                     date: inv.date,
                     dueDate: inv.dueDate,
-                    amount: unpaidAmount,
+                    amount: unpaidAmount, // Shows remaining balance (0 if Paid)
+                    originalAmount: inv.originalAmount,
                     status: status
                 });
             }
 
-            const total = current + days30 + days60 + days90;
-            if (total > 0) {
-                report.push({ payeeName: p.name, current, days30, days60, days90, total, invoices: unpaidInvoices });
+            const total = Number((current + days30 + days60 + days90).toFixed(2));
+            if (total > 0 || invoiceDetails.length > 0) {
+                report.push({
+                    payeeName: p.name,
+                    current: Number(current.toFixed(2)),
+                    days30: Number(days30.toFixed(2)),
+                    days60: Number(days60.toFixed(2)),
+                    days90: Number(days90.toFixed(2)),
+                    total,
+                    invoices: invoiceDetails
+                });
             }
         }
 
@@ -385,19 +474,19 @@ export class ReportsService {
         // 4. Calculate statuses sequentially with robust Split-Payment Math
         for (const inv of invoices) {
             const totalAmount = inv.lines.reduce((sum, l) => sum + Number(l.debit), 0);
-            
+
             // Check if this transaction actually had an A/R component
             const arLine = inv.lines.find(l => l.account_id === '1200' && Number(l.debit) > 0);
             const isAR = !!arLine;
 
-            let paid = 0; 
-            let balance = 0; 
+            let paid = 0;
+            let balance = 0;
             let status = 'Unpaid';
 
             if (!isAR) {
                 // If it wasn't charged to AR, it was paid fully in Cash/GCash instantly via POS
-                paid = totalAmount; 
-                balance = 0; 
+                paid = totalAmount;
+                balance = 0;
                 status = 'Fully Paid';
             } else {
                 // A/R was used. Calculate how much was paid in cash vs charged to A/R
@@ -408,23 +497,23 @@ export class ReportsService {
                 if (pId && payeeCredits[pId] !== undefined) {
                     let availableCredit = payeeCredits[pId];
                     if (availableCredit >= arAmount) {
-                        paid = totalAmount; 
-                        balance = 0; 
+                        paid = totalAmount;
+                        balance = 0;
                         status = 'Fully Paid';
                         payeeCredits[pId] -= arAmount;
                     } else if (availableCredit > 0) {
-                        paid = cashAmount + availableCredit; 
-                        balance = arAmount - availableCredit; 
+                        paid = cashAmount + availableCredit;
+                        balance = arAmount - availableCredit;
                         status = 'Partially Paid';
                         payeeCredits[pId] = 0;
                     } else {
-                        paid = cashAmount; 
-                        balance = arAmount; 
+                        paid = cashAmount;
+                        balance = arAmount;
                         status = cashAmount > 0 ? 'Partially Paid' : 'Unpaid';
                     }
                 } else {
-                    paid = cashAmount; 
-                    balance = arAmount; 
+                    paid = cashAmount;
+                    balance = arAmount;
                     status = cashAmount > 0 ? 'Partially Paid' : 'Unpaid';
                 }
             }
@@ -434,7 +523,7 @@ export class ReportsService {
                 id: inv.id,
                 date: inv.date,
                 referenceNo: inv.reference_no,
-                description: inv.description, 
+                description: inv.description,
                 payeeName: inv.payee?.name || 'Walk-in / Cash',
                 payeeType: inv.payee?.type || 'PATIENT',
                 total: totalAmount,
