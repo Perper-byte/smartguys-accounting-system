@@ -49,39 +49,39 @@ app.whenReady().then(() => {
 
   // Auth & Users
   ipcMain.handle('auth:login', async (e, username, password) => {
-        try {
-            // 1. Try online login first
-            const result = await AuthService.login(username, password)
-            if (result.id) {
-                await AuditService.logAction(result.id, 'USER LOGIN', `User ${username} logged in.`)
+    try {
+      // 1. Try online login first
+      const result = await AuthService.login(username, password)
+      if (result.id) {
+        await AuditService.logAction(result.id, 'USER LOGIN', `User ${username} logged in.`)
 
-                // 2. Update Local Cache for Offline Login capability
-                let offlineUsers: any = {};
-                if (fs.existsSync(CACHE_USERS_PATH)) {
-                    offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'));
-                }
-                offlineUsers[username] = { password: password, data: result };
-                fs.writeFileSync(CACHE_USERS_PATH, JSON.stringify(offlineUsers));
-            }
-            return { success: true, data: result }
-
-        } catch (err: any) {
-            // 3. 🚨 DETECT OFFLINE NETWORK ERROR
-            const isOffline = err.message.includes("Can't reach") ||  err.message.includes("P1001") ||  err.message.includes("timeout") || err.message.includes("network");
-
-            if (isOffline && fs.existsSync(CACHE_USERS_PATH)) {
-                const offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'));
-                // Check if they have logged in before on this computer
-                if (offlineUsers[username] && offlineUsers[username].password === password) {
-                    console.log(`[OFFLINE MODE] User ${username} logged in via local cache.`);
-                    return { success: true, data: offlineUsers[username].data, offline: true }
-                } else {
-                    return { success: false, error: "Network offline. This user has not been cached locally yet." }
-                }
-            }
-            return { success: false, error: err.message }
+        // 2. Update Local Cache for Offline Login capability
+        let offlineUsers: any = {};
+        if (fs.existsSync(CACHE_USERS_PATH)) {
+          offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'));
         }
-    })
+        offlineUsers[username] = { password: password, data: result };
+        fs.writeFileSync(CACHE_USERS_PATH, JSON.stringify(offlineUsers));
+      }
+      return { success: true, data: result }
+
+    } catch (err: any) {
+      // 3. 🚨 DETECT OFFLINE NETWORK ERROR
+      const isOffline = err.message.includes("Can't reach") || err.message.includes("P1001") || err.message.includes("timeout") || err.message.includes("network");
+
+      if (isOffline && fs.existsSync(CACHE_USERS_PATH)) {
+        const offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'));
+        // Check if they have logged in before on this computer
+        if (offlineUsers[username] && offlineUsers[username].password === password) {
+          console.log(`[OFFLINE MODE] User ${username} logged in via local cache.`);
+          return { success: true, data: offlineUsers[username].data, offline: true }
+        } else {
+          return { success: false, error: "Network offline. This user has not been cached locally yet." }
+        }
+      }
+      return { success: false, error: err.message }
+    }
+  })
 
   ipcMain.handle('get-users', async () => {
     try {
@@ -263,6 +263,29 @@ app.whenReady().then(() => {
         : []
     } catch (err) {
       return []
+    }
+  })
+
+  ipcMain.handle('update-payee', async (_, id: string, data: any) => {
+    try {
+      await prisma.payee.update({
+        where: { id },
+        data: {
+          name: data.name,
+          type: data.type,
+          email: data.email || null,
+          phone_number: data.phone || null,
+          tin: data.tin || null,
+          address: data.address || null,
+          hmo_affiliation: data.hmo || null,
+          hmo_card_no: data.hmoCardNo || null,
+          hmo_expiry_date: data.hmoExpiryDate ? new Date(data.hmoExpiryDate) : null
+        }
+      })
+      await AuditService.logAction('SYSTEM', 'EDIT CONTACT', `Updated contact details for: ${data.name}`)
+      return { success: true }
+    } catch (error: any) {
+      return { success: false, error: error.message }
     }
   })
 
