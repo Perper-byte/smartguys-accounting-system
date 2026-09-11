@@ -443,7 +443,7 @@ export class ReportsService {
     }
 
     static async getInvoiceTracker() {
-        // 1. Fetch BOTH manual INV- invoices AND automated SYS- POS transactions
+        // 1. Fetch BOTH manual INV- invoices AND automated SYS- POS transactions (Exclude voided)
         const invoices = await prisma.journalEntry.findMany({
             where: {
                 OR: [
@@ -456,82 +456,154 @@ export class ReportsService {
             orderBy: { date: 'asc' }
         });
 
-        // 2. Fetch ALL Payments/Collections (Credits to Account 1200)
+        // 2. Fetch ALL Payments/Collections (Credits to Account 1200, non-voided)
         const arCreditLines = await prisma.journalLine.findMany({
-            where: { account_id: '1200', credit: { gt: 0 }, entry: { payee_id: { not: null }, status: { not: 'VOIDED' } } },
+            where: {
+                account_id: '1200',
+                credit: { gt: 0 },
+                entry: {
+                    payee_id: { not: null },
+                    status: { not: 'VOIDED' }
+                }
+            },
             include: { entry: true }
         });
 
-        // 3. Group the collections by Patient/Payee
-        const payeeCredits: Record<string, number> = {};
-        for (const line of arCreditLines) {
-            const pId = line.entry.payee_id!.toString();
-            payeeCredits[pId] = (payeeCredits[pId] || 0) + Number(line.credit);
+        // 3. Group payments by Payee with descriptions for smart matching
+        interface PaymentCredit {
+            id: string;
+            payeeId: string;
+            amount: number;
+            remaining: number;
+            description: string;
+            referenceNo: string;
         }
 
-        const results: any[] = [];
+        const paymentsByPayee: Record<string, PaymentCredit[]> = {};
+        for (const line of arCreditLines) {
+            const pId = line.entry.payee_id!.toString();
+            if (!paymentsByPayee[pId]) paymentsByPayee[pId] = [];
+            paymentsByPayee[pId].push({
+                id: line.id,
+                payeeId: pId,
+                amount: Number(line.credit),
+                remaining: Number(line.credit),
+                description: (line.entry.description || '').toUpperCase(),
+                referenceNo: (line.entry.reference_no || '').toUpperCase()
+            });
+        }
 
-        // 4. Calculate statuses sequentially with robust Split-Payment Math
-        for (const inv of invoices) {
+        // 4. Prepare invoice models
+        const invoiceObjects = invoices.map(inv => {
             const totalAmount = inv.lines.reduce((sum, l) => sum + Number(l.debit), 0);
-
-            // Check if this transaction actually had an A/R component
             const arLine = inv.lines.find(l => l.account_id === '1200' && Number(l.debit) > 0);
             const isAR = !!arLine;
+            const arAmount = isAR ? Number(arLine.debit) : 0;
+            const cashAmount = totalAmount - arAmount;
 
-            let paid = 0;
-            let balance = 0;
-            let status = 'Unpaid';
-
-            if (!isAR) {
-                // If it wasn't charged to AR, it was paid fully in Cash/GCash instantly via POS
-                paid = totalAmount;
-                balance = 0;
-                status = 'Fully Paid';
-            } else {
-                // A/R was used. Calculate how much was paid in cash vs charged to A/R
-                const arAmount = Number(arLine.debit);
-                const cashAmount = totalAmount - arAmount;
-                const pId = inv.payee_id?.toString();
-
-                if (pId && payeeCredits[pId] !== undefined) {
-                    let availableCredit = payeeCredits[pId];
-                    if (availableCredit >= arAmount) {
-                        paid = totalAmount;
-                        balance = 0;
-                        status = 'Fully Paid';
-                        payeeCredits[pId] -= arAmount;
-                    } else if (availableCredit > 0) {
-                        paid = cashAmount + availableCredit;
-                        balance = arAmount - availableCredit;
-                        status = 'Partially Paid';
-                        payeeCredits[pId] = 0;
-                    } else {
-                        paid = cashAmount;
-                        balance = arAmount;
-                        status = cashAmount > 0 ? 'Partially Paid' : 'Unpaid';
-                    }
-                } else {
-                    paid = cashAmount;
-                    balance = arAmount;
-                    status = cashAmount > 0 ? 'Partially Paid' : 'Unpaid';
-                }
-            }
-
-            // 🔥 UPDATED: Added inv.description here as requested!
-            results.push({
+            return {
                 id: inv.id,
                 date: inv.date,
                 referenceNo: inv.reference_no,
                 description: inv.description,
+                payeeId: inv.payee_id?.toString(),
                 payeeName: inv.payee?.name || 'Walk-in / Cash',
                 payeeType: inv.payee?.type || 'PATIENT',
                 total: totalAmount,
-                paid: paid,
-                balance: balance,
-                status: status
-            });
+                isAR,
+                arAmount,
+                cashAmount,
+                allocatedPayments: 0
+            };
+        });
+
+        // 5. Smart match payments to invoices per payee
+        for (const pId in paymentsByPayee) {
+            const pPayments = paymentsByPayee[pId];
+            const pInvoices = invoiceObjects.filter(inv => inv.payeeId === pId && inv.isAR);
+
+            // 🎯 PASS 1: Check if payment description mentions the invoice (e.g. "[Invs: INV-004]")
+            for (const pmt of pPayments) {
+                if (pmt.remaining <= 0) continue;
+                for (const inv of pInvoices) {
+                    const remainingBalance = inv.arAmount - inv.allocatedPayments;
+                    if (remainingBalance <= 0) continue;
+
+                    const invRef = inv.referenceNo.toUpperCase();
+                    if (pmt.description.includes(invRef) || pmt.referenceNo.includes(invRef)) {
+                        const deduction = Math.min(pmt.remaining, remainingBalance);
+                        inv.allocatedPayments += deduction;
+                        pmt.remaining -= deduction;
+                    }
+                }
+            }
+
+            // 🎯 PASS 2: Match by exact remaining amount
+            for (const pmt of pPayments) {
+                if (pmt.remaining <= 0) continue;
+                for (const inv of pInvoices) {
+                    const remainingBalance = inv.arAmount - inv.allocatedPayments;
+                    if (remainingBalance <= 0) continue;
+
+                    if (Math.abs(remainingBalance - pmt.remaining) < 0.01) {
+                        inv.allocatedPayments += pmt.remaining;
+                        pmt.remaining = 0;
+                        break;
+                    }
+                }
+            }
+
+            // 🎯 PASS 3: FIFO for any remaining general unallocated credits
+            for (const pmt of pPayments) {
+                if (pmt.remaining <= 0) continue;
+                for (const inv of pInvoices) {
+                    const remainingBalance = inv.arAmount - inv.allocatedPayments;
+                    if (remainingBalance <= 0) continue;
+
+                    const deduction = Math.min(pmt.remaining, remainingBalance);
+                    inv.allocatedPayments += deduction;
+                    pmt.remaining -= deduction;
+                    if (pmt.remaining <= 0) break;
+                }
+            }
         }
+
+        // 6. Build final status and balances
+        const results = invoiceObjects.map(inv => {
+            let paid = 0;
+            let balance = 0;
+            let status = 'Unpaid';
+
+            if (!inv.isAR) {
+                paid = inv.total;
+                balance = 0;
+                status = 'Fully Paid';
+            } else {
+                paid = inv.cashAmount + inv.allocatedPayments;
+                balance = Math.max(0, inv.arAmount - inv.allocatedPayments);
+                if (balance <= 0.009) {
+                    balance = 0;
+                    status = 'Fully Paid';
+                } else if (paid > 0) {
+                    status = 'Partially Paid';
+                } else {
+                    status = 'Unpaid';
+                }
+            }
+
+            return {
+                id: inv.id,
+                date: inv.date,
+                referenceNo: inv.referenceNo,
+                description: inv.description,
+                payeeName: inv.payeeName,
+                payeeType: inv.payeeType,
+                total: inv.total,
+                paid: Number(paid.toFixed(2)),
+                balance: Number(balance.toFixed(2)),
+                status
+            };
+        });
 
         return results.sort((a, b) => b.date.getTime() - a.date.getTime());
     }
