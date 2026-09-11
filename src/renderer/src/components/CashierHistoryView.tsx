@@ -138,40 +138,40 @@ export function CashierHistoryView({ userId }: { userId: string }) {
     return filteredTransactions.slice(start, start + itemsPerPage)
   }, [filteredTransactions, currentPage])
 
-  const getPaymentMethod = (desc: string) => {
-    const d = (desc || '').toUpperCase()
+  const getPaymentMethod = (tx: any) => {
+    const desc = (tx.description || '').toUpperCase()
+    const payee = (tx.patientName || tx.payeeName || '').toUpperCase()
+    const ref = (tx.referenceNo || '').toUpperCase()
 
-    /*
-     * Check GCASH before CASH because
-     * "GCASH" contains "CASH".
-     */
-    if (d.includes('(GCASH)')) {
-      return 'GCASH'
-    }
+    // Combine description and payee to search for keywords in both
+    const combined = `${desc} ${payee}`
 
-    if (d.includes('(CASH)')) {
-      return 'CASH'
-    }
+    // 1. Explicit payment types
+    if (combined.includes('GCASH')) return 'GCASH'
+    if (combined.includes('CASH')) return 'CASH'
+    if (combined.includes('CHECK')) return 'CHECK'
+    if (combined.includes('CARD') || combined.includes('CREDIT')) return 'CARD'
 
-    if (d.includes('(HMO)')) {
+    // 2. HMO / Insurance Detection
+    if (
+      combined.includes('HMO') ||
+      combined.includes('MAXICARE') ||
+      combined.includes('HEALTHCARE') ||
+      tx.billedEntity
+    ) {
       return 'HMO'
     }
 
-    if (d.includes('(CHARGE)')) {
-      return 'CHARGE'
-    }
+    // 3. Invoices / Charges
+    if (combined.includes('CHARGE') || ref.startsWith('INV-')) return 'CHARGE'
 
-    if (d.includes('CHECK')) {
-      return 'CHECK'
-    }
-
-    if (d.includes('CARD') || d.includes('CREDIT')) {
-      return 'CARD'
-    }
+    // 4. Fallbacks based on Reference Number Prefix
+    if (ref.startsWith('OR-')) return 'CASH' // Official Receipts usually mean cash
+    if (ref.startsWith('PY-')) return 'PAYOUT' // Payouts / Disbursements
+    if (ref.startsWith('ADJ-')) return 'ADJUSTMENT'
 
     return 'SYSTEM'
   }
-
   const formatDateTime = (isoString: string) => {
     const d = new Date(isoString)
     const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' }
@@ -212,7 +212,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
       'Date & Time': formatDateTime(tx.date),
       'Reference No.': tx.referenceNo,
       'Patient / Entity': tx.payeeName,
-      'Payment Method': getPaymentMethod(tx.description),
+      'Payment Method': getPaymentMethod(tx),
       Description: tx.description,
       'Total Amount (PHP)': tx.totalAmount,
       Status: tx.status
@@ -391,7 +391,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
 
                         <td className="p-4 text-gray-600 font-medium border-r border-gray-100">
                           <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-[10px] font-extrabold tracking-wider">
-                            {getPaymentMethod(tx.description)}
+                            {getPaymentMethod(tx)}
                           </span>
                         </td>
 
@@ -559,7 +559,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
             <div className="mb-8">
               <p className="text-sm font-bold mb-1">Payment / Description:</p>
               <p className="text-sm uppercase">
-                {getPaymentMethod(receiptToPrint.description)} - {receiptToPrint.description}
+                {getPaymentMethod(receiptToPrint)} - {receiptToPrint.description}
               </p>
             </div>
 
