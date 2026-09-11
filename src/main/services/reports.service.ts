@@ -103,9 +103,6 @@ export class ReportsService {
         };
     }
 
-    /**
-     * Income Statement: Revenue - Expenses (Strictly for the selected month)
-     */
     static async getIncomeStatement(year?: number, month?: number) {
         let startDate, endDate;
         if (year && month) {
@@ -113,7 +110,6 @@ export class ReportsService {
             endDate = new Date(year, month, 0, 23, 59, 59);
         }
 
-        // Get balances ONLY for the selected month
         const trialBalance = await this.getTrialBalance(startDate, endDate);
         const revenueLines: any[] = [];
         const expenseLines: any[] = [];
@@ -141,17 +137,13 @@ export class ReportsService {
         };
     }
 
-
     static async getBalanceSheet(year?: number, month?: number) {
         let endDate;
         if (year && month) {
             endDate = new Date(year, month, 0, 23, 59, 59);
         }
 
-        // Balance Sheet relies on ALL historical data up to the selected date
         const trialBalance = await this.getTrialBalance(undefined, endDate);
-
-        // Fetch Income Statement to calculate Net Income / Retained Earnings
         const incomeStatement = await this.getIncomeStatement(year, month);
 
         const assetLines: any[] = [];
@@ -180,13 +172,8 @@ export class ReportsService {
             }
         }
 
-        // 1. Current period's Net Income
         const netIncome = incomeStatement.netIncome;
-
-        // 2. All-time Retained Earnings
         const cumulativeNetIncome = cumulativeRevenue - cumulativeExpenses;
-
-        // 3. Calculate the grand total
         const totalLiabilitiesAndEquity = totalLiabilities + totalEquity + cumulativeNetIncome;
 
         return {
@@ -280,7 +267,6 @@ export class ReportsService {
     }
 
     static async getAgedReceivables() {
-        // 1. Fetch only ACTIVE (non-voided) A/R lines
         const lines = await prisma.journalLine.findMany({
             where: {
                 account_id: '1200',
@@ -293,7 +279,6 @@ export class ReportsService {
             orderBy: { entry: { date: 'asc' } }
         });
 
-        // 2. Group debits (invoices) and credits (payments) by payee
         const payeeMap: Record<string, {
             name: string,
             invoices: any[],
@@ -315,7 +300,7 @@ export class ReportsService {
                     description: line.entry.description || '',
                     date: line.entry.date,
                     originalAmount: Number(line.debit),
-                    amount: Number(line.debit), // Remaining balance to track
+                    amount: Number(line.debit),
                     paidAmount: 0,
                     dueDate: new Date(new Date(line.entry.date).getTime() + (30 * 24 * 60 * 60 * 1000))
                 });
@@ -337,13 +322,11 @@ export class ReportsService {
         for (const payeeId in payeeMap) {
             const p = payeeMap[payeeId];
 
-            // 🎯 PASS 1: Match payments that explicitly mention the invoice reference (e.g. "INV-004")
+            // PASS 1: Exact Explicit Match
             for (const pmt of p.payments) {
                 if (pmt.remainingAmount <= 0) continue;
-
                 for (const inv of p.invoices) {
                     if (inv.amount <= 0) continue;
-
                     const desc = (pmt.description || '').toUpperCase();
                     const ref = (pmt.referenceNo || '').toUpperCase();
                     const invNo = inv.invoiceNo.toUpperCase();
@@ -357,13 +340,11 @@ export class ReportsService {
                 }
             }
 
-            // 🎯 PASS 2: Match by exact payment amount (e.g. ₱350 payment directly clears ₱350 invoice)
+            // PASS 2: Exact Amount
             for (const pmt of p.payments) {
                 if (pmt.remainingAmount <= 0) continue;
-
                 for (const inv of p.invoices) {
                     if (inv.amount <= 0) continue;
-
                     if (Math.abs(inv.amount - pmt.remainingAmount) < 0.01) {
                         inv.paidAmount += pmt.remainingAmount;
                         inv.amount = 0;
@@ -373,23 +354,19 @@ export class ReportsService {
                 }
             }
 
-            // 🎯 PASS 3: FIFO for any remaining unallocated payments
+            // PASS 3: FIFO
             for (const pmt of p.payments) {
                 if (pmt.remainingAmount <= 0) continue;
-
                 for (const inv of p.invoices) {
                     if (inv.amount <= 0) continue;
-
                     const deduction = Math.min(pmt.remainingAmount, inv.amount);
                     inv.amount -= deduction;
                     inv.paidAmount += deduction;
                     pmt.remainingAmount -= deduction;
-
                     if (pmt.remainingAmount <= 0) break;
                 }
             }
 
-            // 3. Compute Aging Buckets and Final Statuses
             let current = 0; let days30 = 0; let days60 = 0; let days90 = 0;
             const invoiceDetails: any[] = [];
 
@@ -402,7 +379,6 @@ export class ReportsService {
                     status = 'Partially Paid';
                 }
 
-                // Add to aging categories only if there is an unpaid balance
                 if (unpaidAmount > 0) {
                     const invDate = new Date(inv.date);
                     invDate.setHours(0, 0, 0, 0);
@@ -419,7 +395,7 @@ export class ReportsService {
                     invoiceNo: inv.invoiceNo,
                     date: inv.date,
                     dueDate: inv.dueDate,
-                    amount: unpaidAmount, // Shows remaining balance (0 if Paid)
+                    amount: unpaidAmount,
                     originalAmount: inv.originalAmount,
                     status: status
                 });
@@ -456,57 +432,53 @@ export class ReportsService {
             orderBy: { date: 'asc' }
         });
 
-        // 2. Fetch ALL Payments/Collections (Credits to Account 1200, non-voided)
+        // 2. Fetch ALL Payments/Collections (Credits to Account 1200)
+        // Fixed: We no longer restrict by `payee_id: { not: null }` so we can catch unassigned payments!
         const arCreditLines = await prisma.journalLine.findMany({
             where: {
                 account_id: '1200',
                 credit: { gt: 0 },
                 entry: {
-                    payee_id: { not: null },
                     status: { not: 'VOIDED' }
                 }
             },
-            include: { entry: true }
+            include: { entry: true },
+            orderBy: { entry: { date: 'asc' } }
         });
 
-        // 3. Group payments by Payee with descriptions for smart matching
-        interface PaymentCredit {
-            id: string;
-            payeeId: string;
-            amount: number;
-            remaining: number;
-            description: string;
-            referenceNo: string;
-        }
+        // Format Payments
+        const allPayments = arCreditLines.map(line => ({
+            id: line.id,
+            payeeId: line.entry.payee_id?.toString() || 'NO_PAYEE',
+            amount: Number(line.credit),
+            remaining: Number(line.credit),
+            description: (line.entry.description || '').toUpperCase(),
+            referenceNo: (line.entry.reference_no || '').toUpperCase()
+        }));
 
-        const paymentsByPayee: Record<string, PaymentCredit[]> = {};
-        for (const line of arCreditLines) {
-            const pId = line.entry.payee_id!.toString();
-            if (!paymentsByPayee[pId]) paymentsByPayee[pId] = [];
-            paymentsByPayee[pId].push({
-                id: line.id,
-                payeeId: pId,
-                amount: Number(line.credit),
-                remaining: Number(line.credit),
-                description: (line.entry.description || '').toUpperCase(),
-                referenceNo: (line.entry.reference_no || '').toUpperCase()
-            });
-        }
-
-        // 4. Prepare invoice models
+        // 3. Prepare robust invoice models
         const invoiceObjects = invoices.map(inv => {
-            const totalAmount = inv.lines.reduce((sum, l) => sum + Number(l.debit), 0);
-            const arLine = inv.lines.find(l => l.account_id === '1200' && Number(l.debit) > 0);
-            const isAR = !!arLine;
-            const arAmount = isAR ? Number(arLine.debit) : 0;
-            const cashAmount = totalAmount - arAmount;
+            // Find specific Receivables debits
+            const arAmount = inv.lines
+                .filter(l => l.account_id === '1200' && Number(l.debit) > 0)
+                .reduce((sum, l) => sum + Number(l.debit), 0);
+
+            const isAR = arAmount > 0;
+
+            // Explicitly track actual Cash (1020) and GCash (1010) debited upon creation
+            const cashAmount = inv.lines
+                .filter(l => ['1010', '1020'].includes(l.account_id) && Number(l.debit) > 0)
+                .reduce((sum, l) => sum + Number(l.debit), 0);
+
+            // Total properly equals expected collection (Cash upfront + AR pending)
+            const totalAmount = arAmount + cashAmount;
 
             return {
                 id: inv.id,
                 date: inv.date,
-                referenceNo: inv.reference_no,
+                referenceNo: inv.reference_no || '',
                 description: inv.description,
-                payeeId: inv.payee_id?.toString(),
+                payeeId: inv.payee_id?.toString() || 'NO_PAYEE',
                 payeeName: inv.payee?.name || 'Walk-in / Cash',
                 payeeType: inv.payee?.type || 'PATIENT',
                 total: totalAmount,
@@ -517,58 +489,60 @@ export class ReportsService {
             };
         });
 
-        // 5. Smart match payments to invoices per payee
-        for (const pId in paymentsByPayee) {
-            const pPayments = paymentsByPayee[pId];
-            const pInvoices = invoiceObjects.filter(inv => inv.payeeId === pId && inv.isAR);
+        // 4. Smart match Engine
 
-            // 🎯 PASS 1: Check if payment description mentions the invoice (e.g. "[Invs: INV-004]")
-            for (const pmt of pPayments) {
-                if (pmt.remaining <= 0) continue;
-                for (const inv of pInvoices) {
-                    const remainingBalance = inv.arAmount - inv.allocatedPayments;
-                    if (remainingBalance <= 0) continue;
+        // 🎯 PASS 1: GLOBAL Explicit Reference Match (Catches missing Payees from user errors)
+        for (const pmt of allPayments) {
+            if (pmt.remaining <= 0) continue;
+            for (const inv of invoiceObjects) {
+                if (!inv.isAR) continue;
+                const remainingBalance = inv.arAmount - inv.allocatedPayments;
+                if (remainingBalance <= 0) continue;
 
-                    const invRef = inv.referenceNo.toUpperCase();
-                    if (pmt.description.includes(invRef) || pmt.referenceNo.includes(invRef)) {
-                        const deduction = Math.min(pmt.remaining, remainingBalance);
-                        inv.allocatedPayments += deduction;
-                        pmt.remaining -= deduction;
-                    }
-                }
-            }
+                const invRef = inv.referenceNo.toUpperCase();
+                if (!invRef) continue; // Skip if no reference exists
 
-            // 🎯 PASS 2: Match by exact remaining amount
-            for (const pmt of pPayments) {
-                if (pmt.remaining <= 0) continue;
-                for (const inv of pInvoices) {
-                    const remainingBalance = inv.arAmount - inv.allocatedPayments;
-                    if (remainingBalance <= 0) continue;
-
-                    if (Math.abs(remainingBalance - pmt.remaining) < 0.01) {
-                        inv.allocatedPayments += pmt.remaining;
-                        pmt.remaining = 0;
-                        break;
-                    }
-                }
-            }
-
-            // 🎯 PASS 3: FIFO for any remaining general unallocated credits
-            for (const pmt of pPayments) {
-                if (pmt.remaining <= 0) continue;
-                for (const inv of pInvoices) {
-                    const remainingBalance = inv.arAmount - inv.allocatedPayments;
-                    if (remainingBalance <= 0) continue;
-
+                if (pmt.description.includes(invRef) || pmt.referenceNo.includes(invRef)) {
                     const deduction = Math.min(pmt.remaining, remainingBalance);
                     inv.allocatedPayments += deduction;
                     pmt.remaining -= deduction;
-                    if (pmt.remaining <= 0) break;
                 }
             }
         }
 
-        // 6. Build final status and balances
+        // 🎯 PASS 2: Exact Amount Match (Grouped strictly by exact Payee)
+        for (const pmt of allPayments) {
+            if (pmt.remaining <= 0 || pmt.payeeId === 'NO_PAYEE') continue;
+            for (const inv of invoiceObjects) {
+                if (!inv.isAR || inv.payeeId !== pmt.payeeId) continue;
+                const remainingBalance = inv.arAmount - inv.allocatedPayments;
+                if (remainingBalance <= 0) continue;
+
+                if (Math.abs(remainingBalance - pmt.remaining) < 0.01) {
+                    inv.allocatedPayments += pmt.remaining;
+                    pmt.remaining = 0;
+                    break;
+                }
+            }
+        }
+
+        // 🎯 PASS 3: FIFO / Chronological (Grouped strictly by exact Payee)
+        for (const pmt of allPayments) {
+            if (pmt.remaining <= 0 || pmt.payeeId === 'NO_PAYEE') continue;
+            for (const inv of invoiceObjects) {
+                if (!inv.isAR || inv.payeeId !== pmt.payeeId) continue;
+                const remainingBalance = inv.arAmount - inv.allocatedPayments;
+                if (remainingBalance <= 0) continue;
+
+                const deduction = Math.min(pmt.remaining, remainingBalance);
+                inv.allocatedPayments += deduction;
+                pmt.remaining -= deduction;
+
+                if (pmt.remaining <= 0) break;
+            }
+        }
+
+        // 5. Build final status and balances
         const results = invoiceObjects.map(inv => {
             let paid = 0;
             let balance = 0;
@@ -581,10 +555,11 @@ export class ReportsService {
             } else {
                 paid = inv.cashAmount + inv.allocatedPayments;
                 balance = Math.max(0, inv.arAmount - inv.allocatedPayments);
+
                 if (balance <= 0.009) {
                     balance = 0;
                     status = 'Fully Paid';
-                } else if (paid > 0) {
+                } else if (inv.allocatedPayments > 0 || inv.cashAmount > 0) {
                     status = 'Partially Paid';
                 } else {
                     status = 'Unpaid';
@@ -608,9 +583,6 @@ export class ReportsService {
         return results.sort((a, b) => b.date.getTime() - a.date.getTime());
     }
 
-    /**
-     * Cash Flow Statement (Strictly for the selected month)
-     */
     static async getCashFlowStatement(year?: number, month?: number) {
         let startDate, endDate;
         if (year && month) {
