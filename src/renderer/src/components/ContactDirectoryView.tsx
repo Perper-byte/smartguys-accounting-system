@@ -11,7 +11,7 @@ export function ContactDirectoryView({
   const [contacts, setContacts] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
-  // 🔥 NEW EDIT CONTACT STATE
+  // 🔥 FULL EDIT CONTACT STATE
   const [editingContact, setEditingContact] = useState<any>(null)
   const [editForm, setEditForm] = useState({
     name: '',
@@ -465,17 +465,19 @@ export function ContactDirectoryView({
       </div>
 
       {/* TABLE */}
-      <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-sm overflow-hidden mb-4">
+      {/* 1. Removed 'overflow-hidden' from this div so the menu isn't clipped */}
+      <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-sm mb-4">
         <table className="w-full text-left text-sm">
           <thead className="bg-[#FBF8F8] border-b border-[#B0DCDA]">
             <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold">
-              <th className="p-4 pl-6">Contact</th>
+              {/* Added rounded corners manually to the headers */}
+              <th className="p-4 pl-6 rounded-tl-xl">Contact</th>
               <th className="p-4">Type</th>
               <th className="p-4">Phone / Email</th>
               <th className="p-4 text-center">Status</th>
               <th className="p-4 text-right text-orange-500">Payable</th>
               <th className="p-4 text-right text-[#1B9387]">Receivable</th>
-              <th className="p-4 w-12 text-center">⋮</th>
+              <th className="p-4 w-12 text-center rounded-tr-xl">⋮</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
@@ -492,243 +494,255 @@ export function ContactDirectoryView({
                 </td>
               </tr>
             ) : (
-              paginatedContacts.map((c) => (
-                <React.Fragment key={c.id}>
-                  <tr
-                    onClick={() => setExpandedContactId(expandedContactId === c.id ? null : c.id)}
-                    className={`cursor-pointer transition-colors group ${expandedContactId === c.id ? 'bg-[#E9FAFA]' : 'hover:bg-gray-50 even:bg-gray-50/50 odd:bg-white'}`}
-                  >
-                    <td className="p-4 flex items-center space-x-4 pl-6">
-                      <div className="h-8 w-8 rounded-full bg-white text-[#1B9387] flex items-center justify-center font-extrabold text-xs border border-[#B0DCDA] shadow-sm shrink-0">
-                        {getInitials(c.name)}
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="font-extrabold text-gray-800 text-base group-hover:text-[#1B9387] transition truncate max-w-[200px]">
-                          {c.name}
-                        </span>
-                        {c.type === 'PATIENT' && c.hmo_affiliation && (
-                          <span className="text-[10px] font-bold text-[#1B9387] mt-0.5 truncate max-w-[200px]">
-                            {c.hmo_affiliation} {c.hmo_card_no ? `• #${c.hmo_card_no}` : ''}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <span
-                        className={`px-2 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider border shadow-sm ${getTypeStyle(c.type)}`}
-                      >
-                        {c.type}
-                      </span>
-                    </td>
-                    <td className="p-4 text-xs text-gray-500 font-medium">
-                      {c.email ? (
-                        c.email
-                      ) : c.phone ? (
-                        c.phone
-                      ) : (
-                        <span className="italic text-gray-400">Missing info</span>
-                      )}
-                    </td>
-                    <td className="p-4 text-center">
-                      <span
-                        className={`px-2 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${c.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}
-                      >
-                        {c.status}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right font-mono font-bold text-orange-500">
-                      {formatCurrency(c.youOwe)}
-                    </td>
-                    <td className="p-4 text-right font-mono font-bold text-[#1B9387]">
-                      {formatCurrency(c.theyOwe)}
-                    </td>
+              // 2. Added 'index' to the map function so we know which row we are on
+              paginatedContacts.map((c, index) => {
+                // Check if this is the last or second-to-last row
+                const isNearBottom =
+                  index >= paginatedContacts.length - 2 && paginatedContacts.length > 2
 
-                    <td
-                      className={`p-4 text-center relative ${actionMenuId === c.id ? 'z-30' : 'z-10'}`}
+                return (
+                  <React.Fragment key={c.id}>
+                    <tr
+                      onClick={() => setExpandedContactId(expandedContactId === c.id ? null : c.id)}
+                      className={`cursor-pointer transition-colors group ${expandedContactId === c.id ? 'bg-[#E9FAFA]' : 'hover:bg-gray-50 even:bg-gray-50/50 odd:bg-white'}`}
                     >
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation()
-                          setActionMenuId(actionMenuId === c.id ? null : c.id)
-                        }}
-                        className="text-gray-400 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-200 transition text-lg font-bold"
-                      >
-                        ⋮
-                      </button>
-                      {actionMenuId === c.id && (
-                        <div className="absolute right-8 top-10 w-40 bg-white border border-[#B0DCDA] rounded-md shadow-xl overflow-hidden py-1 text-left z-20">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleViewDetails(c.id)
-                            }}
-                            className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
-                          >
-                            👁️ View Details
-                          </button>
-
-                          {/* 🔥 NEW EDIT BUTTON */}
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              openEditContact(c)
-                            }}
-                            className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
-                          >
-                            ✏️ Edit Contact
-                          </button>
-
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleTransactions(c)
-                            }}
-                            className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
-                          >
-                            🧾 Transactions
-                          </button>
-                          <div className="border-t border-gray-100 my-1"></div>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleArchive(c)
-                            }}
-                            className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50"
-                          >
-                            🗑️ Archive
-                          </button>
+                      <td className="p-4 flex items-center space-x-4 pl-6">
+                        <div className="h-8 w-8 rounded-full bg-white text-[#1B9387] flex items-center justify-center font-extrabold text-xs border border-[#B0DCDA] shadow-sm shrink-0">
+                          {getInitials(c.name)}
                         </div>
-                      )}
-                    </td>
-                  </tr>
+                        <div className="flex flex-col">
+                          <span className="font-extrabold text-gray-800 text-base group-hover:text-[#1B9387] transition truncate max-w-[200px]">
+                            {c.name}
+                          </span>
+                          {c.type === 'PATIENT' && c.hmo_affiliation && (
+                            <span className="text-[10px] font-bold text-[#1B9387] mt-0.5 truncate max-w-[200px]">
+                              {c.hmo_affiliation} {c.hmo_card_no ? `• #${c.hmo_card_no}` : ''}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span
+                          className={`px-2 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider border shadow-sm ${getTypeStyle(c.type)}`}
+                        >
+                          {c.type}
+                        </span>
+                      </td>
+                      <td className="p-4 text-xs text-gray-500 font-medium">
+                        {c.email ? (
+                          c.email
+                        ) : c.phone ? (
+                          c.phone
+                        ) : (
+                          <span className="italic text-gray-400">Missing info</span>
+                        )}
+                      </td>
+                      <td className="p-4 text-center">
+                        <span
+                          className={`px-2 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${c.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}
+                        >
+                          {c.status}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right font-mono font-bold text-orange-500">
+                        {formatCurrency(c.youOwe)}
+                      </td>
+                      <td className="p-4 text-right font-mono font-bold text-[#1B9387]">
+                        {formatCurrency(c.theyOwe)}
+                      </td>
 
-                  {/* Expanded Details Row */}
-                  {expandedContactId === c.id && (
-                    <tr className="bg-[#FBF8F8] border-b border-[#B0DCDA] shadow-inner">
-                      <td colSpan={7} className="p-6 border-l-4 border-l-[#1B9387]">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
-                          <div className="md:col-span-2">
-                            <p className="text-[10px] text-gray-500 font-extrabold uppercase tracking-wider mb-2 border-b border-gray-200 pb-1">
-                              Contact Information
-                            </p>
-                            <div className="space-y-1.5 mt-2">
-                              <p className="text-sm text-gray-800 font-medium">
-                                <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
-                                  Email:
-                                </span>{' '}
-                                {c.email || (
-                                  <span className="italic text-gray-400 font-normal">
-                                    Missing info
-                                  </span>
-                                )}
+                      <td
+                        className={`p-4 text-center relative ${actionMenuId === c.id ? 'z-30' : 'z-10'}`}
+                      >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setActionMenuId(actionMenuId === c.id ? null : c.id)
+                          }}
+                          className="text-gray-400 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-200 transition text-lg font-bold"
+                        >
+                          ⋮
+                        </button>
+
+                        {actionMenuId === c.id && (
+                          /* 3. SMART POSITIONING: If it's near the bottom, open UP (bottom-8). Otherwise open DOWN (top-10). Added z-[100] */
+                          <div
+                            className={`absolute right-8 w-40 bg-white border border-[#B0DCDA] rounded-md shadow-xl overflow-hidden py-1 text-left z-[100] ${isNearBottom ? 'bottom-8 mb-1' : 'top-10'}`}
+                          >
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleViewDetails(c.id)
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
+                            >
+                              👁️ View Details
+                            </button>
+
+                            {/* 🔥 FULL EDIT BUTTON */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                openEditContact(c)
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
+                            >
+                              ✏️ Edit Contact
+                            </button>
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleTransactions(c)
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
+                            >
+                              🧾 Transactions
+                            </button>
+                            <div className="border-t border-gray-100 my-1"></div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleArchive(c)
+                              }}
+                              className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50"
+                            >
+                              🗑️ Archive
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+
+                    {/* Expanded Details Row */}
+                    {expandedContactId === c.id && (
+                      <tr className="bg-[#FBF8F8] border-b border-[#B0DCDA] shadow-inner">
+                        <td colSpan={7} className="p-6 border-l-4 border-l-[#1B9387]">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
+                            <div className="md:col-span-2">
+                              <p className="text-[10px] text-gray-500 font-extrabold uppercase tracking-wider mb-2 border-b border-gray-200 pb-1">
+                                Contact Information
                               </p>
-                              <p className="text-sm text-gray-800 font-medium">
-                                <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
-                                  Phone:
-                                </span>{' '}
-                                {c.phone || (
-                                  <span className="italic text-gray-400 font-normal">
-                                    Missing info
+                              <div className="space-y-1.5 mt-2">
+                                <p className="text-sm text-gray-800 font-medium">
+                                  <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
+                                    Email:
+                                  </span>{' '}
+                                  {c.email || (
+                                    <span className="italic text-gray-400 font-normal">
+                                      Missing info
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-sm text-gray-800 font-medium">
+                                  <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
+                                    Phone:
+                                  </span>{' '}
+                                  {c.phone || (
+                                    <span className="italic text-gray-400 font-normal">
+                                      Missing info
+                                    </span>
+                                  )}
+                                </p>
+                                <p className="text-sm text-gray-800 font-medium">
+                                  <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
+                                    TIN:
+                                  </span>{' '}
+                                  <span className="font-mono font-bold">
+                                    {c.tin || (
+                                      <span className="italic text-gray-400 font-sans font-normal">
+                                        Not provided
+                                      </span>
+                                    )}
                                   </span>
-                                )}
-                              </p>
-                              <p className="text-sm text-gray-800 font-medium">
-                                <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
-                                  TIN:
-                                </span>{' '}
-                                <span className="font-mono font-bold">
-                                  {c.tin || (
-                                    <span className="italic text-gray-400 font-sans font-normal">
+                                </p>
+                                <p className="text-sm text-gray-800 font-medium">
+                                  <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
+                                    Address:
+                                  </span>{' '}
+                                  {c.address || (
+                                    <span className="italic text-gray-400 font-normal">
                                       Not provided
                                     </span>
                                   )}
-                                </span>
-                              </p>
-                              <p className="text-sm text-gray-800 font-medium">
-                                <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
-                                  Address:
-                                </span>{' '}
-                                {c.address || (
-                                  <span className="italic text-gray-400 font-normal">
-                                    Not provided
-                                  </span>
-                                )}
-                              </p>
-                            </div>
-
-                            {c.type === 'PATIENT' && (
-                              <div className="mt-4 pt-4 border-t border-gray-200">
-                                <p className="text-[10px] text-[#1B9387] font-extrabold uppercase tracking-wider mb-2">
-                                  HMO / Corporate Guarantor
                                 </p>
-                                {c.hmo_affiliation ? (
-                                  <div className="space-y-1.5">
-                                    <p className="text-sm text-gray-800 font-medium">
-                                      <span className="text-gray-400 mr-2 inline-block w-24 font-bold">
-                                        Provider:
-                                      </span>{' '}
-                                      <span className="font-bold">{c.hmo_affiliation}</span>
-                                    </p>
-                                    <p className="text-sm text-gray-800 font-medium">
-                                      <span className="text-gray-400 mr-2 inline-block w-24 font-bold">
-                                        Card/Policy:
-                                      </span>{' '}
-                                      <span className="font-mono">{c.hmo_card_no || 'N/A'}</span>
-                                    </p>
-                                    {c.hmo_expiry_date && (
+                              </div>
+
+                              {c.type === 'PATIENT' && (
+                                <div className="mt-4 pt-4 border-t border-gray-200">
+                                  <p className="text-[10px] text-[#1B9387] font-extrabold uppercase tracking-wider mb-2">
+                                    HMO / Corporate Guarantor
+                                  </p>
+                                  {c.hmo_affiliation ? (
+                                    <div className="space-y-1.5">
                                       <p className="text-sm text-gray-800 font-medium">
                                         <span className="text-gray-400 mr-2 inline-block w-24 font-bold">
-                                          Expiry Date:
-                                        </span>
-                                        <span
-                                          className={`font-mono ${new Date(c.hmo_expiry_date) < new Date() ? 'text-red-500 font-bold' : ''}`}
-                                        >
-                                          {new Date(c.hmo_expiry_date).toLocaleDateString('en-US', {
-                                            month: 'long',
-                                            day: 'numeric',
-                                            year: 'numeric'
-                                          })}
-                                          {new Date(c.hmo_expiry_date) < new Date() && ' (EXPIRED)'}
-                                        </span>
+                                          Provider:
+                                        </span>{' '}
+                                        <span className="font-bold">{c.hmo_affiliation}</span>
                                       </p>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <p className="text-sm text-gray-400 italic">
-                                    No HMO / Corporate Guarantor assigned.
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
+                                      <p className="text-sm text-gray-800 font-medium">
+                                        <span className="text-gray-400 mr-2 inline-block w-24 font-bold">
+                                          Card/Policy:
+                                        </span>{' '}
+                                        <span className="font-mono">{c.hmo_card_no || 'N/A'}</span>
+                                      </p>
+                                      {c.hmo_expiry_date && (
+                                        <p className="text-sm text-gray-800 font-medium">
+                                          <span className="text-gray-400 mr-2 inline-block w-24 font-bold">
+                                            Expiry Date:
+                                          </span>
+                                          <span
+                                            className={`font-mono ${new Date(c.hmo_expiry_date) < new Date() ? 'text-red-500 font-bold' : ''}`}
+                                          >
+                                            {new Date(c.hmo_expiry_date).toLocaleDateString(
+                                              'en-US',
+                                              { month: 'long', day: 'numeric', year: 'numeric' }
+                                            )}
+                                            {new Date(c.hmo_expiry_date) < new Date() &&
+                                              ' (EXPIRED)'}
+                                          </span>
+                                        </p>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <p className="text-sm text-gray-400 italic">
+                                      No HMO / Corporate Guarantor assigned.
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
 
-                          <div className="bg-white p-4 rounded-lg border border-orange-200 shadow-sm flex flex-col justify-center text-center h-full">
-                            <p className="text-[10px] text-orange-500 font-extrabold uppercase tracking-wider mb-1">
-                              Payable (Clinic Owes)
-                            </p>
-                            <p className="text-2xl font-mono font-black text-orange-500 mt-1">
-                              {formatCurrency(c.youOwe)}
-                            </p>
+                            <div className="bg-white p-4 rounded-lg border border-orange-200 shadow-sm flex flex-col justify-center text-center h-full">
+                              <p className="text-[10px] text-orange-500 font-extrabold uppercase tracking-wider mb-1">
+                                Payable (Clinic Owes)
+                              </p>
+                              <p className="text-2xl font-mono font-black text-orange-500 mt-1">
+                                {formatCurrency(c.youOwe)}
+                              </p>
+                            </div>
+                            <div className="bg-white p-4 rounded-lg border border-[#B0DCDA] shadow-sm flex flex-col justify-center text-center h-full">
+                              <p className="text-[10px] text-[#1B9387] font-extrabold uppercase tracking-wider mb-1">
+                                Receivable (They Owe)
+                              </p>
+                              <p className="text-2xl font-mono font-black text-[#1B9387] mt-1">
+                                {formatCurrency(c.theyOwe)}
+                              </p>
+                            </div>
                           </div>
-                          <div className="bg-white p-4 rounded-lg border border-[#B0DCDA] shadow-sm flex flex-col justify-center text-center h-full">
-                            <p className="text-[10px] text-[#1B9387] font-extrabold uppercase tracking-wider mb-1">
-                              Receivable (They Owe)
-                            </p>
-                            <p className="text-2xl font-mono font-black text-[#1B9387] mt-1">
-                              {formatCurrency(c.theyOwe)}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                )
+              })
             )}
           </tbody>
         </table>
       </div>
 
+      {/* Pagination Footer */}
       {!loading && filteredContacts.length > 0 && (
         <div className="flex flex-col sm:flex-row justify-between items-center text-sm text-gray-500 pt-2">
           <div className="mb-4 sm:mb-0">
