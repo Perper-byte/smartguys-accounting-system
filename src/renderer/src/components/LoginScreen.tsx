@@ -122,7 +122,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
           className="absolute top-6 right-8 text-gray-400 hover:text-[#1B9387] transition flex items-center space-x-2 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200 shadow-sm"
           title="Configure LAN Settings"
         >
-          <span className="text-xs font-extrabold tracking-wider">⚙️ SERVER: {serverIp}</span>
+          <span className="text-xs font-extrabold tracking-wider">⚙️ NETWORK SETTINGS </span>
         </button>
 
         <div className="w-full max-w-sm mx-auto mt-8">
