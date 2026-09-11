@@ -543,7 +543,11 @@ export const LedgerService = {
 
     async getAllJournalEntries() {
         const entries = await prisma.journalEntry.findMany({
-            orderBy: { date: 'desc' },
+            // 🔥 FIXED: Sorts by the transaction date first, then by the exact time it was processed
+            orderBy: [
+                { date: 'desc' },
+                { created_at: 'desc' }
+            ],
             include: {
                 payee: true,
                 lines: { include: { account: true } },
@@ -559,7 +563,17 @@ export const LedgerService = {
                 credit: Number(line.credit)
             }))
         }));
-    },
+    }
+
+        return entries.map(entry => ({
+        ...entry,
+        lines: entry.lines.map(line => ({
+            ...line,
+            debit: Number(line.debit),
+            credit: Number(line.credit)
+        }))
+    }));
+},
 
     async requestVoid(entryId: string, reason: string) {
         return await prisma.journalEntry.update({
@@ -568,245 +582,245 @@ export const LedgerService = {
         });
     },
 
-    async getPendingVoids() {
-        const entries = await prisma.journalEntry.findMany({
-            where: { status: 'PENDING_VOID' },
-            include: { user: true, payee: true, lines: { include: { account: true } } },
-            orderBy: { date: 'desc' }
-        });
+        async getPendingVoids() {
+    const entries = await prisma.journalEntry.findMany({
+        where: { status: 'PENDING_VOID' },
+        include: { user: true, payee: true, lines: { include: { account: true } } },
+        orderBy: { date: 'desc' }
+    });
 
-        // Decimal Fix for Electron IPC
-        return entries.map(entry => ({
-            ...entry,
-            lines: entry.lines.map(line => ({
-                ...line,
-                debit: Number(line.debit),
-                credit: Number(line.credit)
-            }))
-        }));
-    },
+    // Decimal Fix for Electron IPC
+    return entries.map(entry => ({
+        ...entry,
+        lines: entry.lines.map(line => ({
+            ...line,
+            debit: Number(line.debit),
+            credit: Number(line.credit)
+        }))
+    }));
+},
 
     async rejectVoid(entryId: string) {
-        return await prisma.journalEntry.update({
-            where: { id: entryId },
-            data: { status: 'ACTIVE', void_reason: null }
-        });
-    },
+    return await prisma.journalEntry.update({
+        where: { id: entryId },
+        data: { status: 'ACTIVE', void_reason: null }
+    });
+},
 
     // 🔥 UPGRADED: Added Month-End Lock Security Check
-    async approveVoid(entryId: string, managerId: string, overridePin?: string) {
-        // 🔥 Includes reconciliation to check if it's matched to a bank feed
-        const original = await prisma.journalEntry.findUnique({ where: { id: entryId }, include: { lines: true, reconciliation: true } });
-        if (!original) throw new Error("Entry not found.");
+    async approveVoid(entryId: string, managerId: string, overridePin ?: string) {
+    // 🔥 Includes reconciliation to check if it's matched to a bank feed
+    const original = await prisma.journalEntry.findUnique({ where: { id: entryId }, include: { lines: true, reconciliation: true } });
+    if (!original) throw new Error("Entry not found.");
 
-        // 🔥 SAFEGUARD 1: RECONCILIATION LOCK
-        if (original.reconciliation) {
-            throw new Error("RECONCILIATION LOCK: This transaction is already matched to a Bank Statement. You must unmatch it in the Bank Reconciliation screen before you can void it.");
-        }
+    // 🔥 SAFEGUARD 1: RECONCILIATION LOCK
+    if (original.reconciliation) {
+        throw new Error("RECONCILIATION LOCK: This transaction is already matched to a Bank Statement. You must unmatch it in the Bank Reconciliation screen before you can void it.");
+    }
 
-        // 🔥 SAFEGUARD 2: PERIOD LOCK
-        const setting = await prisma.systemSetting.findFirst();
-        if (setting?.lock_date && original.date <= setting.lock_date) {
-            if (!overridePin || overridePin !== setting.override_pin) {
-                throw new Error(`PERIOD LOCKED: Transaction is from a locked period. Invalid or missing Override PIN.`);
-            }
-        }
-
-        await prisma.journalEntry.create({
-            data: {
-                date: new Date(),
-                reference_no: `RVS-${original.reference_no}`,
-                description: `VOID REVERSAL: ${original.reference_no} - Reason: ${original.void_reason}`,
-                vat_type: original.vat_type,
-                user_id: managerId,
-                payee_id: original.payee_id,
-                status: 'ACTIVE',
-                lines: {
-                    create: original.lines.map(line => ({
-                        account_id: line.account_id,
-                        debit: line.credit,
-                        credit: line.debit
-                    }))
-                }
-            }
-        });
-
-        await prisma.journalEntry.update({ where: { id: entryId }, data: { status: 'VOIDED' } });
-        return { success: true };
-    },
-
-    async getServiceItems() {
-        const items = await prisma.serviceItem.findMany({
-            where: { is_active: true },
-            orderBy: [{ category: 'asc' }, { name: 'asc' }]
-        });
-        return items.map(item => ({ ...item, price: Number(item.price) }));
-    },
-
-    async getAllServiceItems() {
-        const items = await prisma.serviceItem.findMany({
-            orderBy: [{ category: 'asc' }, { name: 'asc' }]
-        });
-        return items.map(item => ({ ...item, price: Number(item.price) }));
-    },
-
-    async createServiceItem(data: { category: string, name: string, price: number }) {
-        try {
-            const item = await prisma.serviceItem.create({
-                data: {
-                    category: data.category,
-                    name: data.name,
-                    price: data.price,
-                    is_active: true
-                }
-            });
-            // Cast the Decimal price to a normal Number!
-            return { success: true, data: { ...item, price: Number(item.price) } };
-        } catch (error: any) {
-            return { success: false, error: error.message };
-        }
-    },
-
-    async updateServiceItem(id: number, data: { price?: number, is_active?: boolean, name?: string }) {
-        try {
-            const item = await prisma.serviceItem.update({
-                where: { id },
-                data: data
-            });
-            // Cast the Decimal price to a normal Number!
-            return { success: true, data: { ...item, price: Number(item.price) } };
-        } catch (error: any) {
-            return { success: false, error: error.message };
-        }
-    },
-
-    async getAccountTypes() {
-        return await prisma.accountType.findMany({ orderBy: { name: 'asc' } });
-    },
-
-    async importPayees(payees: Array<{ name: string, type: string, tin?: string, email?: string, phone?: string, address?: string }>) {
-        try {
-            let count = 0;
-            for (const p of payees) {
-                // Prevent duplicate names
-                const exists = await prisma.payee.findFirst({ where: { name: p.name } });
-                if (!exists) {
-                    await prisma.payee.create({
-                        data: {
-                            name: p.name,
-                            type: p.type || 'PATIENT',
-                            tin: p.tin || null,
-                            email: p.email || null,
-                            phone_number: p.phone || null,
-                            address: p.address || null
-                        }
-                    });
-                    count++;
-                }
-            }
-            return { success: true, count };
-        } catch (error: any) {
-            return { success: false, error: error.message };
-        }
-    },
-
-    async createAccount(data: { code: string, name: string, type_id: string, tax_category?: string }) {
-        try {
-            // Check if account code already exists to prevent crashes
-            const existing = await prisma.account.findUnique({ where: { code: data.code } });
-            if (existing) throw new Error(`Account code ${data.code} already exists.`);
-
-            const account = await prisma.account.create({
-                data: {
-                    code: data.code,
-                    name: data.name,
-                    type_id: data.type_id,
-                    tax_category: data.tax_category || null
-                }
-            });
-            return { success: true, data: account };
-        } catch (error: any) {
-            return { success: false, error: error.message };
-        }
-    },
-
-    async updateReferenceNumber(entryId: string, newReferenceNo: string) {
-        try {
-            await prisma.journalEntry.update({
-                where: { id: entryId },
-                data: { reference_no: newReferenceNo }
-            });
-            return { success: true };
-        } catch (error: any) {
-            console.error("Update Ref Error:", error);
-            return { success: false, error: error.message };
-        }
-    },
-
-    async getUserSalesHistory(userId: string) {
-        try {
-            console.log('[Transaction History] Loading for user:', userId);
-
-            if (!userId) {
-                console.warn('[Transaction History] Missing userId prop from frontend.');
-                return [];
-            }
-
-            const entries = await prisma.journalEntry.findMany({
-                where: {
-                    // Filters currently commented out based on original file state
-                },
-                orderBy: {
-                    date: 'desc'
-                },
-                take: 100,
-                include: {
-                    payee: true,
-                    lines: {
-                        include: {
-                            account: true
-                        }
-                    }
-                }
-            });
-
-            console.log('[Transaction History] Found:', entries.length);
-
-            return entries.map((entry) => {
-                const totalAmount = entry.lines.reduce(
-                    (sum, line) => sum + Number(line.debit),
-                    0
-                );
-
-                let patientName = entry.payee?.name || 'Walk-in / Cash';
-                const patientMatch = entry.description.match(/Patient:\s*(.*?)\s*\|/i);
-
-                if (patientMatch && patientMatch[1]) {
-                    patientName = patientMatch[1].trim();
-                }
-
-                return {
-                    id: entry.id,
-                    date: entry.date,
-                    referenceNo: entry.reference_no,
-                    description: entry.description,
-                    patientName,
-                    payeeName: patientName,
-                    billedEntity: entry.payee?.name || null,
-                    totalAmount,
-                    status: entry.status,
-                    lines: entry.lines.map((line) => ({
-                        accountCode: line.account.code,
-                        accountName: line.account.name,
-                        debit: Number(line.debit),
-                        credit: Number(line.credit)
-                    }))
-                };
-            });
-
-        } catch (error) {
-            console.error('[Transaction History] Failed:', error);
-            throw error;
+    // 🔥 SAFEGUARD 2: PERIOD LOCK
+    const setting = await prisma.systemSetting.findFirst();
+    if (setting?.lock_date && original.date <= setting.lock_date) {
+        if (!overridePin || overridePin !== setting.override_pin) {
+            throw new Error(`PERIOD LOCKED: Transaction is from a locked period. Invalid or missing Override PIN.`);
         }
     }
+
+    await prisma.journalEntry.create({
+        data: {
+            date: new Date(),
+            reference_no: `RVS-${original.reference_no}`,
+            description: `VOID REVERSAL: ${original.reference_no} - Reason: ${original.void_reason}`,
+            vat_type: original.vat_type,
+            user_id: managerId,
+            payee_id: original.payee_id,
+            status: 'ACTIVE',
+            lines: {
+                create: original.lines.map(line => ({
+                    account_id: line.account_id,
+                    debit: line.credit,
+                    credit: line.debit
+                }))
+            }
+        }
+    });
+
+    await prisma.journalEntry.update({ where: { id: entryId }, data: { status: 'VOIDED' } });
+    return { success: true };
+},
+
+    async getServiceItems() {
+    const items = await prisma.serviceItem.findMany({
+        where: { is_active: true },
+        orderBy: [{ category: 'asc' }, { name: 'asc' }]
+    });
+    return items.map(item => ({ ...item, price: Number(item.price) }));
+},
+
+    async getAllServiceItems() {
+    const items = await prisma.serviceItem.findMany({
+        orderBy: [{ category: 'asc' }, { name: 'asc' }]
+    });
+    return items.map(item => ({ ...item, price: Number(item.price) }));
+},
+
+    async createServiceItem(data: { category: string, name: string, price: number }) {
+    try {
+        const item = await prisma.serviceItem.create({
+            data: {
+                category: data.category,
+                name: data.name,
+                price: data.price,
+                is_active: true
+            }
+        });
+        // Cast the Decimal price to a normal Number!
+        return { success: true, data: { ...item, price: Number(item.price) } };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+},
+
+    async updateServiceItem(id: number, data: { price?: number, is_active?: boolean, name?: string }) {
+    try {
+        const item = await prisma.serviceItem.update({
+            where: { id },
+            data: data
+        });
+        // Cast the Decimal price to a normal Number!
+        return { success: true, data: { ...item, price: Number(item.price) } };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+},
+
+    async getAccountTypes() {
+    return await prisma.accountType.findMany({ orderBy: { name: 'asc' } });
+},
+
+    async importPayees(payees: Array<{ name: string, type: string, tin?: string, email?: string, phone?: string, address?: string }>) {
+    try {
+        let count = 0;
+        for (const p of payees) {
+            // Prevent duplicate names
+            const exists = await prisma.payee.findFirst({ where: { name: p.name } });
+            if (!exists) {
+                await prisma.payee.create({
+                    data: {
+                        name: p.name,
+                        type: p.type || 'PATIENT',
+                        tin: p.tin || null,
+                        email: p.email || null,
+                        phone_number: p.phone || null,
+                        address: p.address || null
+                    }
+                });
+                count++;
+            }
+        }
+        return { success: true, count };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+},
+
+    async createAccount(data: { code: string, name: string, type_id: string, tax_category?: string }) {
+    try {
+        // Check if account code already exists to prevent crashes
+        const existing = await prisma.account.findUnique({ where: { code: data.code } });
+        if (existing) throw new Error(`Account code ${data.code} already exists.`);
+
+        const account = await prisma.account.create({
+            data: {
+                code: data.code,
+                name: data.name,
+                type_id: data.type_id,
+                tax_category: data.tax_category || null
+            }
+        });
+        return { success: true, data: account };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+},
+
+    async updateReferenceNumber(entryId: string, newReferenceNo: string) {
+    try {
+        await prisma.journalEntry.update({
+            where: { id: entryId },
+            data: { reference_no: newReferenceNo }
+        });
+        return { success: true };
+    } catch (error: any) {
+        console.error("Update Ref Error:", error);
+        return { success: false, error: error.message };
+    }
+},
+
+    async getUserSalesHistory(userId: string) {
+    try {
+        console.log('[Transaction History] Loading for user:', userId);
+
+        if (!userId) {
+            console.warn('[Transaction History] Missing userId prop from frontend.');
+            return [];
+        }
+
+        const entries = await prisma.journalEntry.findMany({
+            where: {
+                // Filters currently commented out based on original file state
+            },
+            orderBy: {
+                date: 'desc'
+            },
+            take: 100,
+            include: {
+                payee: true,
+                lines: {
+                    include: {
+                        account: true
+                    }
+                }
+            }
+        });
+
+        console.log('[Transaction History] Found:', entries.length);
+
+        return entries.map((entry) => {
+            const totalAmount = entry.lines.reduce(
+                (sum, line) => sum + Number(line.debit),
+                0
+            );
+
+            let patientName = entry.payee?.name || 'Walk-in / Cash';
+            const patientMatch = entry.description.match(/Patient:\s*(.*?)\s*\|/i);
+
+            if (patientMatch && patientMatch[1]) {
+                patientName = patientMatch[1].trim();
+            }
+
+            return {
+                id: entry.id,
+                date: entry.date,
+                referenceNo: entry.reference_no,
+                description: entry.description,
+                patientName,
+                payeeName: patientName,
+                billedEntity: entry.payee?.name || null,
+                totalAmount,
+                status: entry.status,
+                lines: entry.lines.map((line) => ({
+                    accountCode: line.account.code,
+                    accountName: line.account.name,
+                    debit: Number(line.debit),
+                    credit: Number(line.credit)
+                }))
+            };
+        });
+
+    } catch (error) {
+        console.error('[Transaction History] Failed:', error);
+        throw error;
+    }
+}
 };
