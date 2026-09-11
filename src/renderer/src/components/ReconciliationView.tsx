@@ -54,6 +54,7 @@ export function ReconciliationView({ userId }: { userId: string }) {
 
   // Modals
   const [showSetup, setShowSetup] = useState(false)
+  const [showAddManual, setShowAddManual] = useState(false)
   const [setup, setSetup] = useState({ name: '', accountNumber: '', ledgerAccount: '' })
   const [newTransaction, setNewTransaction] = useState({
     date: dateValue(today),
@@ -205,6 +206,7 @@ export function ReconciliationView({ userId }: { userId: string }) {
 
     setNewTransaction({ date: dateValue(today), description: '', referenceNo: '', amount: '' })
     setStatus({ type: 'success', message: 'Bank transaction added to the queue.' })
+    setShowAddManual(false)
     await loadData()
   }
 
@@ -491,10 +493,10 @@ export function ReconciliationView({ userId }: { userId: string }) {
   }
 
   return (
-    <div className="w-full h-full flex items-center justify-center p-4 lg:p-8 bg-gray-50/30">
-      <div className="w-full max-w-7xl h-full flex flex-col font-sans text-gray-800 bg-white shadow-sm border border-transparent rounded-xl p-6">
+    <div className="w-full h-full flex items-center justify-center p-3 lg:p-6 bg-gray-50/50">
+      <div className="w-full max-w-7xl h-full flex flex-col font-sans text-gray-800 bg-white shadow-sm border border-gray-200 rounded-xl p-5">
         {/* HEADER */}
-        <div className="flex justify-between items-end mb-6 border-b border-[#B0DCDA] pb-4 shrink-0">
+        <div className="flex justify-between items-end mb-4 border-b border-[#B0DCDA] pb-3 shrink-0">
           <div>
             <h2 className="text-2xl font-extrabold text-gray-800 tracking-wide">
               Bank Reconciliation
@@ -505,20 +507,28 @@ export function ReconciliationView({ userId }: { userId: string }) {
           </div>
 
           {accounts.length > 0 && (
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               <select
                 title="Format parsing for CSV imports"
                 value={dateFormat}
                 onChange={(event) => setDateFormat(event.target.value as DateFormat)}
-                className="px-3 py-2.5 bg-white hover:bg-[#FBF8F8] border border-[#B0DCDA] rounded-md text-[11px] font-extrabold text-[#1B9387] cursor-pointer transition shadow-sm uppercase tracking-wider outline-none"
+                className="px-3 py-2 bg-white hover:bg-[#FBF8F8] border border-[#B0DCDA] rounded-md text-[11px] font-extrabold text-[#1B9387] cursor-pointer transition shadow-sm uppercase tracking-wider outline-none"
               >
-                <option value="AUTO">CSV Date: Auto</option>
-                <option value="MDY">CSV Date: MM/DD/YY</option>
-                <option value="DMY">CSV Date: DD/MM/YY</option>
+                <option value="AUTO">CSV: Auto</option>
+                <option value="MDY">CSV: MM/DD/YY</option>
+                <option value="DMY">CSV: DD/MM/YY</option>
               </select>
 
-              <label className="px-5 py-2.5 bg-white hover:bg-[#FBF8F8] border border-[#B0DCDA] rounded-md text-sm font-bold text-[#1B9387] cursor-pointer transition shadow-sm uppercase tracking-wider flex items-center gap-2">
-                <span>📥</span> Import Statement
+              <label className="px-4 py-2 bg-white hover:bg-[#FBF8F8] border border-[#B0DCDA] rounded-md text-xs font-bold text-[#1B9387] cursor-pointer transition shadow-sm uppercase tracking-wider flex items-center gap-1.5">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+                  />
+                </svg>
+                Import
                 <input
                   type="file"
                   accept=".csv,.xls,.xlsx"
@@ -529,16 +539,32 @@ export function ReconciliationView({ userId }: { userId: string }) {
 
               <button
                 onClick={handleExport}
-                className="px-5 py-2.5 bg-white hover:bg-[#FBF8F8] border border-[#B0DCDA] rounded-md text-sm font-bold text-[#1B9387] cursor-pointer transition shadow-sm uppercase tracking-wider flex items-center gap-2"
+                className="px-4 py-2 bg-white hover:bg-[#FBF8F8] border border-[#B0DCDA] rounded-md text-xs font-bold text-[#1B9387] cursor-pointer transition shadow-sm uppercase tracking-wider flex items-center gap-1.5"
               >
-                <span>📤</span> Export
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
+                  />
+                </svg>
+                Export
               </button>
 
               <button
                 onClick={() => setShowSetup(true)}
-                className="px-5 py-2.5 bg-[#1B9387] hover:bg-[#28958B] border border-transparent rounded-md text-sm font-bold text-white transition cursor-pointer shadow-sm uppercase tracking-wider"
+                className="px-4 py-2 bg-[#1B9387] hover:bg-[#28958B] border border-transparent rounded-md text-xs font-bold text-white transition cursor-pointer shadow-sm uppercase tracking-wider flex items-center gap-1.5"
               >
-                + Bank Account
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                  />
+                </svg>
+                Account
               </button>
             </div>
           )}
@@ -546,76 +572,142 @@ export function ReconciliationView({ userId }: { userId: string }) {
 
         {status && (
           <div
-            className={`mb-5 p-4 rounded-md text-sm font-bold shadow-sm border shrink-0 flex justify-between items-center animate-in fade-in ${status.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]' : 'bg-red-50 text-red-500 border-red-200'}`}
+            className={`mb-4 p-3 rounded-md text-sm font-bold shadow-sm border shrink-0 flex justify-between items-center animate-in fade-in ${status.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]' : 'bg-red-50 text-red-500 border-red-200'}`}
           >
-            <span>
-              {status.type === 'success' ? '✅ ' : '⚠️ '}
+            <span className="flex items-center gap-2">
+              {status.type === 'success' ? (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M5 13l4 4L19 7"
+                  />
+                </svg>
+              ) : (
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                  />
+                </svg>
+              )}
               {status.message}
             </span>
             <button
               onClick={() => setStatus(null)}
-              className="opacity-50 hover:opacity-100 cursor-pointer"
+              className="opacity-50 hover:opacity-100 cursor-pointer p-1"
             >
-              ✕
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
+              </svg>
             </button>
           </div>
         )}
 
         {!accounts.length ? (
-          <div className="flex-1 bg-[#FBF8F8] border border-[#B0DCDA] rounded-xl flex flex-col items-center justify-center text-center p-12">
-            <span className="text-4xl mb-4">🏦</span>
-            <p className="text-gray-800 font-extrabold text-xl tracking-wide">
+          <div className="flex-1 bg-[#FBF8F8] border border-[#B0DCDA] rounded-xl flex flex-col items-center justify-center text-center p-12 shadow-sm">
+            <div className="w-20 h-20 bg-white rounded-full flex items-center justify-center mb-6 border-4 border-[#E9FAFA] shadow-sm text-[#1B9387]">
+              <svg className="w-10 h-10" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"
+                />
+              </svg>
+            </div>
+            <p className="text-gray-800 font-extrabold text-2xl tracking-wide">
               Set up a bank account to begin
             </p>
-            <p className="text-gray-500 text-sm mt-2 font-medium">
-              Link it to the corresponding cash or bank ledger account.
+            <p className="text-gray-500 text-base mt-2 font-medium max-w-md">
+              Link it to the corresponding cash or bank ledger account to start reconciling.
             </p>
             <button
               onClick={() => setShowSetup(true)}
-              className="mt-6 px-6 py-3 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-md text-sm font-bold uppercase tracking-wider transition cursor-pointer shadow-md"
+              className="mt-8 px-8 py-3.5 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-md text-sm font-bold uppercase tracking-wider transition cursor-pointer shadow-md flex items-center gap-2"
             >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
+                />
+              </svg>
               Set Up Account
             </button>
           </div>
         ) : (
           <div className="flex flex-col flex-1 min-h-0 animate-in fade-in duration-300">
             {/* FILTERS */}
-            <div className="flex gap-3 mb-6 shrink-0 bg-[#FBF8F8] p-3 rounded-lg border border-[#B0DCDA]">
-              <select
-                value={accountId}
-                onChange={(event) => setAccountId(event.target.value)}
-                className="bg-white border border-[#B0DCDA] rounded-md px-3 py-2.5 text-sm text-gray-800 font-bold min-w-[250px] outline-none focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] transition shadow-sm"
-              >
-                <option value="">Select bank account</option>
-                {accounts.map((account) => (
-                  <option key={account.id} value={account.id}>
-                    {account.name} ({account.ledger_account})
-                  </option>
-                ))}
-              </select>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(event) => setStartDate(event.target.value)}
-                className="bg-white border border-[#B0DCDA] rounded-md px-3 py-2.5 text-sm text-gray-800 font-medium outline-none focus:border-[#1B9387] transition shadow-sm"
-              />
-              <input
-                type="date"
-                value={endDate}
-                onChange={(event) => setEndDate(event.target.value)}
-                className="bg-white border border-[#B0DCDA] rounded-md px-3 py-2.5 text-sm text-gray-800 font-medium outline-none focus:border-[#1B9387] transition shadow-sm"
-              />
-              <button
-                onClick={loadData}
-                disabled={loading}
-                className="px-5 py-2.5 bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] rounded-md text-sm font-bold transition disabled:opacity-50 cursor-pointer shadow-sm uppercase tracking-wider"
-              >
-                {loading ? '↻ Loading...' : 'Refresh'}
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-5 shrink-0 bg-[#FBF8F8] p-3 rounded-lg border border-[#B0DCDA]">
+              <div className="flex items-center gap-3">
+                <select
+                  value={accountId}
+                  onChange={(event) => setAccountId(event.target.value)}
+                  className="bg-white border border-[#B0DCDA] rounded-md px-3 py-2 text-sm text-gray-800 font-bold min-w-[220px] outline-none focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] transition shadow-sm"
+                >
+                  <option value="">Select bank account</option>
+                  {accounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.name} ({account.ledger_account})
+                    </option>
+                  ))}
+                </select>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(event) => setStartDate(event.target.value)}
+                    className="bg-white border border-[#B0DCDA] rounded-md px-3 py-2 text-sm text-gray-800 font-medium outline-none focus:border-[#1B9387] transition shadow-sm"
+                  />
+                  <span className="text-gray-400 font-bold text-sm">to</span>
+                  <input
+                    type="date"
+                    value={endDate}
+                    onChange={(event) => setEndDate(event.target.value)}
+                    className="bg-white border border-[#B0DCDA] rounded-md px-3 py-2 text-sm text-gray-800 font-medium outline-none focus:border-[#1B9387] transition shadow-sm"
+                  />
+                </div>
+                <button
+                  onClick={loadData}
+                  disabled={loading}
+                  className="px-4 py-2 bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] rounded-md text-sm font-bold transition disabled:opacity-50 cursor-pointer shadow-sm uppercase tracking-wider flex items-center gap-2"
+                >
+                  {loading ? (
+                    <>
+                      <svg
+                        className="animate-spin h-4 w-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
+                      </svg>
+                      Loading
+                    </>
+                  ) : (
+                    'Refresh'
+                  )}
+                </button>
+              </div>
             </div>
 
             {/* METRICS & STATEMENT BALANCES */}
-            <div className="grid grid-cols-4 gap-4 mb-6 shrink-0">
+            <div className="grid grid-cols-4 gap-4 mb-5 shrink-0">
               <Metric
                 label="Unmatched bank"
                 value={unmatched.length}
@@ -635,13 +727,13 @@ export function ReconciliationView({ userId }: { userId: string }) {
                 tone="text-[#1B9387]"
               />
 
-              <div className="bg-[#FBF8F8] border border-[#B0DCDA] rounded-xl p-4 shadow-sm flex flex-col justify-between">
+              <div className="bg-[#FBF8F8] border border-[#B0DCDA] rounded-xl p-3 shadow-sm flex flex-col justify-between">
                 <div className="flex justify-between items-start">
                   <p className="text-[10px] text-gray-500 uppercase tracking-widest font-extrabold">
                     Statement Check
                   </p>
                   <p
-                    className={`text-lg font-black font-mono tabular-nums leading-none ${Number(statementOpening) && Number(statementClosing) ? 'text-gray-800' : 'text-gray-400'}`}
+                    className={`text-base font-black font-mono tabular-nums leading-none mt-1 ${Number(statementOpening) && Number(statementClosing) ? 'text-gray-800' : 'text-gray-400'}`}
                   >
                     {Number(statementOpening) && Number(statementClosing)
                       ? money(
@@ -652,7 +744,7 @@ export function ReconciliationView({ userId }: { userId: string }) {
                       : '—'}
                   </p>
                 </div>
-                <div className="flex gap-2 mt-3">
+                <div className="flex gap-2 mt-2">
                   <input
                     type="number"
                     step="0.01"
@@ -673,76 +765,56 @@ export function ReconciliationView({ userId }: { userId: string }) {
               </div>
             </div>
 
-            {/* ADD TRANSACTION FORM */}
-            <form
-              onSubmit={addTransaction}
-              className="bg-white border border-[#B0DCDA] rounded-xl p-4 mb-6 shrink-0 shadow-sm"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-extrabold text-gray-800 uppercase tracking-wide text-sm">
-                  Add manual bank activity
-                </h3>
-                <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">
-                  Use one row per statement line
-                </span>
-              </div>
-              <div className="grid grid-cols-[140px_1fr_160px_160px_auto] gap-3">
-                <input
-                  type="date"
-                  value={newTransaction.date}
-                  onChange={(event) =>
-                    setNewTransaction({ ...newTransaction, date: event.target.value })
-                  }
-                  className="bg-[#FBF8F8] border border-gray-200 rounded-md p-2.5 text-sm font-medium text-gray-800 focus:border-[#1B9387] focus:bg-white outline-none transition"
-                />
-                <input
-                  placeholder="Description"
-                  value={newTransaction.description}
-                  onChange={(event) =>
-                    setNewTransaction({ ...newTransaction, description: event.target.value })
-                  }
-                  className="bg-[#FBF8F8] border border-gray-200 rounded-md p-2.5 text-sm font-medium text-gray-800 focus:border-[#1B9387] focus:bg-white outline-none transition"
-                />
-                <input
-                  placeholder="Reference No."
-                  value={newTransaction.referenceNo}
-                  onChange={(event) =>
-                    setNewTransaction({ ...newTransaction, referenceNo: event.target.value })
-                  }
-                  className="bg-[#FBF8F8] border border-gray-200 rounded-md p-2.5 text-sm font-medium text-gray-800 focus:border-[#1B9387] focus:bg-white outline-none transition"
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  placeholder="Amount (+/-)"
-                  value={newTransaction.amount}
-                  onChange={(event) =>
-                    setNewTransaction({ ...newTransaction, amount: event.target.value })
-                  }
-                  className="bg-[#FBF8F8] border border-gray-200 rounded-md p-2.5 text-sm font-bold text-gray-800 focus:border-[#1B9387] focus:bg-white outline-none font-mono transition tabular-nums"
-                />
-                <button className="px-5 bg-white hover:bg-[#E9FAFA] border border-[#B0DCDA] rounded-md text-sm font-bold text-[#1B9387] uppercase tracking-wider transition cursor-pointer shadow-sm">
-                  Add Line
-                </button>
-              </div>
-            </form>
-
             {/* TWO PANE SPLIT */}
-            <div className="grid grid-cols-2 gap-6 flex-1 min-h-0">
+            <div className="grid grid-cols-2 gap-4 flex-1 min-h-0">
               {/* LEFT: BANK STATEMENT */}
               <section className="bg-white border border-[#B0DCDA] rounded-xl overflow-hidden flex flex-col shadow-sm relative">
-                <div className="p-4 border-b border-[#B0DCDA] bg-[#FBF8F8] flex justify-between items-center shrink-0">
-                  <h3 className="font-extrabold text-gray-800 uppercase tracking-wide">
+                <div className="p-3 border-b border-[#B0DCDA] bg-[#FBF8F8] flex justify-between items-center shrink-0">
+                  <h3 className="font-extrabold text-gray-800 uppercase tracking-wide text-sm flex items-center gap-2">
+                    <svg
+                      className="w-4 h-4 text-gray-500"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
                     Bank Statement
                   </h3>
-                  <span className="px-2.5 py-1 bg-orange-50 text-orange-600 border border-orange-200 text-[10px] font-extrabold rounded-md uppercase tracking-wider shadow-sm">
-                    {unmatched.length} Unmatched
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setShowAddManual(true)}
+                      className="px-2.5 py-1 text-[10px] font-extrabold uppercase tracking-wider text-[#1B9387] bg-white border border-[#B0DCDA] rounded-md hover:bg-[#E9FAFA] transition shadow-sm flex items-center gap-1"
+                    >
+                      <svg
+                        className="w-3 h-3"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M12 4v16m8-8H4"
+                        />
+                      </svg>
+                      Manual Entry
+                    </button>
+                    <span className="px-2.5 py-1 bg-orange-50 text-orange-600 border border-orange-200 text-[10px] font-extrabold rounded-md uppercase tracking-wider shadow-sm">
+                      {unmatched.length} Unmatched
+                    </span>
+                  </div>
                 </div>
                 <div className="overflow-auto bg-gray-50/30 flex-1 relative">
                   {!transactions.length ? (
                     <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center">
-                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4 border-2 border-gray-200 border-dashed">
+                      <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 border-2 border-gray-200 border-dashed">
                         <svg
                           className="w-6 h-6 text-gray-400"
                           fill="none"
@@ -759,8 +831,8 @@ export function ReconciliationView({ userId }: { userId: string }) {
                       </div>
                       <h4 className="text-gray-800 font-extrabold mb-1">No Bank Activity Found</h4>
                       <p className="text-gray-500 text-sm font-medium">
-                        Use the <strong className="text-[#1B9387]">Import Statement</strong> button
-                        above to load bank transactions.
+                        Use the <strong className="text-[#1B9387]">Import</strong> button above to
+                        load bank transactions.
                       </p>
                     </div>
                   ) : (
@@ -777,7 +849,7 @@ export function ReconciliationView({ userId }: { userId: string }) {
                               )
                             }
                           }}
-                          className={`w-full text-left p-4 border-b border-gray-100 transition-all group ${isSelected ? 'bg-[#E9FAFA] border-l-4 border-l-[#1B9387] shadow-inner' : 'hover:bg-white border-l-4 border-l-transparent'} ${isMatched ? 'opacity-60 bg-gray-100/50 cursor-default' : 'cursor-pointer'}`}
+                          className={`w-full text-left p-3 border-b border-gray-100 transition-all group ${isSelected ? 'bg-[#E9FAFA] border-l-4 border-l-[#1B9387] shadow-inner' : 'hover:bg-white border-l-4 border-l-transparent'} ${isMatched ? 'opacity-60 bg-gray-100/50 cursor-default' : 'cursor-pointer'}`}
                         >
                           <div className="flex justify-between items-center">
                             <span
@@ -801,7 +873,7 @@ export function ReconciliationView({ userId }: { userId: string }) {
                             {transaction.description}
                           </p>
 
-                          <div className="flex items-center justify-between mt-3 pt-2 border-t border-gray-100/50">
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100/50">
                             <p
                               className={`text-[10px] font-extrabold uppercase tracking-wider ${isMatched ? 'text-emerald-600' : isSelected ? 'text-[#1B9387]' : 'text-gray-400 group-hover:text-[#1B9387]'}`}
                             >
@@ -812,17 +884,29 @@ export function ReconciliationView({ userId }: { userId: string }) {
                                   : 'Click to match ➔'}
                             </p>
                             {!isMatched && (
-                              <span
-                                role="button"
-                                tabIndex={0}
+                              <button
+                                type="button"
                                 onClick={(event) => {
                                   event.stopPropagation()
                                   initiateRemove(transaction)
                                 }}
-                                className="text-[10px] uppercase tracking-wider font-extrabold text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition"
+                                className="text-[10px] uppercase tracking-wider font-extrabold text-red-400 hover:text-red-600 px-2 py-1 rounded hover:bg-red-50 transition cursor-pointer flex items-center gap-1"
                               >
+                                <svg
+                                  className="w-3 h-3"
+                                  fill="none"
+                                  viewBox="0 0 24 24"
+                                  stroke="currentColor"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                                  />
+                                </svg>
                                 Remove
-                              </span>
+                              </button>
                             )}
                           </div>
                         </button>
@@ -836,35 +920,48 @@ export function ReconciliationView({ userId }: { userId: string }) {
               <section className="bg-white border border-[#B0DCDA] rounded-xl overflow-hidden flex flex-col shadow-sm relative">
                 {/* 🔥 DYNAMIC TARGET HEADER */}
                 <div
-                  className={`p-4 border-b border-[#B0DCDA] shrink-0 flex justify-between items-center transition-colors ${selectedTransaction ? 'bg-[#E9FAFA]/50' : 'bg-gray-50'}`}
+                  className={`p-3 border-b border-[#B0DCDA] shrink-0 flex justify-between items-center transition-colors ${selectedTransaction ? 'bg-[#E9FAFA]/50' : 'bg-[#FBF8F8]'}`}
                 >
-                  <div>
+                  <div className="flex-1 min-w-0 pr-4">
                     <h3
-                      className={`font-extrabold uppercase tracking-wide transition-colors ${selectedTransaction ? 'text-[#1B9387]' : 'text-gray-400'}`}
+                      className={`font-extrabold uppercase tracking-wide text-sm flex items-center gap-2 transition-colors ${selectedTransaction ? 'text-[#1B9387]' : 'text-gray-800'}`}
                     >
+                      <svg
+                        className="w-4 h-4 text-gray-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                        />
+                      </svg>
                       Ledger Candidates
                     </h3>
-                    <p className="text-xs text-gray-500 mt-1 font-medium transition-colors">
+                    <p className="text-[11px] text-gray-500 mt-1 font-medium transition-colors truncate">
                       {selectedTransaction ? (
                         <>
-                          Matching against{' '}
-                          <strong className="text-[#1B9387] font-mono bg-white px-2 py-0.5 border border-[#B0DCDA] rounded shadow-sm">
+                          Matching vs{' '}
+                          <strong className="text-[#1B9387] font-mono bg-white px-1.5 py-0.5 border border-[#B0DCDA] rounded shadow-sm">
                             {money(targetAmount)}
                           </strong>
                         </>
                       ) : (
-                        'Awaiting bank line selection...'
+                        'Select a bank line to match'
                       )}
                     </p>
                   </div>
                   {/* Variance Counter */}
                   {selectedTransaction && (
-                    <div className="text-right">
-                      <p className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
+                    <div className="text-right shrink-0">
+                      <p className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-0.5">
                         Variance
                       </p>
                       <p
-                        className={`text-lg font-mono font-black tabular-nums leading-none ${isPerfectMatch ? 'text-emerald-600' : 'text-orange-500'}`}
+                        className={`text-base font-mono font-black tabular-nums leading-none ${isPerfectMatch ? 'text-emerald-600' : 'text-orange-500'}`}
                       >
                         {variance === 0 ? '₱ 0.00' : (variance > 0 ? '+' : '-') + money(variance)}
                       </p>
@@ -905,7 +1002,7 @@ export function ReconciliationView({ userId }: { userId: string }) {
                           <div
                             key={entry.id}
                             onClick={() => toggleEntry(entry.id)}
-                            className={`p-4 border-b border-gray-100 flex justify-between items-center gap-4 transition cursor-pointer hover:bg-white ${isChecked ? 'bg-emerald-50/50 border-l-4 border-l-emerald-400' : 'bg-transparent border-l-4 border-l-transparent'}`}
+                            className={`p-3 border-b border-gray-100 flex justify-between items-center gap-3 transition cursor-pointer hover:bg-white ${isChecked ? 'bg-emerald-50/50 border-l-4 border-l-emerald-400' : 'bg-transparent border-l-4 border-l-transparent'}`}
                           >
                             <div className="flex items-center gap-4 flex-1 min-w-0">
                               <input
@@ -951,17 +1048,17 @@ export function ReconciliationView({ userId }: { userId: string }) {
                 {/* 🔥 BULK MATCH BUTTON */}
                 {selectedTransaction && (
                   <div
-                    className={`p-4 border-t border-[#B0DCDA] flex justify-between items-center shrink-0 transition-colors ${isPerfectMatch ? 'bg-emerald-50' : 'bg-[#FBF8F8]'}`}
+                    className={`p-3 border-t border-[#B0DCDA] flex justify-between items-center shrink-0 transition-colors ${isPerfectMatch ? 'bg-emerald-50' : 'bg-[#FBF8F8]'}`}
                   >
                     <span
-                      className={`text-xs font-bold ${isPerfectMatch ? 'text-emerald-700' : 'text-gray-500'}`}
+                      className={`text-[11px] font-bold ${isPerfectMatch ? 'text-emerald-700' : 'text-gray-500'}`}
                     >
                       {selectedEntryIds.length} items selected ({money(selectedSum)})
                     </span>
                     <button
                       disabled={!isPerfectMatch || loading}
                       onClick={matchSelected}
-                      className="px-6 py-2 text-xs uppercase tracking-wider font-extrabold rounded-md bg-[#1B9387] text-white hover:bg-[#28958B] disabled:bg-gray-200 disabled:text-gray-400 transition cursor-pointer disabled:cursor-not-allowed shadow-sm"
+                      className="px-5 py-2 text-xs uppercase tracking-wider font-extrabold rounded-md bg-[#1B9387] text-white hover:bg-[#28958B] disabled:bg-gray-200 disabled:text-gray-400 transition cursor-pointer disabled:cursor-not-allowed shadow-sm"
                     >
                       {loading
                         ? 'Processing...'
@@ -974,20 +1071,135 @@ export function ReconciliationView({ userId }: { userId: string }) {
               </section>
             </div>
 
-            <div className="mt-4 text-right shrink-0">
+            <div className="mt-3 text-right shrink-0 h-6">
               {matched.length > 0 && (
                 <button
                   onClick={() => matched[0] && unmatch(matched[0].id)}
-                  className="text-xs font-bold text-gray-400 hover:text-red-500 transition cursor-pointer uppercase tracking-wider"
+                  className="text-[11px] font-bold text-gray-400 hover:text-red-500 transition cursor-pointer uppercase tracking-wider flex items-center gap-1 ml-auto"
                 >
-                  ↩ Undo most recent match
+                  <svg
+                    className="w-3.5 h-3.5"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"
+                    />
+                  </svg>
+                  Undo most recent match
                 </button>
               )}
             </div>
           </div>
         )}
 
-        {/* ... KEEP REST OF MODALS (Import, Remove, Setup) EXACTLY THE SAME BELOW THIS LINE ... */}
+        {/* ADD MANUAL TRANSACTION MODAL */}
+        {showAddManual && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm print:hidden">
+            <form
+              onSubmit={addTransaction}
+              className="bg-white border border-[#B0DCDA] rounded-xl overflow-hidden shadow-2xl w-[500px] animate-in zoom-in-95 duration-200 flex flex-col"
+            >
+              <div className="px-6 py-5 border-b border-[#B0DCDA] bg-[#FBF8F8] flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg font-extrabold text-gray-800 uppercase tracking-wide">
+                    Add Manual Bank Activity
+                  </h3>
+                  <p className="text-xs text-gray-500 mt-1 font-medium">
+                    Add a single missing transaction to the statement
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAddManual(false)}
+                  className="text-gray-400 hover:text-gray-700 text-xl font-bold cursor-pointer"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Date *
+                    </label>
+                    <input
+                      type="date"
+                      required
+                      value={newTransaction.date}
+                      onChange={(event) =>
+                        setNewTransaction({ ...newTransaction, date: event.target.value })
+                      }
+                      className="w-full bg-[#FBF8F8] border border-gray-200 rounded-md p-2.5 text-sm font-medium text-gray-800 focus:border-[#1B9387] focus:bg-white outline-none transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
+                      Amount (+/-) *
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      required
+                      placeholder="e.g. -500.00"
+                      value={newTransaction.amount}
+                      onChange={(event) =>
+                        setNewTransaction({ ...newTransaction, amount: event.target.value })
+                      }
+                      className="w-full bg-[#FBF8F8] border border-gray-200 rounded-md p-2.5 text-sm font-bold text-gray-800 focus:border-[#1B9387] focus:bg-white outline-none font-mono transition tabular-nums"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
+                    Description *
+                  </label>
+                  <input
+                    required
+                    placeholder="Transaction description"
+                    value={newTransaction.description}
+                    onChange={(event) =>
+                      setNewTransaction({ ...newTransaction, description: event.target.value })
+                    }
+                    className="w-full bg-[#FBF8F8] border border-gray-200 rounded-md p-2.5 text-sm font-medium text-gray-800 focus:border-[#1B9387] focus:bg-white outline-none transition"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
+                    Reference No.
+                  </label>
+                  <input
+                    placeholder="Optional reference"
+                    value={newTransaction.referenceNo}
+                    onChange={(event) =>
+                      setNewTransaction({ ...newTransaction, referenceNo: event.target.value })
+                    }
+                    className="w-full bg-[#FBF8F8] border border-gray-200 rounded-md p-2.5 text-sm font-medium text-gray-800 focus:border-[#1B9387] focus:bg-white outline-none transition"
+                  />
+                </div>
+              </div>
+              <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAddManual(false)}
+                  className="px-5 py-2.5 bg-white border border-gray-300 hover:bg-gray-100 text-gray-600 rounded-md text-sm font-bold transition cursor-pointer shadow-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-[#1B9387] hover:bg-[#28958B] rounded-md text-sm font-bold text-white uppercase tracking-wider transition cursor-pointer shadow-sm"
+                >
+                  Add Transaction
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
 
         {/* IMPORT MODAL */}
         {importRows.length > 0 && (
@@ -1063,7 +1275,20 @@ export function ReconciliationView({ userId }: { userId: string }) {
                 >
                   {importing ? (
                     <>
-                      <span className="animate-spin text-lg">↻</span> Importing...
+                      <svg
+                        className="animate-spin w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                        />
+                      </svg>
+                      Importing...
                     </>
                   ) : (
                     `Import ${importRows.length} Transactions`
@@ -1194,10 +1419,12 @@ function Metric({
   tone: string
 }) {
   return (
-    <div className="bg-[#FBF8F8] border border-[#B0DCDA] rounded-xl p-4 shadow-sm flex flex-col justify-between">
-      <p className="text-[10px] text-gray-500 uppercase tracking-widest font-extrabold">{label}</p>
-      <div className={`text-3xl font-black mt-2 font-mono tabular-nums ${tone}`}>{value}</div>
-      <p className="text-xs text-gray-500 mt-1 font-bold">{detail}</p>
+    <div className="bg-[#FBF8F8] border border-[#B0DCDA] rounded-xl p-3 shadow-sm flex flex-col justify-between">
+      <p className="text-[10px] text-gray-500 uppercase tracking-widest font-extrabold whitespace-nowrap overflow-hidden text-ellipsis">
+        {label}
+      </p>
+      <div className={`text-2xl font-black mt-1.5 font-mono tabular-nums ${tone}`}>{value}</div>
+      <p className="text-[10px] text-gray-500 mt-1 font-bold">{detail}</p>
     </div>
   )
 }
