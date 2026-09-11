@@ -213,7 +213,6 @@ export function ReconciliationView({ userId }: { userId: string }) {
   const matchSelected = async () => {
     if (!selectedTransactionId || selectedEntryIds.length === 0) return
     setLoading(true)
-    // Send array of selected entries to backend
     const result = await api.matchBankTransaction(selectedTransactionId, selectedEntryIds, userId)
     if (!result?.success) {
       setLoading(false)
@@ -969,80 +968,79 @@ export function ReconciliationView({ userId }: { userId: string }) {
                   )}
                 </div>
 
-                {/* 🔥 ONE-TO-MANY CHECKBOX LIST OR EMPTY STATE */}
+                {/* 🔥 ONE-TO-MANY CHECKBOX LIST */}
                 <div className="overflow-auto flex-1 relative bg-gray-50/50">
-                  {!selectedTransaction ? (
-                    <div className="absolute inset-0 flex flex-col items-center justify-center p-8 text-center animate-in fade-in zoom-in-95 duration-300">
-                      <div className="w-16 h-16 bg-white rounded-full flex items-center justify-center mb-4 border-2 border-gray-200 shadow-sm">
-                        <svg
-                          className="w-6 h-6 text-gray-400"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
-                          />
-                        </svg>
-                      </div>
-                      <h4 className="text-gray-800 font-extrabold mb-1">Link Ledger Entries</h4>
-                      <p className="text-gray-500 text-sm font-medium max-w-[280px]">
-                        Click any <strong className="text-[#1B9387]">Unmatched</strong> bank
-                        statement line on the left side to see and select matching candidates here.
-                      </p>
+                  {/* Instructional banner shown when candidates exist but no bank line is selected */}
+                  {!selectedTransaction && suggestedEntries.length > 0 && (
+                    <div className="bg-[#E9FAFA] text-[#1B9387] text-xs font-bold p-3 text-center border-b border-[#B0DCDA] flex items-center justify-center gap-2 sticky top-0 z-10 shadow-sm">
+                      <svg
+                        className="w-4 h-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      Select a bank statement line on the left to activate matching checkboxes.
                     </div>
-                  ) : (
-                    <div className="flex flex-col animate-in fade-in duration-200">
-                      {suggestedEntries.map((entry) => {
-                        const isChecked = selectedEntryIds.includes(entry.id)
-                        return (
-                          <div
-                            key={entry.id}
-                            onClick={() => toggleEntry(entry.id)}
-                            className={`p-3 border-b border-gray-100 flex justify-between items-center gap-3 transition cursor-pointer hover:bg-white ${isChecked ? 'bg-emerald-50/50 border-l-4 border-l-emerald-400' : 'bg-transparent border-l-4 border-l-transparent'}`}
-                          >
-                            <div className="flex items-center gap-4 flex-1 min-w-0">
+                  )}
+
+                  <div className="flex flex-col animate-in fade-in duration-200">
+                    {suggestedEntries.map((entry) => {
+                      const isChecked = selectedEntryIds.includes(entry.id)
+                      const canSelect = !!selectedTransaction
+
+                      return (
+                        <div
+                          key={entry.id}
+                          onClick={() => canSelect && toggleEntry(entry.id)}
+                          className={`p-3 border-b border-gray-100 flex justify-between items-center gap-3 transition ${canSelect ? 'cursor-pointer hover:bg-white' : 'opacity-70 cursor-default'} ${isChecked ? 'bg-emerald-50/50 border-l-4 border-l-emerald-400' : 'bg-transparent border-l-4 border-l-transparent'}`}
+                        >
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            {canSelect && (
                               <input
                                 type="checkbox"
                                 checked={isChecked}
                                 readOnly
                                 className="w-4 h-4 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500 pointer-events-none shrink-0"
                               />
-                              <div className="flex-1 min-w-0">
-                                <p
-                                  className={`text-xs font-bold ${isChecked ? 'text-emerald-700' : 'text-gray-500'}`}
+                            )}
+                            <div className="flex-1 min-w-0">
+                              <p
+                                className={`text-xs font-bold ${isChecked ? 'text-emerald-700' : 'text-gray-500'}`}
+                              >
+                                {new Date(entry.date).toLocaleDateString()}{' '}
+                                <span
+                                  className={`ml-2 font-mono ${isChecked ? 'text-emerald-600' : 'text-gray-400'}`}
                                 >
-                                  {new Date(entry.date).toLocaleDateString()}{' '}
-                                  <span
-                                    className={`ml-2 font-mono ${isChecked ? 'text-emerald-600' : 'text-gray-400'}`}
-                                  >
-                                    {entry.referenceNo}
-                                  </span>
-                                </p>
-                                <p className="text-sm text-gray-800 font-bold mt-1.5 truncate">
-                                  {entry.description}
-                                </p>
-                              </div>
+                                  {entry.referenceNo}
+                                </span>
+                              </p>
+                              <p className="text-sm text-gray-800 font-bold mt-1.5 truncate">
+                                {entry.description}
+                              </p>
                             </div>
-                            <p
-                              className={`text-sm font-mono font-black tabular-nums shrink-0 ${entry.amount >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}
-                            >
-                              {entry.amount >= 0 ? '+' : '-'}
-                              {money(entry.amount)}
-                            </p>
                           </div>
-                        )
-                      })}
-                      {!suggestedEntries.length && (
-                        <p className="p-12 text-center text-sm font-medium text-gray-400 italic">
-                          No unreconciled ledger entries in this period.
-                        </p>
-                      )}
-                    </div>
-                  )}
+                          <p
+                            className={`text-sm font-mono font-black tabular-nums shrink-0 ${entry.amount >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}
+                          >
+                            {entry.amount >= 0 ? '+' : '-'}
+                            {money(entry.amount)}
+                          </p>
+                        </div>
+                      )
+                    })}
+                    {!suggestedEntries.length && (
+                      <p className="p-12 text-center text-sm font-medium text-gray-400 italic">
+                        No unreconciled ledger entries in this period.
+                      </p>
+                    )}
+                  </div>
                 </div>
 
                 {/* 🔥 BULK MATCH BUTTON */}
