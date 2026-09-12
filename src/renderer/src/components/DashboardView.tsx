@@ -99,18 +99,18 @@ export const DashboardView: React.FC = () => {
     },
     legend: {
       type: 'scroll',
-      orient: 'vertical',
-      right: '0%', // Moved to the right to avoid getting cut off
-      top: 'middle',
+      orient: 'horizontal', // Switched to horizontal
+      bottom: '0%', // Anchored to the bottom
+      left: 'center', // Centered evenly
       textStyle: { color: '#4b5563', fontSize: 11, fontWeight: '600' }
     },
     series: [
       {
         name: 'Expenses',
         type: 'pie',
-        radius: ['45%', '75%'],
-        center: ['35%', '50%'], // Shifted pie to the left to give legend space
-        avoidLabelOverlap: false,
+        radius: ['40%', '70%'], // Slightly shrunk to ensure space for the bottom legend
+        center: ['50%', '45%'], // Perfectly centered the pie vertically and horizontally
+        avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 4,
           borderColor: '#ffffff',
