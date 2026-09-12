@@ -53,8 +53,15 @@ function randomNumber(min: number, max: number) {
 }
 
 async function main() {
-  console.log('🧹 Purging old journal entries to prevent duplication...');
+  console.log('🧹 Purging old journal entries and related records to prevent duplication...');
+
+  // Delete child records first to satisfy Foreign Key constraints
+  await prisma.reconciliation.deleteMany({});
+  await prisma.payslip.deleteMany({});
+  await prisma.attachment.deleteMany({});
   await prisma.journalLine.deleteMany({});
+
+  // Now it's safe to delete the parent records
   await prisma.journalEntry.deleteMany({});
 
   console.log('🌱 Generating ~2 Years of Simulated Historical Data (Jan 2025 - Sep 2026)...');
