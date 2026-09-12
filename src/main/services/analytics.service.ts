@@ -13,11 +13,11 @@ export class AnalyticsService {
       const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0)
       const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999)
 
-      // Fetch all non-void transactions for today in ONE single query (matching getRecentTransactions)
+      // Fetch all non-void transactions for today
       const entries = await prisma.journalEntry.findMany({
         where: {
           date: { gte: startOfDay, lte: endOfDay },
-          status: { not: 'VOID' } // Includes ACTIVE, COMPLETED, PAID, etc.
+          status: { not: 'VOID' }
         },
         include: {
           lines: {
@@ -43,12 +43,10 @@ export class AnalyticsService {
           const debit = Number(line.debit) || 0
           const credit = Number(line.credit) || 0
 
-          // 1. Sales: Revenue credited
           if (typeName.includes('revenue') || typeId.includes('revenue')) {
             sales += credit - debit
           }
 
-          // 2. Payments In & Disbursements Out (Asset Accounts: Cash, Bank)
           if (typeName.includes('asset') || typeId.includes('asset')) {
             if (debit > 0) payments += debit
             if (credit > 0) disbursements += credit
@@ -88,13 +86,11 @@ export class AnalyticsService {
       })
 
       return entries.map((entry) => {
-        // Determine Transaction Direction (Is Money leaving an Asset account?)
         const isOutflow = entry.lines.some(
           (l) => l.account.account_type.name === 'Asset' && Number(l.credit) > 0
         )
         const direction = isOutflow ? 'OUT' : 'IN'
 
-        // Identify the main categorization
         let type = entry.description || 'Clinic Service'
         if (!isOutflow) {
           const revenueLine = entry.lines.find((l) => l.account.account_type.name === 'Revenue')
@@ -108,10 +104,8 @@ export class AnalyticsService {
           if (expenseLine) type = expenseLine.account.name
         }
 
-        // Determine transaction total
         const amount = Math.max(...entry.lines.map((l) => Number(l.debit)), 0)
 
-        // Identify Payment Method
         const paymentLine = entry.lines.find(
           (l) =>
             l.account.account_type.name === 'Asset' &&
@@ -145,8 +139,9 @@ export class AnalyticsService {
       return []
     }
   }
+
   /**
-   * Existing Analytics Dashboard calculation (kept intact)
+   * Analytics Dashboard calculation
    */
   static async getDashboardMetrics(
     timeframe: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' = 'monthly'
@@ -265,21 +260,22 @@ export class AnalyticsService {
       })
       const netCash = cashLines.reduce((sum, ln) => sum + Number(ln.debit) - Number(ln.credit), 0)
 
-      const margin =
-        currentPeriodRevenue > 0
-          ? ((currentPeriodRevenue - currentPeriodExpenses) / currentPeriodRevenue) * 100
-          : 0
+      // Fix: Use Net Profit logic instead of misleading margins
+      const netProfit = currentPeriodRevenue - currentPeriodExpenses
 
-      let narrative = `For the current ${timeframe} reporting period, the clinic has generated ₱${currentPeriodRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })} in revenue and incurred ₱${currentPeriodExpenses.toLocaleString(undefined, { minimumFractionDigits: 2 })} in operating expenses. `
-      if (margin > 0)
-        narrative += `This yields a healthy positive margin of ${margin.toFixed(1)}%. `
-      else if (margin < 0)
-        narrative += `This results in a negative margin (loss) of ${Math.abs(margin).toFixed(1)}%. `
-      else narrative += `The clinic is currently breaking even. `
+      let narrative = `For the current ${timeframe} reporting period, the clinic has generated ₱${currentPeriodRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })} in revenue against ₱${currentPeriodExpenses.toLocaleString(undefined, { minimumFractionDigits: 2 })} in operating expenses. `
+
+      if (netProfit > 0) {
+        narrative += `This resulted in a net profit of ₱${netProfit.toLocaleString(undefined, { minimumFractionDigits: 2 })}, indicating healthy operational efficiency for the period.`
+      } else if (netProfit < 0) {
+        narrative += `This resulted in a net loss of ₱${Math.abs(netProfit).toLocaleString(undefined, { minimumFractionDigits: 2 })}. Management should review recent expenditures against expected cash inflows.`
+      } else {
+        narrative += `The clinic is currently breaking even exactly.`
+      }
 
       const recentEntries = await prisma.journalEntry.findMany({
         orderBy: { date: 'desc' },
-        take: 5,
+        take: 8, // Extended to 8 items to fill space better
         include: {
           payee: true,
           lines: { include: { account: { include: { account_type: true } } } }
@@ -292,13 +288,23 @@ export class AnalyticsService {
             (l) =>
               l.account.account_type.name === 'Revenue' || l.account.account_type.name === 'Expense'
           ) || entry.lines[0]
+
+        // Determine outflow logic to color red vs green
+        const isOutflow = entry.lines.some((l) =>
+          (l.account.account_type.name === 'Asset' && Number(l.credit) > 0) ||
+          (l.account.account_type.name === 'Expense' && Number(l.debit) > 0) ||
+          (l.account.account_type.name === 'Liability' && Number(l.debit) > 0)
+        );
+
         const amount = Math.max(...entry.lines.map((l) => Number(l.debit)))
+
         return {
           id: entry.id,
           date: entry.date,
           category: primaryLine ? primaryLine.account.name : 'General Transfer',
           payee: entry.payee?.name || 'Walk-in / General',
-          amount: Number(amount.toFixed(2))
+          amount: Number(amount.toFixed(2)),
+          isOutflow
         }
       })
 
@@ -307,7 +313,7 @@ export class AnalyticsService {
           revenue: currentPeriodRevenue,
           expenses: currentPeriodExpenses,
           netCash,
-          margin: Number(margin.toFixed(1))
+          netProfit // Replaced margin
         },
         trendData: {
           labels: trendLabels,
