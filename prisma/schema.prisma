@@ -143,6 +143,8 @@ model Payee {
   hmo_card_no     String?   @db.VarChar(100)
   hmo_expiry_date DateTime? @db.Date
 
+   is_active       Boolean   @default(true)
+
   journal_entries JournalEntry[]
   @@map("payees")
 }

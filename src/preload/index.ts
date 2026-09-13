@@ -31,6 +31,7 @@ export const api = {
   matchBankTransaction: (bankTransactionId: string, journalEntryId: string, userId: string) => ipcRenderer.invoke('match-bank-transaction', bankTransactionId, journalEntryId, userId),
   unmatchBankTransaction: (bankTransactionId: string) => ipcRenderer.invoke('unmatch-bank-transaction', bankTransactionId),
   removeBankTransaction: (bankTransactionId: string, userId: string) => ipcRenderer.invoke('remove-bank-transaction', bankTransactionId, userId),
+  restorePayee: (payeeId: string) => ipcRenderer.invoke('restore-payee', payeeId),
 
   // Payees
   getPayees: (typeFilter?: string) => ipcRenderer.invoke('get-payees', typeFilter),
@@ -49,6 +50,7 @@ export const api = {
       name, type, tin, email, phone, address, hmoAffiliation, hmoCardNo, hmoExpiry
   ),
   importPayees: (data: any[]) => ipcRenderer.invoke('import-payees', data),
+  archivePayee: (payeeId: string) => ipcRenderer.invoke('archive-payee', payeeId),
   getPayeeBalance: (payeeId: string) => ipcRenderer.invoke('get-payee-balance', payeeId),
   updatePayeeTin: (payeeId: string, tin: string) => ipcRenderer.invoke('update-payee-tin', payeeId, tin),
   getContactsWithBalances: () => ipcRenderer.invoke('get-contacts-with-balances'),
@@ -72,6 +74,7 @@ export const api = {
   getPendingVoids: () => ipcRenderer.invoke('get-pending-voids'),
   rejectVoid: (id: string) => ipcRenderer.invoke('reject-void', id),
   approveVoid: (id: string, managerId: string, overridePin?: string) => ipcRenderer.invoke('approve-void', id, managerId, overridePin),
+  
 
   // POS & Transactions
   getNextSequence: (prefix: string) => ipcRenderer.invoke('get-next-sequence', prefix),

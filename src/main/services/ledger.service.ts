@@ -277,13 +277,37 @@ export const LedgerService = {
         }
     },
 
-    async getPayees(typeFilter?: string) {
-        let whereClause = {};
+     async getPayees(typeFilter?: string) {
+        let whereClause: any = { is_active: true }; // Only show active contacts in dropdowns
         if (typeFilter) {
             const types = typeFilter.split(',');
-            whereClause = { type: { in: types } };
+            whereClause.type = { in: types };
         }
         return await prisma.payee.findMany({ where: whereClause, orderBy: { name: 'asc' } });
+    },
+
+     async archivePayee(payeeId: string) {
+        try {
+            await prisma.payee.update({
+                where: { id: payeeId },
+                data: { is_active: false }
+            });
+            return { success: true };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    },
+
+    async restorePayee(payeeId: string) {
+        try {
+            await prisma.payee.update({
+                where: { id: payeeId },
+                data: { is_active: true }
+            });
+            return { success: true };
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
     },
 
     async createPayee(name: string, type: string = 'PATIENT', tin?: string, email?: string, phone?: string, address?: string, hmoAffiliation?: string, hmoCardNo?: string, hmoExpiryDate?: string) {
@@ -426,10 +450,10 @@ export const LedgerService = {
             phone: p.phone_number,
             tin: p.tin,
             address: p.address,
-
             hmo_affiliation: p.hmo_affiliation,
             hmo_card_no: p.hmo_card_no,
             hmo_expiry_date: p.hmo_expiry_date,
+            status: p.is_active ? 'ACTIVE' : 'ARCHIVED', // 🔥 Pass status to frontend
 
             youOwe: balances[p.id]?.payable || 0,
             theyOwe: balances[p.id]?.receivable || 0

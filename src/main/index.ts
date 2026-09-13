@@ -99,6 +99,22 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
+  ipcMain.handle('restore-payee', async (_, payeeId: string) => { 
+    try { 
+        const result = await LedgerService.restorePayee(payeeId); 
+        await AuditService.logAction('SYSTEM', 'RESTORE CONTACT', `Restored contact ID: ${payeeId}`); 
+        return result; 
+    } catch (error: any) { return { success: false, error: error.message }; } 
+});
+
+  ipcMain.handle('archive-payee', async (_, payeeId: string) => { 
+    try { 
+        const result = await LedgerService.archivePayee(payeeId); 
+        await AuditService.logAction('SYSTEM', 'ARCHIVE CONTACT', `Archived contact ID: ${payeeId}`); 
+        return result; 
+    } catch (error: any) { return { success: false, error: error.message }; } 
+});
   ipcMain.handle('toggle-user-status', async (e, userId, isActive) => {
     try {
       await UserService.toggleUserStatus(userId, isActive)

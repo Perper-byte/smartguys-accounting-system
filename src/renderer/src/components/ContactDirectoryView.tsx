@@ -11,7 +11,7 @@ export function ContactDirectoryView({
   const [contacts, setContacts] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
-  // 🔥 FULL EDIT CONTACT STATE
+  // FULL EDIT CONTACT STATE
   const [editingContact, setEditingContact] = useState<any>(null)
   const [editForm, setEditForm] = useState({
     name: '',
@@ -295,18 +295,45 @@ export function ContactDirectoryView({
     }
   }
 
-  const handleArchive = (contact: any) => {
+  const handleArchive = async (contact: any) => {
     setActionMenuId(null)
     const confirmed = window.confirm(
-      `Are you sure you want to archive ${contact.name}?\n\nThey will be hidden from the directory but historical transactions will remain intact.`
+      `Are you sure you want to archive ${contact.name}?\n\nThey will be hidden from dropdown menus, but their historical transactions will remain intact.`
     )
 
     if (confirmed) {
-      setContacts((prev) => prev.filter((c) => c.id !== contact.id))
+      try {
+        const api = (window as any).api || (window as any).electronAPI
+        const result = await api.archivePayee(contact.id)
+
+        if (result.success) {
+          fetchContacts()
+        } else {
+          alert('Failed to archive contact: ' + result.error)
+        }
+      } catch (err) {
+        console.error('Archive error', err)
+      }
     }
   }
 
-  // 🔥 NEW FULL EDIT HANDLERS
+  const handleRestore = async (contact: any) => {
+    setActionMenuId(null)
+    try {
+      const api = (window as any).api || (window as any).electronAPI
+      const result = await api.restorePayee(contact.id)
+
+      if (result.success) {
+        fetchContacts()
+      } else {
+        alert('Failed to restore contact: ' + result.error)
+      }
+    } catch (err) {
+      console.error('Restore error', err)
+    }
+  }
+
+  // FULL EDIT HANDLERS
   const openEditContact = (contact: any) => {
     setActionMenuId(null)
     setEditingContact(contact)
@@ -375,10 +402,16 @@ export function ContactDirectoryView({
           <div
             key={card.type}
             onClick={() => setFilterType(card.type as any)}
-            className={`p-4 rounded-xl border cursor-pointer transition shadow-sm text-center ${filterType === card.type ? 'bg-[#1B9387] border-[#1B9387] text-white' : 'bg-white border-[#B0DCDA] hover:bg-[#E9FAFA] text-gray-600'}`}
+            className={`p-4 rounded-xl border cursor-pointer transition shadow-sm text-center ${
+              filterType === card.type
+                ? 'bg-[#1B9387] border-[#1B9387] text-white'
+                : 'bg-white border-[#B0DCDA] hover:bg-[#E9FAFA] text-gray-600'
+            }`}
           >
             <p
-              className={`text-[10px] font-extrabold uppercase tracking-wider mb-1 ${filterType === card.type ? 'text-[#E9FAFA]' : 'text-gray-500'}`}
+              className={`text-[10px] font-extrabold uppercase tracking-wider mb-1 ${
+                filterType === card.type ? 'text-[#E9FAFA]' : 'text-gray-500'
+              }`}
             >
               {card.label}
             </p>
@@ -465,12 +498,10 @@ export function ContactDirectoryView({
       </div>
 
       {/* TABLE */}
-      {/* 1. Removed 'overflow-hidden' from this div so the menu isn't clipped */}
       <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-sm mb-4">
         <table className="w-full text-left text-sm">
           <thead className="bg-[#FBF8F8] border-b border-[#B0DCDA]">
             <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold">
-              {/* Added rounded corners manually to the headers */}
               <th className="p-4 pl-6 rounded-tl-xl">Contact</th>
               <th className="p-4">Type</th>
               <th className="p-4">Phone / Email</th>
@@ -494,9 +525,7 @@ export function ContactDirectoryView({
                 </td>
               </tr>
             ) : (
-              // 2. Added 'index' to the map function so we know which row we are on
               paginatedContacts.map((c, index) => {
-                // Check if this is the last or second-to-last row
                 const isNearBottom =
                   index >= paginatedContacts.length - 2 && paginatedContacts.length > 2
 
@@ -504,7 +533,11 @@ export function ContactDirectoryView({
                   <React.Fragment key={c.id}>
                     <tr
                       onClick={() => setExpandedContactId(expandedContactId === c.id ? null : c.id)}
-                      className={`cursor-pointer transition-colors group ${expandedContactId === c.id ? 'bg-[#E9FAFA]' : 'hover:bg-gray-50 even:bg-gray-50/50 odd:bg-white'}`}
+                      className={`cursor-pointer transition-colors group ${
+                        expandedContactId === c.id
+                          ? 'bg-[#E9FAFA]'
+                          : 'hover:bg-gray-50 even:bg-gray-50/50 odd:bg-white'
+                      }`}
                     >
                       <td className="p-4 flex items-center space-x-4 pl-6">
                         <div className="h-8 w-8 rounded-full bg-white text-[#1B9387] flex items-center justify-center font-extrabold text-xs border border-[#B0DCDA] shadow-sm shrink-0">
@@ -523,7 +556,9 @@ export function ContactDirectoryView({
                       </td>
                       <td className="p-4">
                         <span
-                          className={`px-2 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider border shadow-sm ${getTypeStyle(c.type)}`}
+                          className={`px-2 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider border shadow-sm ${getTypeStyle(
+                            c.type
+                          )}`}
                         >
                           {c.type}
                         </span>
@@ -539,7 +574,11 @@ export function ContactDirectoryView({
                       </td>
                       <td className="p-4 text-center">
                         <span
-                          className={`px-2 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${c.status === 'ACTIVE' ? 'bg-emerald-50 text-emerald-600 border border-emerald-200' : 'bg-gray-100 text-gray-500 border border-gray-200'}`}
+                          className={`px-2 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                            c.status === 'ACTIVE'
+                              ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                              : 'bg-gray-100 text-gray-500 border border-gray-200'
+                          }`}
                         >
                           {c.status}
                         </span>
@@ -552,7 +591,9 @@ export function ContactDirectoryView({
                       </td>
 
                       <td
-                        className={`p-4 text-center relative ${actionMenuId === c.id ? 'z-30' : 'z-10'}`}
+                        className={`p-4 text-center relative ${
+                          actionMenuId === c.id ? 'z-30' : 'z-10'
+                        }`}
                       >
                         <button
                           onClick={(e) => {
@@ -565,9 +606,10 @@ export function ContactDirectoryView({
                         </button>
 
                         {actionMenuId === c.id && (
-                          /* 3. SMART POSITIONING: If it's near the bottom, open UP (bottom-8). Otherwise open DOWN (top-10). Added z-[100] */
                           <div
-                            className={`absolute right-8 w-40 bg-white border border-[#B0DCDA] rounded-md shadow-xl overflow-hidden py-1 text-left z-[100] ${isNearBottom ? 'bottom-8 mb-1' : 'top-10'}`}
+                            className={`absolute right-8 w-40 bg-white border border-[#B0DCDA] rounded-md shadow-xl overflow-hidden py-1 text-left z-[100] ${
+                              isNearBottom ? 'bottom-8 mb-1' : 'top-10'
+                            }`}
                           >
                             <button
                               onClick={(e) => {
@@ -579,7 +621,6 @@ export function ContactDirectoryView({
                               👁️ View Details
                             </button>
 
-                            {/* 🔥 FULL EDIT BUTTON */}
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
@@ -599,16 +640,30 @@ export function ContactDirectoryView({
                             >
                               🧾 Transactions
                             </button>
+
                             <div className="border-t border-gray-100 my-1"></div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleArchive(c)
-                              }}
-                              className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50"
-                            >
-                              🗑️ Archive
-                            </button>
+
+                            {c.status === 'ACTIVE' ? (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleArchive(c)
+                                }}
+                                className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50"
+                              >
+                                🗑️ Archive
+                              </button>
+                            ) : (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleRestore(c)
+                                }}
+                                className="w-full text-left px-4 py-2 text-xs font-bold text-emerald-500 hover:bg-emerald-50"
+                              >
+                                ✅ Restore
+                              </button>
+                            )}
                           </div>
                         )}
                       </td>
@@ -691,13 +746,21 @@ export function ContactDirectoryView({
                                         <p className="text-sm text-gray-800 font-medium">
                                           <span className="text-gray-400 mr-2 inline-block w-24 font-bold">
                                             Expiry Date:
-                                          </span>
+                                          </span>{' '}
                                           <span
-                                            className={`font-mono ${new Date(c.hmo_expiry_date) < new Date() ? 'text-red-500 font-bold' : ''}`}
+                                            className={`font-mono ${
+                                              new Date(c.hmo_expiry_date) < new Date()
+                                                ? 'text-red-500 font-bold'
+                                                : ''
+                                            }`}
                                           >
                                             {new Date(c.hmo_expiry_date).toLocaleDateString(
                                               'en-US',
-                                              { month: 'long', day: 'numeric', year: 'numeric' }
+                                              {
+                                                month: 'long',
+                                                day: 'numeric',
+                                                year: 'numeric'
+                                              }
                                             )}
                                             {new Date(c.hmo_expiry_date) < new Date() &&
                                               ' (EXPIRED)'}
@@ -779,7 +842,7 @@ export function ContactDirectoryView({
         defaultType={newContactType}
       />
 
-      {/* 🔥 FULL EDIT CONTACT MODAL */}
+      {/* FULL EDIT CONTACT MODAL */}
       {editingContact && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-full">

@@ -29,10 +29,6 @@ export const GeneralLedgerView: React.FC = () => {
   const [voidReason, setVoidReason] = useState('')
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
-  // Edit Reference States
-  const [isEditingRef, setIsEditingRef] = useState(false)
-  const [newRefNo, setNewRefNo] = useState('')
-
   useEffect(() => {
     const api = (window as any).electronAPI || (window as any).api
     if (api && api.getAccounts) {
@@ -212,30 +208,6 @@ export const GeneralLedgerView: React.FC = () => {
         if (selectedAccountId) fetchSingleLedger(selectedAccountId)
         else fetchFullReport()
       } else setStatus({ type: 'error', msg: 'Failed: ' + response.error })
-    } catch (error) {
-      setStatus({ type: 'error', msg: 'System Error.' })
-    }
-  }
-
-  const handleUpdateRefNo = async () => {
-    if (!newRefNo.trim() || newRefNo === selectedTx.referenceNo) {
-      setIsEditingRef(false)
-      return
-    }
-    try {
-      const api = (window as any).api || (window as any).electronAPI
-      const targetId = selectedTx.entryId || selectedTx.id
-      const response = await api.updateReferenceNumber(targetId, newRefNo)
-
-      if (response.success) {
-        setStatus({ type: 'success', msg: `Reference number successfully updated to ${newRefNo}.` })
-        setSelectedTx({ ...selectedTx, referenceNo: newRefNo })
-        setIsEditingRef(false)
-        if (selectedAccountId) fetchSingleLedger(selectedAccountId)
-        else fetchFullReport()
-      } else {
-        setStatus({ type: 'error', msg: 'Failed to update reference number.' })
-      }
     } catch (error) {
       setStatus({ type: 'error', msg: 'System Error.' })
     }
@@ -521,11 +493,7 @@ export const GeneralLedgerView: React.FC = () => {
                         </td>
                         <td className="py-3 px-4 text-sm font-medium text-gray-800">
                           <button
-                            onClick={() => {
-                              setSelectedTx(tx)
-                              setNewRefNo(tx.referenceNo)
-                              setIsEditingRef(false)
-                            }}
+                            onClick={() => setSelectedTx(tx)}
                             className="hover:text-[#1B9387] hover:underline transition cursor-pointer text-left"
                           >
                             {tx.referenceNo}
@@ -627,11 +595,7 @@ export const GeneralLedgerView: React.FC = () => {
                       </td>
                       <td className="py-3 px-4 text-sm font-medium text-gray-800">
                         <button
-                          onClick={() => {
-                            setSelectedTx(tx)
-                            setNewRefNo(tx.referenceNo)
-                            setIsEditingRef(false)
-                          }}
+                          onClick={() => setSelectedTx(tx)}
                           className="hover:text-[#1B9387] hover:underline transition cursor-pointer text-left"
                         >
                           {tx.referenceNo}
@@ -687,7 +651,6 @@ export const GeneralLedgerView: React.FC = () => {
                 onClick={() => {
                   setSelectedTx(null)
                   setShowVoidInput(false)
-                  setIsEditingRef(false)
                 }}
                 className="text-gray-400 hover:text-red-500 font-bold text-xl cursor-pointer transition"
               >
@@ -710,37 +673,10 @@ export const GeneralLedgerView: React.FC = () => {
                     <p className="text-[10px] text-[#1B9387] uppercase font-extrabold tracking-widest">
                       Reference No.
                     </p>
-                    {!isEditingRef && (
-                      <button
-                        onClick={() => setIsEditingRef(true)}
-                        className="text-[10px] font-bold text-gray-400 hover:text-[#1B9387] uppercase tracking-wider underline cursor-pointer"
-                      >
-                        Edit
-                      </button>
-                    )}
                   </div>
-
-                  {isEditingRef ? (
-                    <div className="flex mt-1">
-                      <input
-                        type="text"
-                        value={newRefNo}
-                        onChange={(e) => setNewRefNo(e.target.value)}
-                        className="w-full bg-white border border-[#1B9387] rounded-l px-2 py-1 text-sm font-mono font-bold text-gray-800 outline-none"
-                        autoFocus
-                      />
-                      <button
-                        onClick={handleUpdateRefNo}
-                        className="bg-[#1B9387] hover:bg-[#28958B] text-white px-3 text-[10px] font-bold uppercase rounded-r cursor-pointer transition"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-sm text-[#1B9387] font-black font-mono">
-                      {selectedTx.referenceNo}
-                    </p>
-                  )}
+                  <p className="text-sm text-[#1B9387] font-black font-mono">
+                    {selectedTx.referenceNo}
+                  </p>
                 </div>
               </div>
 
@@ -811,10 +747,7 @@ export const GeneralLedgerView: React.FC = () => {
               </div>
               {!showVoidInput && (
                 <button
-                  onClick={() => {
-                    setSelectedTx(null)
-                    setIsEditingRef(false)
-                  }}
+                  onClick={() => setSelectedTx(null)}
                   className="px-6 py-2.5 bg-[#FBF8F8] border border-[#B0DCDA] hover:bg-gray-100 text-gray-600 rounded-md font-bold transition-colors text-sm cursor-pointer shadow-sm"
                 >
                   Close

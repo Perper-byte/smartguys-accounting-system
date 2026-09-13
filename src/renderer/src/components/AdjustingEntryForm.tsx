@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { NewContactModal } from './NewContactModal';
-import { UploadCloud, File as FileIcon, X, Image as ImageIcon, Lock } from 'lucide-react';
+import { UploadCloud, File as FileIcon, X, Image as ImageIcon, Lock, RefreshCw } from 'lucide-react';
 
 const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
@@ -56,15 +56,16 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
         }
     }, []);
 
+    const fetchNextSequence = async () => {
+        try {
+            const api = (window as any).api || (window as any).electronAPI;
+            const nextSeq = await api.getNextSequence(refPrefix);
+            setRefSequence(nextSeq);
+        } catch (error) { console.error("Failed to fetch next sequence", error); }
+    };
+
     useEffect(() => {
-        const fetchNextSeq = async () => {
-            try {
-                const api = (window as any).api || (window as any).electronAPI;
-                const nextSeq = await api.getNextSequence(refPrefix);
-                setRefSequence(nextSeq);
-            } catch (error) { console.error("Failed to fetch next sequence", error); }
-        };
-        fetchNextSeq();
+        fetchNextSequence();
     }, [refPrefix, status]); 
 
     useEffect(() => {
@@ -257,7 +258,15 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
                                 placeholder="Search (e.g. OR-1001)" 
                                 className="w-full bg-transparent p-3 text-sm font-mono text-gray-800 font-bold outline-none" 
                             />
-                            <button type="button" onClick={() => setIsRefDropdownOpen(!isRefDropdownOpen)} className="px-4 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] rounded-r-md transition cursor-pointer">
+                            <button 
+                                type="button" 
+                                onClick={fetchNextSequence} 
+                                className="px-3 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] transition cursor-pointer"
+                                title="Auto-Generate Next Sequence"
+                            >
+                                <RefreshCw size={14} />
+                            </button>
+                            <button type="button" onClick={() => setIsRefDropdownOpen(!isRefDropdownOpen)} className="px-4 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] rounded-r-md transition cursor-pointer" title="Search Past Transactions">
                                 🔍
                             </button>
                         </div>
@@ -280,18 +289,26 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
                                                     setDescription(`Adjusting Entry to correct ${entry.reference_no}: ${entry.description || ''}`);
                                                 }
 
-                                                // 🔥 3. AUTO-FILL PAYEE
-                                                if (entry.payee_id || entry.payeeId) {
-                                                    setPayeeId(entry.payee_id || entry.payeeId);
+                                                // 3. AUTO-FILL PAYEE
+                                                if (entry.payee_id || entry.payeeId || (entry.payee && entry.payee.id)) {
+                                                    setPayeeId(entry.payee_id || entry.payeeId || entry.payee.id);
                                                 }
 
-                                                // 🔥 4. AUTO-FILL JOURNAL LINES
+                                                // 🔥 4. AUTO-FILL JOURNAL LINES (BULLETPROOF)
                                                 if (entry.lines && entry.lines.length > 0) {
-                                                    const prefilledLines = entry.lines.map((l: any) => ({
-                                                        accountId: l.account_id || l.accountId, 
-                                                        debit: Number(l.debit) || 0,
-                                                        credit: Number(l.credit) || 0
-                                                    }));
+                                                    const prefilledLines = entry.lines.map((l: any) => {
+                                                        // Find the account code from wherever Prisma stashed it
+                                                        let foundCode = '';
+                                                        if (l.account_id) foundCode = l.account_id;
+                                                        else if (l.accountId) foundCode = l.accountId;
+                                                        else if (l.account && l.account.code) foundCode = l.account.code;
+                                                        
+                                                        return {
+                                                            accountId: foundCode, 
+                                                            debit: Number(l.debit) || 0,
+                                                            credit: Number(l.credit) || 0
+                                                        };
+                                                    });
                                                     
                                                     // Ensure there are always at least 2 empty boxes for UI purposes
                                                     while (prefilledLines.length < 2) {
@@ -446,6 +463,7 @@ export const AdjustingEntryForm: React.FC<{ userId: string }> = ({ userId }) => 
                         <UploadCloud className={`mb-3 ${isDragging ? 'text-[#1B9387]' : 'text-gray-400'}`} size={32} />
                         <p className="text-sm font-bold text-gray-600">Drag and drop or upload attachments here</p>
                         <p className="text-xs text-gray-400 mt-1">JPG, PNG, PDF, XLSX, ZIP. Max 10mb each.</p>
+                        
                         <input type="file" multiple id="file-upload-adj" className="hidden" onChange={handleFileSelect} accept=".jpg,.jpeg,.png,.pdf,.zip,.xlsx" />
                         <label htmlFor="file-upload-adj" className="mt-4 cursor-pointer bg-white border border-gray-300 text-gray-700 px-5 py-2 rounded-md text-xs font-bold hover:bg-gray-50 transition shadow-sm">Browse Files</label>
                     </div>

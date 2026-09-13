@@ -2,7 +2,7 @@
 import * as React from 'react';
 import { useState, useEffect } from 'react';
 import { NewContactModal } from './NewContactModal';
-import { UploadCloud, File as FileIcon, X, Image as ImageIcon } from 'lucide-react';
+import { UploadCloud, File as FileIcon, X, Image as ImageIcon, RefreshCw } from 'lucide-react';
 
 const getLocalDateString = () => new Date(new Date().getTime() - (new Date().getTimezoneOffset() * 60000)).toISOString().split('T')[0];
 
@@ -42,15 +42,19 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
         }
     }, []);
 
+    // 🔥 FIX: Extracted fetch logic so the button can use it
+    const fetchNextSequence = async () => {
+        try {
+            const api = (window as any).api || (window as any).electronAPI;
+            const nextSeq = await api.getNextSequence(refPrefix);
+            setRefSequence(nextSeq);
+        } catch (error) { 
+            console.error("Failed to fetch next sequence", error); 
+        }
+    };
+
     useEffect(() => {
-        const fetchNextSeq = async () => {
-            try {
-                const api = (window as any).api || (window as any).electronAPI;
-                const nextSeq = await api.getNextSequence(refPrefix);
-                setRefSequence(nextSeq);
-            } catch (error) { console.error("Failed to fetch next sequence", error); }
-        };
-        fetchNextSeq();
+        fetchNextSequence();
     }, [refPrefix, status]); 
 
     useEffect(() => {
@@ -235,6 +239,15 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                                 placeholder="001" 
                                 className="w-full bg-transparent p-3 text-sm font-mono text-gray-800 font-bold outline-none" 
                             />
+                            {/* 🔥 FIX: Added the Auto-Generate button here! */}
+                            <button 
+                                type="button" 
+                                onClick={fetchNextSequence} 
+                                className="px-3 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] rounded-r-md transition cursor-pointer"
+                                title="Auto-Generate Next Sequence"
+                            >
+                                <RefreshCw size={14} />
+                            </button>
                         </div>
                     </div>
 
@@ -246,6 +259,9 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                                 <option value="EXEMPT">VAT-Exempt</option>
                                 <option value="ZERO_RATED">Zero-Rated (0%)</option>
                             </select>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3 text-gray-400">
+                                <svg className="w-4 h-4 fill-current" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" /></svg>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -262,6 +278,9 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                         <div className="relative mt-2">
                             <div onClick={() => setIsPayeeDropdownOpen(!isPayeeDropdownOpen)} className={`w-full bg-[#FBF8F8] border ${isPayeeDropdownOpen ? 'border-[#1B9387] ring-2 ring-[#E9FAFA]' : 'border-[#B0DCDA]'} rounded-md p-3 text-sm text-gray-800 transition cursor-pointer flex justify-between items-center`}>
                                 <span className={payeeId ? 'text-gray-800 font-medium' : 'text-gray-400'}>{selectedPayeeName}</span>
+                                <svg className="w-4 h-4 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                                    <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
                             </div>
 
                             {isPayeeDropdownOpen && (
@@ -336,21 +355,18 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                                             </div>
                                         )}
                                     </td>
-
                                     <td className="p-0 border-r border-[#B0DCDA] align-top">
                                         <div className="relative flex items-center h-full">
                                             <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
                                             <input type="number" min="0" step="0.01" value={line.debit === 0 ? '' : line.debit} placeholder="0.00" onChange={e => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)} className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" />
                                         </div>
                                     </td>
-                                    
                                     <td className="p-0 border-r border-[#B0DCDA] align-top">
                                         <div className="relative flex items-center h-full">
                                             <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
                                             <input type="number" min="0" step="0.01" value={line.credit === 0 ? '' : line.credit} placeholder="0.00" onChange={e => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)} className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition" />
                                         </div>
                                     </td>
-                                    
                                     <td className="p-2 text-center align-middle">
                                         <button type="button" onClick={() => removeLine(idx)} disabled={lines.length <= 2} className="text-red-400 hover:text-red-600 disabled:opacity-20 transition cursor-pointer font-bold">✕</button>
                                     </td>

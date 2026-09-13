@@ -189,7 +189,7 @@ export function EWTPayoutView({ userId }: { userId: string }) {
             {isPayeeDropdownOpen && <div className="fixed inset-0 z-10" onClick={() => setIsPayeeDropdownOpen(false)}></div>}
 
             <div className="mb-6">
-                <h2 className="text-2xl font-extrabold text-gray-800 tracking-wide">Doctor Payouts & Withholding Tax</h2>
+                <h2 className="text-2xl font-extrabold text-gray-800 tracking-wide">Doctor OR Landlord Payouts/ & Withholding Tax</h2>
                 <p className="text-sm text-gray-500 mt-1 font-medium">Settle Accounts Payable and generate BIR Form 2307 equivalents.</p>
             </div>
 
@@ -217,7 +217,7 @@ export function EWTPayoutView({ userId }: { userId: string }) {
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="col-span-2 relative z-20">
                                 <div className="flex justify-between items-end mb-1.5">
-                                    <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">Search Doctor</label>
+                                    <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">Search Doctor/Landlord</label>
                                     <button type="button" onClick={() => setShowAddPayee(!showAddPayee)} className="text-[10px] font-extrabold text-[#1B9387] hover:text-[#28958B] transition uppercase tracking-wider cursor-pointer">
                                         {showAddPayee ? 'Cancel' : '+ Add New'}
                                     </button>
