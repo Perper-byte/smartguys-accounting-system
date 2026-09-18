@@ -29,6 +29,7 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -36,6 +37,8 @@ function createWindow() {
       sandbox: false
     }
   })
+
+  mainWindow.setMenu(null);
 
   const devServerUrl = process.env['ELECTRON_RENDERER_URL']
   if (devServerUrl) mainWindow.loadURL(devServerUrl)
