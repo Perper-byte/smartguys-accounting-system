@@ -38,7 +38,20 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoginSuccess }) => {
       const result = await api.login(username, password);
 
       if (result.success && result.data) {
-        onLoginSuccess(result.data);
+        
+        // 🔥 THE FIX: The Bouncer - Check if the user is actually active before letting them in!
+        const userData = result.data;
+        const dbValue = userData.is_active !== undefined ? userData.is_active : userData.isActive;
+        
+        // If the database says they are false or 0, block the login immediately!
+        if (dbValue === 0 || dbValue === '0' || dbValue === false || dbValue === 'false') {
+          setError("Access Denied: This account has been disabled by an Administrator.");
+          setLoading(false);
+          return; // 🛑 Kick them out here!
+        }
+
+        // If they pass the check, let them into the app!
+        onLoginSuccess(userData);
       } else {
         setError(result.error || "Authentication failed. Invalid username or password.");
       }

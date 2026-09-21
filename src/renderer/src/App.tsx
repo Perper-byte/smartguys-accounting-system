@@ -12,7 +12,7 @@ import {
 
 // Screens
 import { LoginScreen } from './components/LoginScreen'
-import { Lock } from 'lucide-react'; // Add Lock to your lucide-react imports
+import { Lock } from 'lucide-react'; 
 import { SystemSettingsView } from './components/SystemSettingsView';
 import { WelcomeView } from './components/WelcomeView'
 import { DashboardView } from './components/DashboardView'
@@ -27,7 +27,7 @@ import { AgedReceivablesView } from './components/AgedReceivablesView'
 import { InvoiceTrackerView } from './components/InvoiceTrackerView'
 import { PayrollView } from './components/PayrollView'
 import { JournalManagementView } from './components/JournalManagementView'
-import { AdjustingEntryForm } from './components/AdjustingEntryForm' // 🔥 Cleanly imported
+import { AdjustingEntryForm } from './components/AdjustingEntryForm' 
 import { GeneralLedgerView } from './components/GeneralLedgerView'
 import { ReconciliationView } from './components/ReconciliationView'
 import { BooksOfAccountsView } from './components/BooksOfAccountsView'
@@ -40,6 +40,7 @@ import { DatabaseBackupView } from './components/DatabaseBackupView'
 import { ChartOfAccountsView } from './components/ChartOfAccountsView'
 import { ServicesManagerView } from './components/ServicesManagerView'
 
+
 import logoImage from './assets/smartguys_logo.jpg'
 
 type User = { id: string; username: string; role: string; permissions?: string[] }
@@ -51,14 +52,14 @@ const ROLES: Record<string, Role[]> = {
   ACCOUNTANT_ONLY: ['ACCOUNTANT'],
   MANAGER_ONLY: ['MANAGER'],
   IT_ONLY: ['IT_PERSONNEL'],
-  FINANCE_TEAM: ['ACCOUNTANT', 'MANAGER'],
+  FINANCE_TEAM: ['ACCOUNTANT', 'MANAGER', 'CASHIER'],
   OPS_FINANCE: ['CASHIER', 'ACCOUNTANT']
 } as const
 
 const GROUP_ORDER = ['Home', 'Clinic Operations', 'Accounting', 'Reports & Taxes', 'System Admin']
 
 const ALL_TABS = [
-  { id: 'home', label: 'Home', icon: Home, group: 'Home', allowedRoles: ROLES.ALL },
+  { id: 'home', label: 'Home', icon: Home, group: 'Home', allowedRoles: ROLES.FINANCE_TEAM },
   { id: 'billing', label: 'Patient Billing', icon: CreditCard, group: 'Clinic Operations', allowedRoles: ROLES.CASHIER_ONLY },
   {
     id: 'settings',
@@ -100,45 +101,26 @@ export default function App() {
 
   useEffect(() => {
     const checkConnection = async () => {
-
-      if (!navigator.onLine) {
-        setIsOnline(false);
-        return;
-      }
-
       const api = (window as any).electronAPI || (window as any).api
       if (api && api.pingDatabase) {
-        try {
-          const res = await api.pingDatabase();
-          const active = res === true || res?.success === true
-          setIsOnline(Boolean(active));
-        } catch {
-            setIsOnline(false);
-        }
+        const ok = await api.pingDatabase()
+        setIsOnline(ok)
       }
     }
-    
-    checkConnection();
-
-    const handleOffline = () => setIsOnline(false);
-    const handleOnline = () => checkConnection();
-
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('online', handleOnline);
-
-    const interval = setInterval(checkConnection, 2000);
-
-    return () => {
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('online', handleOnline);
-      clearInterval(interval);
-    }
-  }, []);
-
-  const handleLoginSuccess = (user: User) => {
-    setCurrentUser(user)
-    setActiveTab('home')
+    checkConnection()
+    const interval = setInterval(checkConnection, 30000)
+    return () => clearInterval(interval)
+  }, [])
+  
+const handleLoginSuccess = (user: User) => {
+  setCurrentUser(user)
+  
+  if (user.role === 'IT_PERSONNEL') {
+    setActiveTab('audit') // Default IT landing page
+  } else {
+    setActiveTab('home') // Default Finance landing page
   }
+}
 
   const handleLogout = () => {
     setCurrentUser(null)
@@ -309,7 +291,10 @@ export default function App() {
               {activeTab === 'billing' && <POSBillingView userId={currentUser.id} />}
               {activeTab === 'collections' && <ReceivePaymentView userId={currentUser.id} prefillData={navData} />}
               {activeTab === 'payouts' && <EWTPayoutView userId={currentUser.id} />}
-              {activeTab === 'users' && <UserManagementView />}
+              
+              {/* 🔥 FIXED: Passed currentUser here instead of userId so the UserManagementView knows who the active Admin is! */}
+              {activeTab === 'users' && <UserManagementView currentUser={currentUser} />}
+              
               {activeTab === 'aging' && <AgedReceivablesView onNavigate={handleNavigation} />}
               {activeTab === 'history' && <CashierHistoryView userId={currentUser.id} prefillData={navData} />}
               {activeTab === 'voids' && <VoidApprovalsView userId={currentUser.id} />}
@@ -320,12 +305,9 @@ export default function App() {
               {activeTab === 'coa' && <ChartOfAccountsView />}
               {activeTab === 'services' && <ServicesManagerView />}
               {activeTab === 'inventory' && <InventoryView userId={currentUser.id} role={currentUser.role} />}
-              
-              {/* 🔥 FIXED ROUTING - Only 1 component per tab now! */}
               {activeTab === 'journal' && <JournalManagementView userId={currentUser.id} />}
               {activeTab === 'adjusting' && <AdjustingEntryForm userId={currentUser.id} />}
               {activeTab === 'disbursement' && <CashDisbursementForm userId={currentUser.id} />}
-              
               {activeTab === 'ledger' && <GeneralLedgerView />}
             </div>
           )}

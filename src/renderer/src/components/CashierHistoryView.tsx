@@ -417,7 +417,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
                           {tx.status === 'ACTIVE' && (
                             <button
                               onClick={() => setShowVoidId(showVoidId === tx.id ? null : tx.id)}
-                              className="text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded bg-red-50 border border-red-200 text-red-600 hover:bg-red-500 hover:text-white transition-colors shadow-sm cursor-pointer"
+                              className="text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded bg-red-50 border border-red-200 !text-red-600 hover:bg-red-500 hover:!text-white transition-colors shadow-sm cursor-pointer"
                             >
                               Void
                             </button>

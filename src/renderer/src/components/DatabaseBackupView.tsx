@@ -94,7 +94,8 @@ export const DatabaseBackupView: React.FC = () => {
             <button
               onClick={handleTriggerBackup}
               disabled={loading}
-              className="w-full bg-[#4f46e5] disabled:bg-[#29292e] disabled:text-[#8d8d99] text-white text-sm font-bold py-3 rounded transition hover:bg-[#5b54f6] shadow-md flex justify-center items-center"
+              /* 🔥 FIXED: Bulletproof Indigo Button */
+              className="w-full !bg-indigo-600 disabled:!bg-gray-200 disabled:!text-gray-500 !text-white text-sm font-bold py-3 rounded transition hover:!bg-indigo-700 shadow-md flex justify-center items-center cursor-pointer"
             >
               {loading ? 'Processing...' : '💾 Run Backup Now'}
             </button>
@@ -109,7 +110,8 @@ export const DatabaseBackupView: React.FC = () => {
             <button
               onClick={handleTriggerRestore}
               disabled={loading}
-              className="w-full bg-red-500/10 text-red-500 disabled:bg-[#29292e] disabled:text-[#8d8d99] border border-red-500/20 text-sm font-bold py-3 rounded transition hover:bg-red-500 hover:text-white shadow-md flex justify-center items-center"
+              /* 🔥 FIXED: Bulletproof Light Red Button that turns solid red on hover */
+              className="w-full !bg-red-50 !text-red-600 border border-red-200 disabled:!bg-gray-200 disabled:!text-gray-500 text-sm font-bold py-3 rounded transition hover:!bg-red-600 hover:!text-white shadow-md flex justify-center items-center cursor-pointer"
             >
               {loading ? 'Processing...' : '📂 Restore Database'}
             </button>

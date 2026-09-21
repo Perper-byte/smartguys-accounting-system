@@ -90,23 +90,25 @@ app.whenReady().then(() => {
       return []
     }
   })
-  ipcMain.handle('create-user', async (e, userData) => {
+  ipcMain.handle('create-user', async (e, userData, adminUser = 'SYSTEM') => {
     try {
       const result = { success: true, data: await UserService.createUser(userData) }
-      await AuditService.logAction('SYSTEM', 'CREATE USER', `Created user: ${userData.username}`)
+      // 🔥 Fixed: Uses adminUser
+      await AuditService.logAction(adminUser, 'CREATE USER', `Created user: ${userData.username}`)
       return result
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
 
+  // (Keeping restore-payee and archive-payee unchanged as they are between the user functions)
   ipcMain.handle('restore-payee', async (_, payeeId: string) => { 
     try { 
         const result = await LedgerService.restorePayee(payeeId); 
         await AuditService.logAction('SYSTEM', 'RESTORE CONTACT', `Restored contact ID: ${payeeId}`); 
         return result; 
     } catch (error: any) { return { success: false, error: error.message }; } 
-});
+  });
 
   ipcMain.handle('archive-payee', async (_, payeeId: string) => { 
     try { 
@@ -114,12 +116,14 @@ app.whenReady().then(() => {
         await AuditService.logAction('SYSTEM', 'ARCHIVE CONTACT', `Archived contact ID: ${payeeId}`); 
         return result; 
     } catch (error: any) { return { success: false, error: error.message }; } 
-});
-  ipcMain.handle('toggle-user-status', async (e, userId, isActive) => {
+  });
+
+  ipcMain.handle('toggle-user-status', async (e, userId, isActive, adminUser = 'SYSTEM') => {
     try {
       await UserService.toggleUserStatus(userId, isActive)
+      // 🔥 Fixed: Uses adminUser
       await AuditService.logAction(
-        'SYSTEM',
+        adminUser,
         'USER ACCESS',
         `Changed status for ID: ${userId} to ${isActive}`
       )
@@ -128,18 +132,23 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
-  ipcMain.handle('reset-user-password', async (e, userId, newPassword) => {
+
+  ipcMain.handle('reset-user-password', async (e, userId, newPassword, adminUser = 'SYSTEM') => {
     try {
       await UserService.resetPassword(userId, newPassword)
-      await AuditService.logAction('SYSTEM', 'SECURITY', `Reset password for ID: ${userId}`)
+      // 🔥 Fixed: Uses adminUser
+      await AuditService.logAction(adminUser, 'SECURITY', `Reset password for ID: ${userId}`)
       return { success: true }
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
-  ipcMain.handle('update-user-permissions', async (e, id, perms) => {
+
+  ipcMain.handle('update-user-permissions', async (e, id, perms, adminUser = 'SYSTEM') => {
     try {
       await UserService.updateUserPermissions(id, perms)
+      // 🔥 Fixed: Added an Audit Log entry for changing permissions and using adminUser
+      await AuditService.logAction(adminUser, 'SECURITY', `Updated permissions for ID: ${id}`)
       return { success: true }
     } catch (err: any) {
       return { success: false, error: err.message }

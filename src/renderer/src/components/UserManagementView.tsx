@@ -28,7 +28,8 @@ const MODULES = [
     { id: 'services', label: 'Services & Pricing' }
 ];
 
-export default function UserManagementView() {
+// 🔥 FIXED: Component now accepts currentUser so it knows who is doing the actions
+export default function UserManagementView({ currentUser }: { currentUser?: any }) {
     const [users, setUsers] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
@@ -36,13 +37,13 @@ export default function UserManagementView() {
 
     const [newUser, setNewUser] = useState({ username: '', password: '', role: 'CASHIER', isActive: true });
 
-    // Modal States
     const [userToToggle, setUserToToggle] = useState<{ id: string, username: string, isActive: boolean } | null>(null);
     const [userToReset, setUserToReset] = useState<{ id: string, username: string } | null>(null);
     const [newPassword, setNewPassword] = useState('');
-    
-    // 🔥 Permissions Modal State
     const [userToEditPerms, setUserToEditPerms] = useState<{ id: string, username: string, perms: string[] } | null>(null);
+
+    // Default to the current logged in user, fallback to 'SYSTEM' just in case
+    const adminUser = currentUser?.username || 'SYSTEM';
 
     const fetchUsers = async () => {
         setLoading(true);
@@ -64,7 +65,8 @@ export default function UserManagementView() {
         setLoading(true);
         try {
             const api = (window as any).api || (window as any).electronAPI;
-            const result = await api.createUser(newUser);
+            // 🔥 Passed adminUser to the backend for the audit log
+            const result = await api.createUser(newUser, adminUser); 
 
             if (result.success) {
                 setStatusMessage({ type: 'success', msg: `User ${newUser.username} created successfully!` });
@@ -83,8 +85,13 @@ export default function UserManagementView() {
         setStatusMessage(null);
         try {
             const api = (window as any).api || (window as any).electronAPI;
-            const newStatus = !userToToggle.isActive;
-            const result = await api.toggleUserStatus(userToToggle.id, newStatus);
+            
+            // If they are currently active, we want to set them to false (or 0)
+            const newStatus = !userToToggle.isActive; 
+            
+            // 🔥 Passed adminUser to the backend for the audit log!
+            const result = await api.toggleUserStatus(userToToggle.id, newStatus, adminUser);
+            
             if (result.success) {
                 setStatusMessage({ type: 'success', msg: `User ${userToToggle.username} is now ${newStatus ? 'Active' : 'Disabled'}.` });
                 fetchUsers();
@@ -99,7 +106,9 @@ export default function UserManagementView() {
         setStatusMessage(null);
         try {
             const api = (window as any).api || (window as any).electronAPI;
-            const result = await api.resetUserPassword(userToReset.id, newPassword);
+            // 🔥 Passed adminUser for the audit log
+            const result = await api.resetUserPassword(userToReset.id, newPassword, adminUser);
+            
             if (result.success) {
                 setStatusMessage({ type: 'success', msg: `Password reset successfully for ${userToReset.username}.` });
                 setNewPassword('');
@@ -108,13 +117,14 @@ export default function UserManagementView() {
         finally { setUserToReset(null); }
     };
 
-    // 🔥 SAVE CUSTOM PERMISSIONS
     const handleSavePermissions = async () => {
         if (!userToEditPerms) return;
         setLoading(true);
         try {
             const api = (window as any).api || (window as any).electronAPI;
-            const result = await api.updateUserPermissions(userToEditPerms.id, userToEditPerms.perms);
+            // 🔥 Passed adminUser for the audit log
+            const result = await api.updateUserPermissions(userToEditPerms.id, userToEditPerms.perms, adminUser);
+            
             if (result.success) {
                 setStatusMessage({ type: 'success', msg: `Custom permissions saved for ${userToEditPerms.username}!` });
                 fetchUsers();
@@ -167,8 +177,6 @@ export default function UserManagementView() {
             )}
 
             <div className="flex-1 grid grid-cols-1 lg:grid-cols-3 gap-8 min-h-0">
-                
-                {/* LEFT PANE: CREATE USER FORM */}
                 <div className="col-span-1 bg-white border border-[#B0DCDA] rounded-xl p-6 shadow-sm h-fit">
                     <h3 className="text-lg font-extrabold text-gray-800 mb-5 border-b border-gray-100 pb-3">Create New Account</h3>
                     
@@ -202,7 +210,6 @@ export default function UserManagementView() {
                     </form>
                 </div>
 
-                {/* RIGHT PANE: USER LIST */}
                 <div className="col-span-2 bg-white border border-[#B0DCDA] rounded-xl shadow-sm overflow-hidden flex flex-col">
                     <div className="p-4 border-b border-[#B0DCDA] bg-[#FBF8F8] flex justify-between items-center">
                         <h3 className="text-lg font-extrabold text-gray-800 tracking-wide">System Users</h3>
@@ -224,7 +231,11 @@ export default function UserManagementView() {
                                     <tr><td colSpan={4} className="p-12 text-center text-gray-500 italic font-medium">No users found.</td></tr>
                                 ) : (
                                     filteredUsers.map((u) => {
-                                        const isActive = u.is_active !== false && u.isActive !== false;
+                                        // 🔥 FIXED BULLETPROOF BOOLEAN LOGIC:
+                                        // Some databases return 1/0, strings '1'/'0', or true/false. This handles all of them accurately.
+                                        const dbValue = u.is_active !== undefined ? u.is_active : u.isActive;
+                                        const isActive = (dbValue === 1 || dbValue === '1' || dbValue === true || dbValue === 'true');
+                                        
                                         const hasCustomPerms = u.permissions && u.permissions.length > 0;
 
                                         return (
@@ -239,10 +250,13 @@ export default function UserManagementView() {
                                                     </span>
                                                 </td>
                                                 <td className="p-4 text-center border-r border-gray-100">
-                                                    {isActive ? <span className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-600 text-[10px] font-extrabold rounded-md uppercase tracking-wider shadow-sm">Active</span> : <span className="px-2.5 py-1 bg-gray-100 border border-gray-300 text-gray-500 text-[10px] font-extrabold rounded-md uppercase tracking-wider shadow-sm">Disabled</span>}
+                                                    {isActive ? (
+                                                        <span className="px-2.5 py-1 bg-emerald-50 border border-emerald-200 text-emerald-600 text-[10px] font-extrabold rounded-md uppercase tracking-wider shadow-sm">Active</span>
+                                                    ) : (
+                                                        <span className="px-2.5 py-1 bg-gray-100 border border-gray-300 text-gray-500 text-[10px] font-extrabold rounded-md uppercase tracking-wider shadow-sm">Disabled</span>
+                                                    )}
                                                 </td>
                                                 <td className="p-4 text-right space-x-2">
-                                                    {/* 🔥 NEW CUSTOM ACCESS BUTTON */}
                                                     <button 
                                                         onClick={() => setUserToEditPerms({ id: u.id, username: u.username, perms: u.permissions || [] })}
                                                         className="text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 rounded-md transition cursor-pointer shadow-sm bg-white border border-gray-300 text-[#1B9387] hover:bg-[#E9FAFA]"
@@ -272,7 +286,6 @@ export default function UserManagementView() {
                 </div>
             </div>
 
-            {/* 🔥 NEW: CUSTOM PERMISSIONS MODAL */}
             {userToEditPerms && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
                     <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
@@ -313,7 +326,6 @@ export default function UserManagementView() {
                 </div>
             )}
 
-            {/* MODAL: TOGGLE STATUS */}
             {userToToggle && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
                     <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-2xl p-8 w-[420px] animate-in zoom-in-95 duration-200">
@@ -327,7 +339,6 @@ export default function UserManagementView() {
                 </div>
             )}
 
-            {/* MODAL: RESET PASSWORD */}
             {userToReset && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
                     <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-2xl p-8 w-[420px] animate-in zoom-in-95 duration-200">

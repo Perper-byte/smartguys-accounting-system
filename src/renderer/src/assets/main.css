@@ -47,11 +47,18 @@ body {
   color: #1f2937 !important;
 }
 
-/* Keep labels readable on colored action buttons and badges. */
+/* 🔥 NEW: Force the specific text color to pure red */
+#app-main [class~="text-red-600"] {
+  color: #FF0000 !important;
+}
+
+
 #app-main button[class*="bg-[#4f46e5]"],
 #app-main button[class*="bg-[#1B9387]"],
 #app-main button[class*="bg-[#f75a68]"],
-#app-main button[class*="bg-red"],
+#app-main button[class*="bg-red-500"], 
+#app-main button[class*="bg-red-600"], 
+#app-main button[class*="bg-red-700"], 
 #app-main [class*="bg-[#4f46e5]"] [class~="text-white"],
 #app-main [class*="bg-[#1B9387]"] [class~="text-white"],
 #app-main [class*="bg-[#f75a68]"] [class~="text-white"] {

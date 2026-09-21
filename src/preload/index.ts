@@ -7,10 +7,15 @@ export const api = {
 
   // Users
   getUsers: () => ipcRenderer.invoke('get-users'),
-  createUser: (userData: any) => ipcRenderer.invoke('create-user', userData),
-  toggleUserStatus: (userId: string, isActive: boolean) => ipcRenderer.invoke('toggle-user-status', userId, isActive),
-  resetUserPassword: (userId: string, newPassword: string) => ipcRenderer.invoke('reset-user-password', userId, newPassword),
-  updateUserPermissions: (id: string, perms: string[]) => ipcRenderer.invoke('update-user-permissions', id, perms),
+  // 🔥 FIXED: Added adminUser parameter to all of these so they pass through to the backend!
+  createUser: (userData: any, adminUser?: string) => 
+    ipcRenderer.invoke('create-user', userData, adminUser),
+  toggleUserStatus: (userId: string, isActive: boolean, adminUser?: string) => 
+    ipcRenderer.invoke('toggle-user-status', userId, isActive, adminUser),
+  resetUserPassword: (userId: string, newPassword: string, adminUser?: string) => 
+    ipcRenderer.invoke('reset-user-password', userId, newPassword, adminUser),
+  updateUserPermissions: (id: string, perms: string[], adminUser?: string) => 
+    ipcRenderer.invoke('update-user-permissions', id, perms, adminUser),
   getPettyCashBalance: () => ipcRenderer.invoke('get-petty-cash-balance'),
 
   // Ledger & Accounts
