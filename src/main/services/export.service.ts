@@ -81,4 +81,101 @@ export class ExportService {
 
         return { success: true, filePath };
     }
+    /**
+     * Generates a beautifully formatted Excel spreadsheet for Aged Receivables
+     */
+    static async exportAgedReceivablesToExcel(data: any[], totals: any) {
+        const { filePath } = await dialog.showSaveDialog({
+            title: 'Export Aged Receivables',
+            defaultPath: `Aged_Receivables_${new Date().toISOString().split('T')[0]}.xlsx`,
+            filters: [{ name: 'Excel Worksheets', extensions: ['xlsx'] }]
+        });
+
+        if (!filePath) return { success: false, error: "Export cancelled by user." };
+
+        const workbook = new ExcelJS.Workbook();
+        const worksheet = workbook.addWorksheet('Aged Receivables');
+
+        // 1. Title Header
+        worksheet.mergeCells('A1:F1');
+        const titleCell = worksheet.getCell('A1');
+        titleCell.value = 'SmartGuys Community Healthcare Inc.';
+        titleCell.font = { name: 'Arial', size: 14, bold: true };
+        titleCell.alignment = { horizontal: 'center' };
+
+        // 2. Subtitle Header with Date
+        worksheet.mergeCells('A2:F2');
+        const subtitleCell = worksheet.getCell('A2');
+        subtitleCell.value = `Aged Receivables (HMO Tracker) - As of ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+        subtitleCell.font = { name: 'Arial', size: 11, italic: true };
+        subtitleCell.alignment = { horizontal: 'center' };
+
+        worksheet.addRow([]); // Blank spacer row
+
+        // 3. Table Headers (Styled with Brand Color)
+        const headerRow = worksheet.addRow([
+            'Patient / HMO / Entity',
+            'Current (0-30 Days)',
+            '31-60 Days',
+            '61-90 Days',
+            '90+ Days',
+            'Total Outstanding'
+        ]);
+
+        headerRow.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFFFF' } }; // White text
+        headerRow.eachCell((cell) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1B9387' } }; // Teal Background
+            cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            cell.border = { top: { style: 'thin' }, left: { style: 'thin' }, bottom: { style: 'thin' }, right: { style: 'thin' } };
+        });
+
+        // 4. Data Rows
+        data.forEach(row => {
+            const dataRow = worksheet.addRow([
+                row.payeeName,
+                row.current || 0,
+                row.days30 || 0,
+                row.days60 || 0,
+                row.days90 || 0,
+                row.total || 0
+            ]);
+            // Subtle borders for readability
+            dataRow.eachCell(cell => {
+                cell.border = { top: { style: 'hair' }, left: { style: 'hair' }, bottom: { style: 'hair' }, right: { style: 'hair' } };
+            });
+        });
+
+        // 5. Grand Totals Row
+        const totalRow = worksheet.addRow([
+            'GRAND TOTALS',
+            totals.totalCurrent,
+            totals.total30,
+            totals.total60,
+            totals.total90,
+            totals.grandTotal
+        ]);
+        totalRow.font = { name: 'Arial', size: 11, bold: true };
+        totalRow.eachCell((cell, colNum) => {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F0F0' } }; // Light Gray
+            cell.border = { top: { style: 'double' }, bottom: { style: 'thin' } };
+            if (colNum === 1) cell.alignment = { horizontal: 'right' };
+        });
+
+        // 6. Format Columns to Philippine Peso Currency (Columns B through F)
+        for (let i = 2; i <= 6; i++) {
+            worksheet.getColumn(i).numFmt = '_("₱"* #,##0.00_);_("₱"* (#,##0.00);_("₱"* "-"??_);_(@_)';
+        }
+
+        // 7. Auto-size Column Widths
+        worksheet.getColumn(1).width = 45; // Name column extra wide
+        for (let i = 2; i <= 6; i++) {
+            worksheet.getColumn(i).width = 22; // Amount columns
+        }
+
+        // Save file
+        const buffer = await workbook.xlsx.writeBuffer();
+        fs.writeFileSync(filePath, Buffer.from(buffer));
+
+        return { success: true, filePath };
+    }
 }

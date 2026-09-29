@@ -18,7 +18,7 @@ export class BackupService {
             pass: matches[2] || '',
             host: matches[3],
             port: matches[4] || '3306',
-            db: matches[5],
+            db: matches[5].split('?')[0],
         };
     }
 

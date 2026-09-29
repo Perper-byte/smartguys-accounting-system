@@ -277,7 +277,7 @@ export const LedgerService = {
         }
     },
 
-     async getPayees(typeFilter?: string) {
+    async getPayees(typeFilter?: string) {
         let whereClause: any = { is_active: true }; // Only show active contacts in dropdowns
         if (typeFilter) {
             const types = typeFilter.split(',');
@@ -286,7 +286,7 @@ export const LedgerService = {
         return await prisma.payee.findMany({ where: whereClause, orderBy: { name: 'asc' } });
     },
 
-     async archivePayee(payeeId: string) {
+    async archivePayee(payeeId: string) {
         try {
             await prisma.payee.update({
                 where: { id: payeeId },
@@ -530,21 +530,61 @@ export const LedgerService = {
         return (lastSeqNum + 1).toString().padStart(3, '0');
     },
 
-    async getPayoutHistory() {
+    async getPayoutHistory(payeeType: string = 'LANDLORD') {
         const entries = await prisma.journalEntry.findMany({
-            where: { reference_no: { startsWith: 'CV-' }, payee_id: { not: null } },
-            include: { payee: true, lines: true }, orderBy: { date: 'desc' }
+            where: {
+                payee_id: { not: null },
+                status: 'ACTIVE',
+                OR: [
+                    { reference_no: { startsWith: 'CV-' } },
+                    { reference_no: { startsWith: 'REF-' } },
+                    { reference_no: { startsWith: 'DV-' } }
+                ],
+                ...(payeeType ? { payee: { type: payeeType } } : {})
+            },
+            include: { payee: true, lines: true },
+            orderBy: { date: 'desc' },
+            take: 100
         });
+
         const history: any[] = [];
+
         entries.forEach(entry => {
-            let gross = 0; let tax = 0; let net = 0;
+            let gross = 0;
+            let tax = 0;
+
             entry.lines.forEach(line => {
-                if (line.account_id === '2010' && Number(line.debit) > 0) gross += Number(line.debit);
-                if (line.account_id === '2050' && Number(line.credit) > 0) tax += Number(line.credit);
-                if (line.account_id === '1010' && Number(line.credit) > 0) net += Number(line.credit);
+                // Gross AP debited
+                if (line.account_id === '2010' && Number(line.debit) > 0) {
+                    gross += Number(line.debit);
+                }
+                // Withholding tax credited
+                if (line.account_id === '2050' && Number(line.credit) > 0) {
+                    tax += Number(line.credit);
+                }
             });
-            if (gross > 0) history.push({ id: entry.id, date: entry.date, referenceNo: entry.reference_no, payee: entry.payee, description: entry.description, gross, tax, net });
+
+            // If account 2010 wasn't explicitly used, fallback to highest debit
+            if (gross === 0) {
+                gross = entry.lines.reduce((max, l) => Math.max(max, Number(l.debit)), 0);
+            }
+
+            const net = gross - tax;
+
+            if (gross > 0) {
+                history.push({
+                    id: entry.id,
+                    date: entry.date,
+                    referenceNo: entry.reference_no,
+                    payee: entry.payee,
+                    description: entry.description,
+                    gross,
+                    tax,
+                    net
+                });
+            }
         });
+
         return history;
     },
 

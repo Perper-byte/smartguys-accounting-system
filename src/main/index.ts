@@ -24,12 +24,15 @@ import { UserService } from './services/user.service'
 import { AuditService } from './services/audit.service'
 import { PayrollService } from './services/payroll.service'
 import { InventoryService } from './services/inventory.service'
+import logoImage from "../renderer/src/assets/smartguys_logo.jpg"
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     autoHideMenuBar: true,
+    title: 'SmartGuys Clinic',
+    icon: logoImage,
     webPreferences: {
       preload: path.join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -105,20 +108,20 @@ app.whenReady().then(() => {
   })
 
   // (Keeping restore-payee and archive-payee unchanged as they are between the user functions)
-  ipcMain.handle('restore-payee', async (_, payeeId: string) => { 
-    try { 
-        const result = await LedgerService.restorePayee(payeeId); 
-        await AuditService.logAction('SYSTEM', 'RESTORE CONTACT', `Restored contact ID: ${payeeId}`); 
-        return result; 
-    } catch (error: any) { return { success: false, error: error.message }; } 
+  ipcMain.handle('restore-payee', async (_, payeeId: string) => {
+    try {
+      const result = await LedgerService.restorePayee(payeeId);
+      await AuditService.logAction('SYSTEM', 'RESTORE CONTACT', `Restored contact ID: ${payeeId}`);
+      return result;
+    } catch (error: any) { return { success: false, error: error.message }; }
   });
 
-  ipcMain.handle('archive-payee', async (_, payeeId: string) => { 
-    try { 
-        const result = await LedgerService.archivePayee(payeeId); 
-        await AuditService.logAction('SYSTEM', 'ARCHIVE CONTACT', `Archived contact ID: ${payeeId}`); 
-        return result; 
-    } catch (error: any) { return { success: false, error: error.message }; } 
+  ipcMain.handle('archive-payee', async (_, payeeId: string) => {
+    try {
+      const result = await LedgerService.archivePayee(payeeId);
+      await AuditService.logAction('SYSTEM', 'ARCHIVE CONTACT', `Archived contact ID: ${payeeId}`);
+      return result;
+    } catch (error: any) { return { success: false, error: error.message }; }
   });
 
   ipcMain.handle('toggle-user-status', async (e, userId, isActive, adminUser = 'SYSTEM') => {
@@ -835,6 +838,9 @@ app.whenReady().then(() => {
       return { success: false, error: error.message }
     }
   })
+  ipcMain.handle('export-aged-receivables', async (_, data, totals) => {
+    return await ExportService.exportAgedReceivablesToExcel(data, totals);
+  });
 
   // Tax
   ipcMain.handle('tax:generate2550Q', async (e, year, quarter) => {

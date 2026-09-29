@@ -8,13 +8,13 @@ export const api = {
   // Users
   getUsers: () => ipcRenderer.invoke('get-users'),
   // 🔥 FIXED: Added adminUser parameter to all of these so they pass through to the backend!
-  createUser: (userData: any, adminUser?: string) => 
+  createUser: (userData: any, adminUser?: string) =>
     ipcRenderer.invoke('create-user', userData, adminUser),
-  toggleUserStatus: (userId: string, isActive: boolean, adminUser?: string) => 
+  toggleUserStatus: (userId: string, isActive: boolean, adminUser?: string) =>
     ipcRenderer.invoke('toggle-user-status', userId, isActive, adminUser),
-  resetUserPassword: (userId: string, newPassword: string, adminUser?: string) => 
+  resetUserPassword: (userId: string, newPassword: string, adminUser?: string) =>
     ipcRenderer.invoke('reset-user-password', userId, newPassword, adminUser),
-  updateUserPermissions: (id: string, perms: string[], adminUser?: string) => 
+  updateUserPermissions: (id: string, perms: string[], adminUser?: string) =>
     ipcRenderer.invoke('update-user-permissions', id, perms, adminUser),
   getPettyCashBalance: () => ipcRenderer.invoke('get-petty-cash-balance'),
 
@@ -41,18 +41,18 @@ export const api = {
   // Payees
   getPayees: (typeFilter?: string) => ipcRenderer.invoke('get-payees', typeFilter),
   createPayee: (
-      name: string, 
-      type: string, 
-      tin: string, 
-      email: string, 
-      phone: string, 
-      address: string, 
-      hmoAffiliation?: string, 
-      hmoCardNo?: string, 
-      hmoExpiry?: string
+    name: string,
+    type: string,
+    tin: string,
+    email: string,
+    phone: string,
+    address: string,
+    hmoAffiliation?: string,
+    hmoCardNo?: string,
+    hmoExpiry?: string
   ) => ipcRenderer.invoke(
-      'create-payee', 
-      name, type, tin, email, phone, address, hmoAffiliation, hmoCardNo, hmoExpiry
+    'create-payee',
+    name, type, tin, email, phone, address, hmoAffiliation, hmoCardNo, hmoExpiry
   ),
   importPayees: (data: any[]) => ipcRenderer.invoke('import-payees', data),
   archivePayee: (payeeId: string) => ipcRenderer.invoke('archive-payee', payeeId),
@@ -79,7 +79,7 @@ export const api = {
   getPendingVoids: () => ipcRenderer.invoke('get-pending-voids'),
   rejectVoid: (id: string) => ipcRenderer.invoke('reject-void', id),
   approveVoid: (id: string, managerId: string, overridePin?: string) => ipcRenderer.invoke('approve-void', id, managerId, overridePin),
-  
+
 
   // POS & Transactions
   getNextSequence: (prefix: string) => ipcRenderer.invoke('get-next-sequence', prefix),
@@ -102,6 +102,7 @@ export const api = {
   // Exporters
   exportTrialBalanceExcel: (year?: number, month?: number) => ipcRenderer.invoke('export:trialBalanceExcel', year, month),
   exportPDF: (filename: string) => ipcRenderer.invoke('export:printToPDF', filename),
+  exportAgedReceivablesToExcel: (data, totals) => ipcRenderer.invoke('export-aged-receivables', data, totals),
 
   // Employees & Payroll
   getEmployees: () => ipcRenderer.invoke('get-employees'),
@@ -119,12 +120,12 @@ export const api = {
 
   // Backups & Tax
   triggerBackup: () => ipcRenderer.invoke('backup:triggerBackup'),
-  restoreBackup: () => ipcRenderer.invoke('backup:restore'), 
+  restoreBackup: () => ipcRenderer.invoke('backup:restore'),
   generate2550Q: (year: number, quarter: number) => ipcRenderer.invoke('tax:generate2550Q', year, quarter),
   generateRelief: (year: number, quarter: number) => ipcRenderer.invoke('tax:generateRelief', year, quarter),
   generate0619E: (year: number, month: number) => ipcRenderer.invoke('tax:generate0619E', year, month),
   generate1601EQ: (year: number, quarter: number) => ipcRenderer.invoke('tax:generate1601EQ', year, quarter),
-  
+
 
   // Dashboard Analytics
   getTodayStats: () => ipcRenderer.invoke('get-today-stats'),

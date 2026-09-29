@@ -1,7 +1,6 @@
 import * as React from 'react'
 import { useState, useEffect } from 'react'
-import * as XLSX from 'xlsx'
-import { Printer, FileSpreadsheet, Search, RefreshCw, ChevronRight, X, Receipt } from 'lucide-react'
+import { FileSpreadsheet, Search, RefreshCw, ChevronRight, X, Receipt } from 'lucide-react'
 
 interface AgedReceivablesProps {
   onNavigate?: (viewName: string, data?: any) => void
@@ -19,14 +18,14 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
     try {
       const api = (window as any).api || (window as any).electronAPI
 
-      // Fetch true data from the database. No more fake mock data fallback!
+      // Fetch data from backend
       const result = api && api.getAgedReceivables ? await api.getAgedReceivables() : []
 
       setData(result || [])
       setLastUpdated(new Date())
     } catch (error) {
       console.error('Failed to fetch aged receivables', error)
-      setData([]) // Ensure it clears on error
+      setData([])
     } finally {
       setLoading(false)
     }
@@ -42,8 +41,6 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
     return showSymbol ? `₱ ${formattedStr}` : formattedStr
   }
 
-  const handlePrint = () => window.print()
-
   const filteredData = data.filter((row) =>
     (row.payeeName || '').toLowerCase().includes(searchQuery.toLowerCase())
   )
@@ -54,44 +51,44 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
   const total90 = filteredData.reduce((sum, row) => sum + (row.days90 || 0), 0)
   const grandTotal = filteredData.reduce((sum, row) => sum + (row.total || 0), 0)
 
-  const handleExportExcel = () => {
+  const handleExportExcel = async () => {
     if (filteredData.length === 0) return alert('No data to export.')
 
-    const exportData = filteredData.map((row) => ({
-      'Patient / HMO / Entity': row.payeeName,
-      'Current (0-30 Days)': row.current || 0,
-      '31-60 Days': row.days30 || 0,
-      '61-90 Days': row.days60 || 0,
-      '90+ Days': row.days90 || 0,
-      'Total Outstanding (PHP)': row.total || 0
-    }))
+    setLoading(true)
+    try {
+      const api = (window as any).api || (window as any).electronAPI
 
-    exportData.push({
-      'Patient / HMO / Entity': 'GRAND TOTALS',
-      'Current (0-30 Days)': totalCurrent,
-      '31-60 Days': total30,
-      '61-90 Days': total60,
-      '90+ Days': total90,
-      'Total Outstanding (PHP)': grandTotal
-    })
+      const totals = {
+        totalCurrent,
+        total30,
+        total60,
+        total90,
+        grandTotal
+      }
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData)
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Aged Receivables')
-    XLSX.writeFile(workbook, `Aged_Receivables_${new Date().toISOString().slice(0, 10)}.xlsx`)
+      const result = await api.exportAgedReceivablesToExcel(filteredData, totals)
+
+      if (result && !result.success && result.error !== 'Export cancelled by user.') {
+        alert(`Export failed: ${result.error}`)
+      }
+    } catch (error) {
+      console.error('Error exporting to Excel:', error)
+      alert('System error while exporting to Excel.')
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // Helper for dynamic status badge colors
   const getStatusStyle = (status: string) => {
     const s = (status || '').toUpperCase()
     if (s === 'PAID' || s === 'CLEARED') return 'bg-emerald-100 text-emerald-700'
     if (s === 'PARTIAL' || s === 'PARTIALLY PAID') return 'bg-amber-100 text-amber-700'
-    return 'bg-orange-100 text-orange-700' // Default UNPAID style
+    return 'bg-orange-100 text-orange-700'
   }
 
   return (
-    <div className="w-full h-full flex flex-col items-center p-6 pb-10 relative">
-      <div className="w-full max-w-7xl flex flex-col text-gray-800 font-sans animate-in fade-in duration-300">
+    <div className="w-full h-full px-8 py-6 flex flex-col relative font-sans text-gray-800 animate-in fade-in duration-300">
+      <div className="w-full h-full flex-1 flex flex-col min-h-0">
         {/* HEADER */}
         <div className="flex justify-between items-end mb-6 pb-4 print:hidden">
           <div>
@@ -122,7 +119,7 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
           <div className="flex space-x-3">
             <button
               onClick={fetchData}
-              className="px-3 py-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-600 rounded-md transition flex items-center justify-center"
+              className="px-3 py-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-600 rounded-md transition flex items-center justify-center cursor-pointer"
               title="Refresh Data"
             >
               <RefreshCw size={16} className={loading ? 'animate-spin' : ''} />
@@ -130,18 +127,10 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
             <button
               onClick={handleExportExcel}
               disabled={loading || filteredData.length === 0}
-              className="px-4 py-2 bg-white hover:bg-[#E9FAFA] border border-[#B0DCDA] text-xs font-extrabold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-2 cursor-pointer disabled:opacity-50"
+              className="px-4 py-2 bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-extrabold rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-2 cursor-pointer disabled:opacity-50"
             >
               <FileSpreadsheet size={16} />
               <span>Export Excel</span>
-            </button>
-            <button
-              onClick={handlePrint}
-              disabled={loading || filteredData.length === 0}
-              className="px-4 py-2 bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-extrabold rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-2 cursor-pointer disabled:opacity-50"
-            >
-              <Printer size={16} />
-              <span>Print Report</span>
             </button>
           </div>
         </div>
@@ -202,30 +191,35 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
           </div>
         </div>
 
-        {/* TABLE */}
-        <div className="bg-white border border-[#B0DCDA] rounded-xl flex flex-col shadow-sm overflow-hidden max-h-[60vh]">
+        {/* TABLE WRAPPER CONTAINER */}
+        <div className="bg-white border border-[#B0DCDA] rounded-xl flex flex-col shadow-sm overflow-hidden flex-1 min-h-0">
+          {/* Scrollable Data Area */}
           <div className="overflow-auto relative flex-1">
             {loading ? (
               <div className="flex justify-center items-center py-20 text-[#1B9387]">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current"></div>
               </div>
             ) : (
-              <table className="w-full text-left text-sm whitespace-nowrap">
+              <table className="w-full h-full table-fixed text-left text-sm whitespace-nowrap bg-white">
                 <thead className="bg-gray-50 sticky top-0 z-20 shadow-sm border-b border-[#B0DCDA]">
-                  <tr className="text-gray-500 uppercase tracking-wider text-xs font-extrabold">
-                    <th className="p-4 border-r border-gray-200">Patient / HMO / Entity</th>
-                    <th className="p-4 text-right border-r border-gray-200 text-[#1B9387]">
+                  <tr className="text-gray-500 uppercase tracking-wider text-xs font-extrabold h-[1px]">
+                    <th className="p-4 border-r border-gray-200 w-[28%]">Patient / HMO / Entity</th>
+                    <th className="p-4 text-right border-r border-gray-200 text-[#1B9387] w-[12%]">
                       Current
                     </th>
-                    <th className="p-4 text-right border-r border-gray-200 text-amber-500">
+                    <th className="p-4 text-right border-r border-gray-200 text-amber-500 w-[12%]">
                       31-60
                     </th>
-                    <th className="p-4 text-right border-r border-gray-200 text-orange-500">
+                    <th className="p-4 text-right border-r border-gray-200 text-orange-500 w-[12%]">
                       61-90
                     </th>
-                    <th className="p-4 text-right border-r border-[#B0DCDA] text-red-500">90+</th>
-                    <th className="p-4 text-right text-gray-600 border-r border-gray-200">Total</th>
-                    <th className="p-4 text-center text-gray-400 w-24 print:hidden">Action</th>
+                    <th className="p-4 text-right border-r border-[#B0DCDA] text-red-500 w-[12%]">
+                      90+
+                    </th>
+                    <th className="p-4 text-right text-gray-600 border-r border-gray-200 w-[14%]">
+                      Total
+                    </th>
+                    <th className="p-4 text-center text-gray-400 w-[10%] print:hidden">Action</th>
                   </tr>
                 </thead>
 
@@ -237,78 +231,122 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
                       </td>
                     </tr>
                   ) : (
-                    filteredData.map((row: any, i: number) => (
-                      <tr
-                        key={i}
-                        className="hover:bg-[#E9FAFA]/50 transition-colors bg-white group"
-                      >
-                        <td className="p-4 font-extrabold text-gray-800 border-r border-gray-100">
-                          {row.payeeName}
-                        </td>
-                        <td className="p-4 text-right font-mono font-bold text-gray-800 border-r border-gray-100">
-                          {formatCurrency(row.current)}
-                        </td>
-                        <td className="p-4 text-right font-mono font-bold text-gray-800 border-r border-gray-100">
-                          {formatCurrency(row.days30)}
-                        </td>
-                        <td className="p-4 text-right font-mono font-bold text-gray-800 border-r border-gray-100">
-                          {formatCurrency(row.days60)}
-                        </td>
-                        <td className="p-4 text-right font-mono font-bold text-gray-800 border-r border-[#B0DCDA]">
-                          {row.days90 > 0 ? (
-                            <span className="text-red-600 flex justify-end items-center gap-1">
-                              <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
-                              {formatCurrency(row.days90)}
-                            </span>
-                          ) : (
-                            formatCurrency(row.days90)
-                          )}
-                        </td>
-                        <td className="p-4 text-right font-mono font-black text-gray-800 bg-[#FBF8F8]/50 border-r border-gray-100">
-                          {formatCurrency(row.total)}
-                        </td>
+                    <>
+                      {/* Actual Data Rows */}
+                      {filteredData.map((row: any, i: number) => (
+                        <tr
+                          key={i}
+                          className="hover:bg-[#E9FAFA]/50 transition-colors bg-white group h-[1px]"
+                        >
+                          <td className="p-4 font-extrabold text-gray-800 border-r border-gray-100 truncate">
+                            {row.payeeName}
+                          </td>
+                          <td className="p-4 text-right font-mono font-bold text-gray-800 border-r border-gray-100 truncate">
+                            {formatCurrency(row.current)}
+                          </td>
+                          <td className="p-4 text-right font-mono font-bold text-gray-800 border-r border-gray-100 truncate">
+                            {formatCurrency(row.days30)}
+                          </td>
+                          <td className="p-4 text-right font-mono font-bold text-gray-800 border-r border-gray-100 truncate">
+                            {formatCurrency(row.days60)}
+                          </td>
+                          <td className="p-4 text-right font-mono font-bold text-gray-800 border-r border-[#B0DCDA] truncate">
+                            {row.days90 > 0 ? (
+                              <span className="text-red-600 flex justify-end items-center gap-1">
+                                <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse shrink-0"></span>
+                                {formatCurrency(row.days90)}
+                              </span>
+                            ) : (
+                              formatCurrency(row.days90)
+                            )}
+                          </td>
+                          <td className="p-4 text-right font-mono font-black text-gray-800 bg-[#FBF8F8]/50 border-r border-gray-100 truncate">
+                            {formatCurrency(row.total)}
+                          </td>
 
-                        <td className="p-2 text-center print:hidden">
-                          <button
-                            onClick={() => setSelectedEntity(row)}
-                            className="text-[11px] font-bold text-[#1B9387] hover:text-[#126b62] bg-[#E9FAFA] hover:bg-[#B0DCDA]/40 px-3 py-1.5 rounded-md transition flex items-center justify-center w-full gap-1 tracking-wide uppercase"
-                          >
-                            View <ChevronRight size={14} />
-                          </button>
-                        </td>
+                          <td className="p-2 text-center print:hidden">
+                            <button
+                              onClick={() => setSelectedEntity(row)}
+                              className="text-[11px] font-bold text-[#1B9387] hover:text-[#126b62] bg-[#E9FAFA] hover:bg-[#B0DCDA]/40 px-3 py-1.5 rounded-md transition flex items-center justify-center w-full gap-1 tracking-wide uppercase cursor-pointer"
+                            >
+                              View <ChevronRight size={14} />
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {/* 1. Padding Rows filled with dashes (-) */}
+                      {Array.from({ length: Math.max(0, 12 - filteredData.length) }).map((_, i) => (
+                        <tr key={`empty-${i}`} className="bg-white group h-[1px]">
+                          <td className="p-4 text-center text-gray-300 font-medium border-r border-gray-100">
+                            -
+                          </td>
+                          <td className="p-4 text-center text-gray-300 font-medium border-r border-gray-100">
+                            -
+                          </td>
+                          <td className="p-4 text-center text-gray-300 font-medium border-r border-gray-100">
+                            -
+                          </td>
+                          <td className="p-4 text-center text-gray-300 font-medium border-r border-gray-100">
+                            -
+                          </td>
+                          <td className="p-4 text-center text-gray-300 font-medium border-r border-[#B0DCDA]">
+                            -
+                          </td>
+                          <td className="p-4 text-center text-gray-300 font-medium border-r border-gray-100 bg-[#FBF8F8]/50">
+                            -
+                          </td>
+                          <td></td>
+                        </tr>
+                      ))}
+
+                      {/* 2. Stretch Row to fill any extra screen space on large monitors */}
+                      <tr className="h-auto">
+                        <td className="border-r border-gray-100"></td>
+                        <td className="border-r border-gray-100"></td>
+                        <td className="border-r border-gray-100"></td>
+                        <td className="border-r border-gray-100"></td>
+                        <td className="border-r border-[#B0DCDA]"></td>
+                        <td className="border-r border-gray-100 bg-[#FBF8F8]/50"></td>
+                        <td></td>
                       </tr>
-                    ))
+                    </>
                   )}
                 </tbody>
-
-                {filteredData.length > 0 && (
-                  <tfoot className="sticky bottom-0 z-20 bg-gray-50 shadow-[0_-1px_2px_rgba(0,0,0,0.05)] border-t-2 border-[#B0DCDA]">
-                    <tr>
-                      <td className="p-4 font-extrabold text-gray-800 text-right border-r border-gray-200 uppercase tracking-wider">
-                        Grand Totals
-                      </td>
-                      <td className="p-4 text-right font-mono font-black text-[#1B9387] border-r border-gray-200">
-                        {formatCurrency(totalCurrent, true)}
-                      </td>
-                      <td className="p-4 text-right font-mono font-black text-amber-500 border-r border-gray-200">
-                        {formatCurrency(total30, true)}
-                      </td>
-                      <td className="p-4 text-right font-mono font-black text-orange-500 border-r border-gray-200">
-                        {formatCurrency(total60, true)}
-                      </td>
-                      <td className="p-4 text-right font-mono font-black text-red-500 border-r border-[#B0DCDA]">
-                        {formatCurrency(total90, true)}
-                      </td>
-                      <td className="p-4 text-right font-mono font-black text-gray-800 text-lg border-r border-gray-200">
-                        {formatCurrency(grandTotal, true)}
-                      </td>
-                      <td className="print:hidden bg-gray-50"></td>
-                    </tr>
-                  </tfoot>
-                )}
               </table>
             )}
           </div>
+
+          {/* FIXED BOTTOM FOOTER - Pinned to the bottom of the card */}
+          {!loading && filteredData.length > 0 && (
+            <div className="bg-gray-50 shadow-[0_-1px_2px_rgba(0,0,0,0.05)] border-t-2 border-[#B0DCDA] shrink-0 z-30">
+              <table className="w-full table-fixed text-left text-sm whitespace-nowrap">
+                <tbody>
+                  <tr>
+                    <td className="p-4 font-extrabold text-gray-800 text-right border-r border-gray-200 uppercase tracking-wider w-[28%] truncate">
+                      Grand Totals
+                    </td>
+                    <td className="p-4 text-right font-mono font-black text-[#1B9387] border-r border-gray-200 w-[12%] truncate">
+                      {formatCurrency(totalCurrent, true)}
+                    </td>
+                    <td className="p-4 text-right font-mono font-black text-amber-500 border-r border-gray-200 w-[12%] truncate">
+                      {formatCurrency(total30, true)}
+                    </td>
+                    <td className="p-4 text-right font-mono font-black text-orange-500 border-r border-gray-200 w-[12%] truncate">
+                      {formatCurrency(total60, true)}
+                    </td>
+                    <td className="p-4 text-right font-mono font-black text-red-500 border-r border-[#B0DCDA] w-[12%] truncate">
+                      {formatCurrency(total90, true)}
+                    </td>
+                    <td className="p-4 text-right font-mono font-black text-gray-800 text-lg border-r border-gray-200 w-[14%] truncate">
+                      {formatCurrency(grandTotal, true)}
+                    </td>
+                    <td className="print:hidden w-[10%]"></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
@@ -443,12 +481,12 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
             <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3 rounded-b-xl">
               <button
                 onClick={() => setSelectedEntity(null)}
-                className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-gray-800 transition"
+                className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-gray-800 transition cursor-pointer"
               >
                 Close
               </button>
               <button
-                className="px-5 py-2 bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-extrabold rounded-md tracking-wider uppercase transition shadow-sm"
+                className="px-5 py-2 bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-extrabold rounded-md tracking-wider uppercase transition shadow-sm cursor-pointer"
                 onClick={() => {
                   if (onNavigate) {
                     onNavigate('collections', {

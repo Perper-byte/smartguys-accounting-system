@@ -1,5 +1,7 @@
-appId: com.electron.app
-productName: smartguys-accounting
+productName: SmartGuys Clinic
+appId: com.smartguys.accounting
+win:
+  icon: build/icon.ico
 directories:
   buildResources: build
 files:

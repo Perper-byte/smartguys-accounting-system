@@ -1,6 +1,7 @@
 import * as React from 'react'
 import { useState, useEffect, useMemo } from 'react'
 import * as XLSX from 'xlsx'
+import jsPDF from 'jspdf'
 
 export function CashierHistoryView({ userId }: { userId: string }) {
   const [transactions, setTransactions] = useState<any[]>([])
@@ -70,29 +71,6 @@ export function CashierHistoryView({ userId }: { userId: string }) {
   useEffect(() => {
     setCurrentPage(1)
   }, [searchQuery, dateFilter])
-
-  useEffect(() => {
-    if (receiptToPrint) {
-      // Create a function to clear the state after the print dialog closes
-      const handleAfterPrint = () => {
-        setReceiptToPrint(null)
-      }
-
-      // Listen for the print dialog closing (whether printed or canceled)
-      window.addEventListener('afterprint', handleAfterPrint)
-
-      // Open the print dialog
-      const timer = setTimeout(() => {
-        window.print()
-      }, 150)
-
-      // Cleanup
-      return () => {
-        clearTimeout(timer)
-        window.removeEventListener('afterprint', handleAfterPrint)
-      }
-    }
-  }, [receiptToPrint])
 
   const filteredTransactions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -236,8 +214,84 @@ export function CashierHistoryView({ userId }: { userId: string }) {
     XLSX.writeFile(workbook, `Transaction_History_${new Date().toISOString().slice(0, 10)}.xlsx`)
   }
 
-  const handlePrint = (tx: any) => {
-    setReceiptToPrint(tx)
+  const handleExportPDF = (tx: any) => {
+    try {
+      // Create a receipt-sized PDF (80mm width, 150mm height)
+      const doc = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: [80, 150]
+      })
+
+      // 🔥 FIX 1: Create a PDF-safe currency formatter (Uses 'PHP' instead of '₱')
+      // This prevents the '±' glitch and fixes the weird spacing on the numbers
+      const pdfCurrency = (val: number) =>
+        `PHP ${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+      // Header
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.text('SmartGuys Clinic', 40, 15, { align: 'center' })
+
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'normal')
+      doc.text('OFFICIAL RECEIPT', 40, 20, { align: 'center' })
+
+      // 🔥 FIX 2: Widen margins from 10 to 5 to give text more breathing room (5 to 75)
+      doc.setLineWidth(0.3)
+      doc.line(5, 24, 75, 24)
+
+      // Meta Data
+      doc.setFontSize(8)
+      doc.text(`Date: ${formatDateTime(tx.date)}`, 5, 32)
+      doc.text(`Ref No: ${tx.referenceNo}`, 5, 37)
+
+      // Payee
+      doc.setFontSize(9)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Received from:', 5, 47)
+      doc.setFont('helvetica', 'normal')
+      doc.text((tx.patientName || tx.payeeName || 'Unknown Patient').toUpperCase(), 5, 52)
+
+      // Description
+      doc.setFont('helvetica', 'bold')
+      doc.text('Payment / Description:', 5, 62)
+      doc.setFont('helvetica', 'normal')
+
+      const methodDesc = `${getPaymentMethod(tx)} - ${tx.description || ''}`
+      const splitDesc = doc.splitTextToSize(methodDesc.toUpperCase(), 70) // Allow up to 70mm width
+      doc.text(splitDesc, 5, 67)
+
+      // Calculate dynamic Y position based on description length
+      const yAfterDesc = 67 + splitDesc.length * 4
+
+      doc.line(5, yAfterDesc + 5, 75, yAfterDesc + 5) // Divider
+
+      // Total Amount
+      doc.setFontSize(11)
+      doc.setFont('helvetica', 'bold')
+      doc.text('TOTAL:', 5, yAfterDesc + 14)
+      // Align to the new wider right edge (75)
+      doc.text(pdfCurrency(tx.totalAmount), 75, yAfterDesc + 14, { align: 'right' })
+
+      // Footer
+      doc.setFontSize(7)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(100, 100, 100)
+      doc.text('This document is not valid for claiming input taxes.', 40, yAfterDesc + 25, {
+        align: 'center'
+      })
+      doc.text('Thank you for trusting SmartGuys Clinic!', 40, yAfterDesc + 29, { align: 'center' })
+
+      // Trigger File Download
+      doc.save(`${tx.referenceNo}_Receipt.pdf`)
+
+      setStatusMessage({ type: 'success', msg: `PDF Exported: ${tx.referenceNo}` })
+      setTimeout(() => setStatusMessage(null), 3000)
+    } catch (error) {
+      console.error(error)
+      setStatusMessage({ type: 'error', msg: 'Failed to generate PDF.' })
+    }
   }
 
   const formatCurrency = (val: number) =>
@@ -267,7 +321,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
 
   return (
     /* 🔥 ADDED 'w-full px-6 py-4' HERE TO FORCE CENTERING */
-    <div className="w-full max-w-7xl mx-auto px-6 py-4 h-full flex flex-col font-sans text-gray-800 animate-in fade-in duration-300">
+    <div className="w-full h-full px-8 py-6 flex flex-col font-sans text-gray-800 animate-in fade-in duration-300">
       {/* HEADER & CONTROLS */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 mb-6 border-b border-[#B0DCDA] pb-6">
         <div>
@@ -334,7 +388,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
       )}
 
       {/* TABLE */}
-      <div className="bg-white border border-[#B0DCDA] rounded-xl flex-1 flex flex-col overflow-hidden shadow-sm">
+      <div className="bg-white border border-[#B0DCDA] rounded-xl flex-1 flex flex-col overflow-hidden shadow-sm min-h-0">
         <div className="flex-1 overflow-auto">
           {loading ? (
             <div className="flex justify-center items-center h-full text-[#1B9387]">
@@ -404,13 +458,13 @@ export function CashierHistoryView({ userId }: { userId: string }) {
                         </td>
 
                         <td className="p-4 text-center space-x-2 whitespace-nowrap flex items-center justify-center h-full">
-                          {/* PRINTER BUTTON */}
+                          {/* EXPORT PDF BUTTON */}
                           <button
-                            title="Export to PDF"
-                            onClick={() => handlePrint(tx)}
-                            className="text-gray-500 hover:text-[#1B9387] transition p-1.5 rounded bg-white hover:bg-[#E9FAFA] border border-gray-200 hover:border-[#B0DCDA] shadow-sm flex items-center justify-center cursor-pointer"
+                            title="Download PDF Receipt"
+                            onClick={() => handleExportPDF(tx)}
+                            className="text-gray-500 hover:text-red-500 transition p-1.5 rounded bg-white hover:bg-red-50 border border-gray-200 hover:border-red-200 shadow-sm flex items-center justify-center cursor-pointer"
                           >
-                            🖨️
+                            📄
                           </button>
 
                           {/* VOID BUTTON */}
@@ -475,7 +529,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
 
       {/* Pagination Footer */}
       {!loading && filteredTransactions.length > 0 && (
-        <div className="flex flex-col sm:flex-row justify-between items-center mt-4 text-sm text-gray-500">
+        <div className="flex flex-col sm:flex-row justify-between items-center mt-4 text-sm text-gray-500 shrink-0">
           <div className="mb-4 sm:mb-0">
             Showing{' '}
             <span className="font-bold text-gray-800">
@@ -503,81 +557,6 @@ export function CashierHistoryView({ userId }: { userId: string }) {
           </div>
         </div>
       )}
-      {/* --- HIDDEN PRINTABLE RECEIPT TEMPLATE --- */}
-      {receiptToPrint && (
-        <>
-          <style type="text/css" media="print">
-            {`
-              @page { size: portrait; margin: 10mm; }
-              body { background-color: white !important; }
-              /* Hide everything in the app globally */
-              body * { visibility: hidden !important; }
-              
-              /* Force ONLY our receipt to be visible */
-              #printable-receipt, #printable-receipt * { 
-                visibility: visible !important; 
-                color: black !important; 
-              }
-              
-              /* Move the receipt to the absolute top-left of the paper */
-              #printable-receipt {
-                position: absolute !important;
-                left: 0 !important;
-                top: 0 !important;
-                width: 100% !important;
-              }
-            `}
-          </style>
-
-          <div
-            id="printable-receipt"
-            className="hidden print:block w-full max-w-[350px] p-4 mx-auto font-sans bg-white"
-          >
-            <div className="text-center mb-6 border-b-2 border-dashed border-gray-400 pb-4">
-              <h2 className="text-2xl font-extrabold uppercase tracking-widest">
-                SmartGuys Clinic
-              </h2>
-              <p className="text-xs text-gray-600 mt-1 font-bold">OFFICIAL RECEIPT</p>
-            </div>
-
-            <div className="flex justify-between text-sm mb-1">
-              <span className="font-bold">Date:</span>
-              <span>{formatDateTime(receiptToPrint.date)}</span>
-            </div>
-            <div className="flex justify-between text-sm mb-6">
-              <span className="font-bold">Ref No:</span>
-              <span className="font-mono">{receiptToPrint.referenceNo}</span>
-            </div>
-
-            <div className="mb-5">
-              <p className="text-sm font-bold mb-1">Received from:</p>
-              <p className="text-base border-b border-gray-400 pb-1 uppercase font-semibold">
-                {receiptToPrint.patientName || receiptToPrint.payeeName || 'Unknown Patient'}
-              </p>
-            </div>
-
-            <div className="mb-8">
-              <p className="text-sm font-bold mb-1">Payment / Description:</p>
-              <p className="text-sm uppercase">
-                {getPaymentMethod(receiptToPrint)} - {receiptToPrint.description}
-              </p>
-            </div>
-
-            <div className="flex justify-between items-center mt-6 pt-4 border-t-2 border-dashed border-gray-400">
-              <span className="font-bold text-lg">TOTAL:</span>
-              <span className="font-bold text-xl">
-                {formatCurrency(receiptToPrint.totalAmount)}
-              </span>
-            </div>
-
-            <div className="mt-12 text-center text-[10px] text-gray-500 font-medium">
-              <p>This document is not valid for claiming input taxes.</p>
-              <p className="mt-1">Thank you for trusting SmartGuys Clinic!</p>
-            </div>
-          </div>
-        </>
-      )}
-      {/* ----------------------------------------- */}
     </div> // <-- This is the final closing div of your component
   )
 }

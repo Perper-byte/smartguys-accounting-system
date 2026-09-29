@@ -4,16 +4,37 @@ import { useState, useEffect } from 'react'
 
 // Lucide Icons
 import {
-  Home, CreditCard, DollarSign, Contact, LineChart, Package, ArrowUpRight,
-  Stethoscope, Clock, ClipboardList, Users, Edit3, Wrench, BookOpen,
-  Landmark, Library, PieChart, FileText, Building2, Ban, History,
-  Database, ListTree, Tags, LogOut
+  Home,
+  CreditCard,
+  DollarSign,
+  Contact,
+  LineChart,
+  Package,
+  ArrowUpRight,
+  Stethoscope,
+  Clock,
+  ClipboardList,
+  Users,
+  Edit3,
+  Wrench,
+  BookOpen,
+  Landmark,
+  Library,
+  PieChart,
+  FileText,
+  Building2,
+  Ban,
+  History,
+  Database,
+  ListTree,
+  Tags,
+  LogOut
 } from 'lucide-react'
 
 // Screens
 import { LoginScreen } from './components/LoginScreen'
-import { Lock } from 'lucide-react'; 
-import { SystemSettingsView } from './components/SystemSettingsView';
+import { Lock } from 'lucide-react'
+import { SystemSettingsView } from './components/SystemSettingsView'
 import { WelcomeView } from './components/WelcomeView'
 import { DashboardView } from './components/DashboardView'
 import { POSBillingView } from './components/POSBillingView'
@@ -27,7 +48,7 @@ import { AgedReceivablesView } from './components/AgedReceivablesView'
 import { InvoiceTrackerView } from './components/InvoiceTrackerView'
 import { PayrollView } from './components/PayrollView'
 import { JournalManagementView } from './components/JournalManagementView'
-import { AdjustingEntryForm } from './components/AdjustingEntryForm' 
+import { AdjustingEntryForm } from './components/AdjustingEntryForm'
 import { GeneralLedgerView } from './components/GeneralLedgerView'
 import { ReconciliationView } from './components/ReconciliationView'
 import { BooksOfAccountsView } from './components/BooksOfAccountsView'
@@ -39,7 +60,6 @@ import UserManagementView from './components/UserManagementView'
 import { DatabaseBackupView } from './components/DatabaseBackupView'
 import { ChartOfAccountsView } from './components/ChartOfAccountsView'
 import { ServicesManagerView } from './components/ServicesManagerView'
-
 
 import logoImage from './assets/smartguys_logo.jpg'
 
@@ -60,7 +80,13 @@ const GROUP_ORDER = ['Home', 'Clinic Operations', 'Accounting', 'Reports & Taxes
 
 const ALL_TABS = [
   { id: 'home', label: 'Home', icon: Home, group: 'Home', allowedRoles: ROLES.FINANCE_TEAM },
-  { id: 'billing', label: 'Patient Billing', icon: CreditCard, group: 'Clinic Operations', allowedRoles: ROLES.CASHIER_ONLY },
+  {
+    id: 'billing',
+    label: 'Patient Billing',
+    icon: CreditCard,
+    group: 'Clinic Operations',
+    allowedRoles: ROLES.CASHIER_ONLY
+  },
   {
     id: 'settings',
     label: 'Security Settings',
@@ -68,29 +94,170 @@ const ALL_TABS = [
     group: 'System Admin',
     allowedRoles: ROLES.MANAGER_ONLY
   },
-  { id: 'collections', label: 'Receive Payments', icon: DollarSign, group: 'Clinic Operations', allowedRoles: ROLES.OPS_FINANCE },
-  { id: 'directory', label: 'Contact Directory', icon: Contact, group: 'Clinic Operations', allowedRoles: ROLES.ALL },
-  { id: 'history', label: 'Transaction History', icon: LineChart, group: 'Clinic Operations', allowedRoles: ROLES.CASHIER_ONLY },
-  { id: 'inventory', label: 'Stock & Inventory', icon: Package, group: 'Clinic Operations', allowedRoles: ['CASHIER', 'MANAGER'] },
-  { id: 'disbursement', label: 'Cash Disbursements', icon: ArrowUpRight, group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
-  { id: 'payouts', label: 'Doctor Payouts', icon: Stethoscope, group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
-  { id: 'aging', label: 'Aged Receivables (HMO)', icon: Clock, group: 'Accounting', allowedRoles: ROLES.FINANCE_TEAM },
-  { id: 'tracker', label: 'Invoice Tracker', icon: ClipboardList, group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
-  { id: 'payroll', label: 'HR & Payroll', icon: Users, group: 'Accounting', allowedRoles: ROLES.FINANCE_TEAM },
-  { id: 'journal', label: 'Journal Entry', icon: Edit3, group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
-  { id: 'adjusting', label: 'Adjusting Entries', icon: Wrench, group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
-  { id: 'ledger', label: 'General Ledger', icon: BookOpen, group: 'Accounting', allowedRoles: ROLES.ACCOUNTANT_ONLY },
-  { id: 'reconciliation', label: 'Bank Reconciliation', icon: Landmark, group: 'Accounting', allowedRoles: ROLES.FINANCE_TEAM },
-  { id: 'books', label: 'Books of Accounts', icon: Library, group: 'Accounting', allowedRoles: ROLES.FINANCE_TEAM },
-  { id: 'analytics', label: 'Analytics Dashboard', icon: PieChart, group: 'Reports & Taxes', allowedRoles: ROLES.MANAGER_ONLY },
-  { id: 'statements', label: 'Financial Statements', icon: FileText, group: 'Reports & Taxes', allowedRoles: ROLES.FINANCE_TEAM },
-  { id: 'bir', label: 'BIR Tax Compliance', icon: Building2, group: 'Reports & Taxes', allowedRoles: ROLES.ACCOUNTANT_ONLY },
-  { id: 'voids', label: 'Void Approvals', icon: Ban, group: 'Reports & Taxes', allowedRoles: ROLES.MANAGER_ONLY },
-  { id: 'audit', label: 'Audit Trails', icon: History, group: 'System Admin', allowedRoles: ROLES.IT_ONLY },
-  { id: 'users', label: 'User Management', icon: Users, group: 'System Admin', allowedRoles: ROLES.IT_ONLY },
-  { id: 'backup', label: 'Database Backup', icon: Database, group: 'System Admin', allowedRoles: ROLES.IT_ONLY },
-  { id: 'coa', label: 'Chart of Accounts', icon: ListTree, group: 'System Admin', allowedRoles: ROLES.MANAGER_ONLY },
-  { id: 'services', label: 'Services & Pricing', icon: Tags, group: 'System Admin', allowedRoles: ROLES.MANAGER_ONLY }
+  {
+    id: 'collections',
+    label: 'Receive Payments',
+    icon: DollarSign,
+    group: 'Clinic Operations',
+    allowedRoles: ROLES.OPS_FINANCE
+  },
+  {
+    id: 'directory',
+    label: 'Contact Directory',
+    icon: Contact,
+    group: 'Clinic Operations',
+    allowedRoles: ROLES.ALL
+  },
+  {
+    id: 'history',
+    label: 'Transaction History',
+    icon: LineChart,
+    group: 'Clinic Operations',
+    allowedRoles: ROLES.OPS_FINANCE // ✅ Allows CASHIER and ACCOUNTANT
+  },
+
+  // 🔥 FIXED: Removed 'CASHIER' from allowedRoles for Stock & Inventory
+  {
+    id: 'inventory',
+    label: 'Stock & Inventory',
+    icon: Package,
+    group: 'Clinic Operations',
+    allowedRoles: ['MANAGER']
+  },
+
+  {
+    id: 'disbursement',
+    label: 'Cash Disbursements',
+    icon: ArrowUpRight,
+    group: 'Accounting',
+    allowedRoles: ROLES.ACCOUNTANT_ONLY
+  },
+  {
+    id: 'payouts',
+    label: 'Landlord Payouts', // <-- changed from 'Doctor Payouts'
+    icon: Building2, // <-- changed from Stethoscope
+    group: 'Accounting',
+    allowedRoles: ROLES.ACCOUNTANT_ONLY
+  },
+  {
+    id: 'aging',
+    label: 'Aged Receivables (HMO)',
+    icon: Clock,
+    group: 'Accounting',
+    allowedRoles: ROLES.FINANCE_TEAM
+  },
+  {
+    id: 'tracker',
+    label: 'Invoice Tracker',
+    icon: ClipboardList,
+    group: 'Accounting',
+    allowedRoles: ROLES.ACCOUNTANT_ONLY
+  },
+  {
+    id: 'payroll',
+    label: 'HR & Payroll',
+    icon: Users,
+    group: 'Accounting',
+    allowedRoles: ROLES.FINANCE_TEAM
+  },
+  {
+    id: 'journal',
+    label: 'Journal Entry',
+    icon: Edit3,
+    group: 'Accounting',
+    allowedRoles: ROLES.ACCOUNTANT_ONLY
+  },
+  {
+    id: 'adjusting',
+    label: 'Adjusting Entries',
+    icon: Wrench,
+    group: 'Accounting',
+    allowedRoles: ROLES.ACCOUNTANT_ONLY
+  },
+  {
+    id: 'ledger',
+    label: 'General Ledger',
+    icon: BookOpen,
+    group: 'Accounting',
+    allowedRoles: ROLES.ACCOUNTANT_ONLY
+  },
+  {
+    id: 'reconciliation',
+    label: 'Bank Reconciliation',
+    icon: Landmark,
+    group: 'Accounting',
+    allowedRoles: ROLES.FINANCE_TEAM
+  },
+  {
+    id: 'books',
+    label: 'Books of Accounts',
+    icon: Library,
+    group: 'Accounting',
+    allowedRoles: ROLES.FINANCE_TEAM
+  },
+  {
+    id: 'analytics',
+    label: 'Analytics Dashboard',
+    icon: PieChart,
+    group: 'Reports & Taxes',
+    allowedRoles: ROLES.MANAGER_ONLY
+  },
+  {
+    id: 'statements',
+    label: 'Financial Statements',
+    icon: FileText,
+    group: 'Reports & Taxes',
+    allowedRoles: ROLES.FINANCE_TEAM
+  },
+  {
+    id: 'bir',
+    label: 'BIR Tax Compliance',
+    icon: Building2,
+    group: 'Reports & Taxes',
+    allowedRoles: ROLES.ACCOUNTANT_ONLY
+  },
+  {
+    id: 'voids',
+    label: 'Void Approvals',
+    icon: Ban,
+    group: 'Reports & Taxes',
+    allowedRoles: ROLES.MANAGER_ONLY
+  },
+  {
+    id: 'audit',
+    label: 'Audit Trails',
+    icon: History,
+    group: 'System Admin',
+    allowedRoles: ROLES.IT_ONLY
+  },
+  {
+    id: 'users',
+    label: 'User Management',
+    icon: Users,
+    group: 'System Admin',
+    allowedRoles: ROLES.IT_ONLY
+  },
+  {
+    id: 'backup',
+    label: 'Database Backup',
+    icon: Database,
+    group: 'System Admin',
+    allowedRoles: ROLES.IT_ONLY
+  },
+  {
+    id: 'coa',
+    label: 'Chart of Accounts',
+    icon: ListTree,
+    group: 'System Admin',
+    allowedRoles: ROLES.MANAGER_ONLY
+  },
+  {
+    id: 'services',
+    label: 'Services & Pricing',
+    icon: Tags,
+    group: 'System Admin',
+    allowedRoles: ROLES.MANAGER_ONLY
+  }
 ]
 
 export default function App() {
@@ -111,16 +278,16 @@ export default function App() {
     const interval = setInterval(checkConnection, 30000)
     return () => clearInterval(interval)
   }, [])
-  
-const handleLoginSuccess = (user: User) => {
-  setCurrentUser(user)
-  
-  if (user.role === 'IT_PERSONNEL') {
-    setActiveTab('audit') // Default IT landing page
-  } else {
-    setActiveTab('home') // Default Finance landing page
+
+  const handleLoginSuccess = (user: User) => {
+    setCurrentUser(user)
+
+    if (user.role === 'IT_PERSONNEL') {
+      setActiveTab('audit') // Default IT landing page
+    } else {
+      setActiveTab('home') // Default Finance landing page
+    }
   }
-}
 
   const handleLogout = () => {
     setCurrentUser(null)
@@ -225,9 +392,7 @@ const handleLoginSuccess = (user: User) => {
                 {currentUser.username}
               </p>
               <p className="text-[10px] font-bold text-[#1B9387] uppercase tracking-wider truncate">
-                {currentUser.permissions && currentUser.permissions.length > 0
-                  ? 'CUSTOM ACCESS'
-                  : currentUser.role}
+                {currentUser.role}
               </p>
             </div>
             <button
@@ -280,7 +445,13 @@ const handleLoginSuccess = (user: User) => {
             </div>
           ) : (
             <div className="h-full animate-in fade-in duration-300">
-              {activeTab === 'home' && <WelcomeView username={currentUser.username} role={currentUser.role} onNavigate={setActiveTab} />}
+              {activeTab === 'home' && (
+                <WelcomeView
+                  username={currentUser.username}
+                  role={currentUser.role}
+                  onNavigate={setActiveTab}
+                />
+              )}
               {activeTab === 'settings' && <SystemSettingsView />}
               {activeTab === 'analytics' && <DashboardView />}
               {activeTab === 'reconciliation' && <ReconciliationView userId={currentUser.id} />}
@@ -289,14 +460,18 @@ const handleLoginSuccess = (user: User) => {
               {activeTab === 'bir' && <BIRReportsView />}
               {activeTab === 'backup' && <DatabaseBackupView />}
               {activeTab === 'billing' && <POSBillingView userId={currentUser.id} />}
-              {activeTab === 'collections' && <ReceivePaymentView userId={currentUser.id} prefillData={navData} />}
+              {activeTab === 'collections' && (
+                <ReceivePaymentView userId={currentUser.id} prefillData={navData} />
+              )}
               {activeTab === 'payouts' && <EWTPayoutView userId={currentUser.id} />}
-              
+
               {/* 🔥 FIXED: Passed currentUser here instead of userId so the UserManagementView knows who the active Admin is! */}
               {activeTab === 'users' && <UserManagementView currentUser={currentUser} />}
-              
+
               {activeTab === 'aging' && <AgedReceivablesView onNavigate={handleNavigation} />}
-              {activeTab === 'history' && <CashierHistoryView userId={currentUser.id} prefillData={navData} />}
+              {activeTab === 'history' && (
+                <CashierHistoryView userId={currentUser.id} prefillData={navData} />
+              )}
               {activeTab === 'voids' && <VoidApprovalsView userId={currentUser.id} />}
               {activeTab === 'audit' && <SystemAuditLogView />}
               {activeTab === 'tracker' && <InvoiceTrackerView onNavigate={handleNavigation} />}
@@ -304,10 +479,14 @@ const handleLoginSuccess = (user: User) => {
               {activeTab === 'directory' && <ContactDirectoryView onNavigate={handleNavigation} />}
               {activeTab === 'coa' && <ChartOfAccountsView />}
               {activeTab === 'services' && <ServicesManagerView />}
-              {activeTab === 'inventory' && <InventoryView userId={currentUser.id} role={currentUser.role} />}
+              {activeTab === 'inventory' && (
+                <InventoryView userId={currentUser.id} role={currentUser.role} />
+              )}
               {activeTab === 'journal' && <JournalManagementView userId={currentUser.id} />}
               {activeTab === 'adjusting' && <AdjustingEntryForm userId={currentUser.id} />}
-              {activeTab === 'disbursement' && <CashDisbursementForm userId={currentUser.id} />}
+              {activeTab === 'disbursement' && (
+                <CashDisbursementForm userId={currentUser.id} onNavigate={handleNavigation} />
+              )}
               {activeTab === 'ledger' && <GeneralLedgerView />}
             </div>
           )}
