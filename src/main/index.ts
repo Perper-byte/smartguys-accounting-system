@@ -290,6 +290,8 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
+  ipcMain.handle('ledger:searchJournalEntries', (_e, q: string, limit?: number) => LedgerService.searchJournalEntries(q, limit))
   ipcMain.handle('get-payee-balance', async (e, payeeId: string) => {
     return await LedgerService.getPayeeBalance(payeeId)
   })
@@ -853,38 +855,42 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('export:htmlToPDF', async (event, html: string, filename: string) => {
-    const parent = BrowserWindow.fromWebContents(event.sender)
-    const saveOptions = {
-      title: 'Save PDF',
-      defaultPath: filename,
-      filters: [{ name: 'PDF Documents', extensions: ['pdf'] }]
-    }
-    const { filePath } = parent
-      ? await dialog.showSaveDialog(parent, saveOptions)
-      : await dialog.showSaveDialog(saveOptions)
-    if (!filePath) return { success: false, error: 'Export cancelled' }
+  ipcMain.handle(
+    'export:htmlToPDF',
+    async (event, html: string, filename: string, options?: { landscape?: boolean }) => {
+      const parent = BrowserWindow.fromWebContents(event.sender)
+      const saveOptions = {
+        title: 'Save PDF',
+        defaultPath: filename,
+        filters: [{ name: 'PDF Documents', extensions: ['pdf'] }]
+      }
+      const { filePath } = parent
+        ? await dialog.showSaveDialog(parent, saveOptions)
+        : await dialog.showSaveDialog(saveOptions)
+      if (!filePath) return { success: false, error: 'Export cancelled' }
 
-    const win = new BrowserWindow({
-      show: false,
-      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
-    })
-    try {
-      await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
-      const data = await win.webContents.printToPDF({
-        pageSize: 'A4',
-        printBackground: true,
-        margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 }
+      const win = new BrowserWindow({
+        show: false,
+        webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
       })
-      fs.writeFileSync(filePath, data)
-      await AuditService.logAction('SYSTEM', 'REPORT GENERATED', `Exported PDF: ${path.basename(filePath)}`)
-      return { success: true, filePath }
-    } catch (error: any) {
-      return { success: false, error: error.message }
-    } finally {
-      win.destroy()
+      try {
+        await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+        const data = await win.webContents.printToPDF({
+          pageSize: 'A4',
+          landscape: !!options?.landscape,
+          printBackground: true,
+          margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 }
+        })
+        fs.writeFileSync(filePath, data)
+        await AuditService.logAction('SYSTEM', 'REPORT GENERATED', `Exported PDF: ${path.basename(filePath)}`)
+        return { success: true, filePath }
+      } catch (error: any) {
+        return { success: false, error: error.message }
+      } finally {
+        win.destroy()
+      }
     }
-  })
+  )
 
   ipcMain.handle('export-aged-receivables', async (_, data, totals) => {
     return await ExportService.exportAgedReceivablesToExcel(data, totals);

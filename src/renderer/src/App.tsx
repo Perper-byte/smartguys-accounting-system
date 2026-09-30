@@ -483,7 +483,9 @@ export default function App() {
                 <InventoryView userId={currentUser.id} role={currentUser.role} />
               )}
               {activeTab === 'journal' && <JournalManagementView userId={currentUser.id} />}
-              {activeTab === 'adjusting' && <AdjustingEntryForm userId={currentUser.id} />}
+              {activeTab === 'adjusting' && (
+                <AdjustingEntryForm userId={currentUser.id} onNavigate={setActiveTab} />
+              )}
               {activeTab === 'disbursement' && (
                 <CashDisbursementForm userId={currentUser.id} onNavigate={handleNavigation} />
               )}

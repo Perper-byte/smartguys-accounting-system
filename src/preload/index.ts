@@ -25,6 +25,7 @@ export const api = {
   submitJournalEntry: (entryData: any) => ipcRenderer.invoke('ledger:submitEntry', entryData),
   getAccountLedger: (accountId: string) => ipcRenderer.invoke('ledger:getAccountLedger', accountId),
   getAllJournalEntries: () => ipcRenderer.invoke('ledger:getAllJournalEntries'),
+  searchJournalEntries: (query: string, limit?: number) => ipcRenderer.invoke('ledger:searchJournalEntries', query, limit),
   getFullLedgerReport: (startDate: string, endDate: string) => ipcRenderer.invoke('get-full-ledger-report', startDate, endDate),
 
   // Bank & Reconciliation
@@ -103,8 +104,8 @@ export const api = {
   exportTrialBalanceExcel: (year?: number, month?: number) => ipcRenderer.invoke('export:trialBalanceExcel', year, month),
   exportPDF: (filename: string) => ipcRenderer.invoke('export:printToPDF', filename),
   exportAgedReceivablesToExcel: (data, totals) => ipcRenderer.invoke('export-aged-receivables', data, totals),
-  exportHtmlToPDF: (html: string, filename: string) =>
-    ipcRenderer.invoke('export:htmlToPDF', html, filename),
+  exportHtmlToPDF: (html: string, filename: string, options?: { landscape?: boolean }) =>
+    ipcRenderer.invoke('export:htmlToPDF', html, filename, options),
 
   // Employees & Payroll
   getEmployees: () => ipcRenderer.invoke('get-employees'),

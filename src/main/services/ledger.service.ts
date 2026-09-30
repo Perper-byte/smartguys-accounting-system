@@ -616,6 +616,23 @@ export const LedgerService = {
         } catch (err) { return []; }
     },
 
+    async searchJournalEntries(query: string, limit = 15) {
+        const rows = await prisma.journalEntry.findMany({
+            where: {
+                status: 'ACTIVE',
+                NOT: { reference_no: { startsWith: 'RVS-' } },
+                ...(query ? { OR: [{ reference_no: { contains: query } }, { description: { contains: query } }] } : {})
+            },
+            orderBy: [{ date: 'desc' }, { created_at: 'desc' }],
+            take: limit,
+            select: {
+                id: true, reference_no: true, date: true, description: true, vat_type: true, payee_id: true,
+                lines: { select: { account_id: true, debit: true, credit: true, account: { select: { name: true } } } }
+            }
+        })
+        return rows.map(r => ({ ...r, lines: r.lines.map(l => ({ ...l, debit: Number(l.debit), credit: Number(l.credit) })) }))
+    }
+
     async getAllJournalEntries() {
         const entries = await prisma.journalEntry.findMany({
             // 🔥 FIXED: Sorts by the transaction date first, then by the exact time it was processed
