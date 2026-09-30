@@ -51,6 +51,7 @@ async function main() {
     { code: '1020', name: 'Petty Cash Fund', type_id: 'type-asset' },
     { code: '1030', name: 'Cash in Hand', type_id: 'type-asset' },
     { code: '1200', name: 'Accounts Receivable', type_id: 'type-asset' },
+    { code: '1210', name: 'Advances to Officers & Employees', type_id: 'type-asset' },
     { code: '1300', name: 'Input VAT', type_id: 'type-asset' },
     { code: '1310', name: 'Creditable Withholding Tax (CWT)', type_id: 'type-asset' },
     { code: '1400', name: 'Prepaid Rent', type_id: 'type-asset' },
@@ -59,8 +60,12 @@ async function main() {
     { code: '2010', name: 'Accounts Payable', type_id: 'type-liability' },
     { code: '2020', name: 'Output VAT', type_id: 'type-liability' },
     { code: '2030', name: 'VAT Payable', type_id: 'type-liability' },
-    { code: '2040', name: 'Salaries Payable', type_id: 'type-liability' },
+    { code: '2040', name: 'Salaries / Net Payroll Payable', type_id: 'type-liability' },
+    { code: '2041', name: 'SSS & EC Premium Payable', type_id: 'type-liability' },
+    { code: '2042', name: 'PhilHealth Premium Payable', type_id: 'type-liability' },
+    { code: '2043', name: 'Pag-IBIG Premium Payable', type_id: 'type-liability' },
     { code: '2050', name: 'Expanded Withholding Tax (EWT) Payable', type_id: 'type-liability' },
+    { code: '2051', name: 'Withholding Tax Payable - Compensation', type_id: 'type-liability' },
     { code: '2100', name: 'Bank Loans Payable', type_id: 'type-liability' },
     { code: '3010', name: "Owner's Capital", type_id: 'type-equity' },
     { code: '3020', name: "Owner's Drawings", type_id: 'type-equity' },
@@ -77,10 +82,11 @@ async function main() {
     { code: '5070', name: 'Meals & Refreshments Expense', type_id: 'type-expense' },
     { code: '5080', name: 'Transportation & Delivery Expense', type_id: 'type-expense' },
     { code: '5090', name: 'Miscellaneous Expense', type_id: 'type-expense' },
-    { code: '5100', name: 'Salaries and Wages', type_id: 'type-expense' }
+    { code: '5100', name: 'Salaries and Wages Expense', type_id: 'type-expense' },
+    { code: '5110', name: 'Employer Statutory Contributions Expense', type_id: 'type-expense' }
   ]
   for (const acc of accounts) {
-    await prisma.account.upsert({ where: { code: acc.code }, update: {}, create: acc })
+    await prisma.account.upsert({ where: { code: acc.code }, update: { name: acc.name }, create: acc })
   }
   console.log('✅ Chart of Accounts seeded.')
 
