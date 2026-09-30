@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import { LedgerService } from './ledger.service'
 import { 
   calculateHourlyRate, 
   calculateOvertimeAndDiff, 
@@ -88,9 +89,17 @@ export const PayrollService = {
     }
     const other_earnings = taxableAllowances + nonTaxableAllowances;
     
-    const sss = calculateSSSContribution(monthlySalary).total_ee / 2;
-    const philhealth = calculatePhilHealthContribution(monthlySalary).eeShare / 2;
-    const pagibig = calculatePagIbigContribution(monthlySalary).eeShare / 2;
+    const sssCalc = calculateSSSContribution(monthlySalary);
+    const sss = sssCalc.total_ee / 2;
+    const sss_er = sssCalc.total_er / 2;
+
+    const phCalc = calculatePhilHealthContribution(monthlySalary);
+    const philhealth = phCalc.eeShare / 2;
+    const philhealth_er = phCalc.erShare / 2;
+
+    const piCalc = calculatePagIbigContribution(monthlySalary);
+    const pagibig = piCalc.eeShare / 2;
+    const pagibig_er = piCalc.erShare / 2;
     
     const grossIncomeForTax = basePay - totalDemerits + overtimeAndDiff + taxableAllowances;
     const taxableBase = grossIncomeForTax - sss - philhealth - pagibig;
@@ -98,7 +107,7 @@ export const PayrollService = {
     
     let cash_advance = 0;
     let other_deductions = 0;
-    const processedLoans = [];
+    const processedLoans: any[] = [];
     for (const loan of loans) {
       if (loan.is_active && Number(loan.balance) > 0) {
         let deduction = Number(loan.monthly_amort) / 2;
@@ -128,8 +137,11 @@ export const PayrollService = {
       other_earnings,
       gross_pay,
       sss,
+      sss_er,
       philhealth,
+      philhealth_er,
       pagibig,
+      pagibig_er,
       cash_advance,
       license_fee: 0,
       other_deductions,
@@ -162,10 +174,10 @@ export const PayrollService = {
 
   async batchCalculatePayroll(employeeInputs: any[]) {
     try {
-      const results = [];
+      const results: any[] = [];
       for (const input of employeeInputs) {
         const allowances = await prisma.employeeAllowance.findMany({
-          where: { employee_id: Number(input.employeeId), is_active: true }
+          where: { employee_id: Number(input.employeeId) }
         });
         const loans = await prisma.employeeLoan.findMany({
           where: { employee_id: Number(input.employeeId), is_active: true }
@@ -238,22 +250,37 @@ export const PayrollService = {
 
   async processPayroll(data: any) {
     try {
+      const entryDate = new Date(data.date)
+      const lockCheck = await LedgerService.getLockDate()
+      if (lockCheck.lockDate && entryDate <= new Date(lockCheck.lockDate)) {
+        const verify = await LedgerService.verifyManagerPin(data.overridePin || '')
+        if (!verify.success) {
+          throw new Error(`PERIOD LOCKED: You cannot post payroll on or before ${lockCheck.lockDate.split('T')[0]}. Invalid or missing Override PIN.`)
+        }
+      }
+
       return await prisma.$transaction(async (tx) => {
         let totalGross = 0
-        let totalSSS = 0
-        let totalPhilhealth = 0
-        let totalPagibig = 0
+        let totalSSSEe = 0
+        let totalPhilhealthEe = 0
+        let totalPagibigEe = 0
+        let totalSSSEr = 0
+        let totalPhilhealthEr = 0
+        let totalPagibigEr = 0
         let totalTax = 0
-        let totalOtherDeductions = 0
+        let totalLoanDeductions = 0
         let totalNet = 0
 
         for (const emp of data.employees) {
           totalGross += Number(emp.gross_pay || 0)
-          totalSSS += Number(emp.sss || 0)
-          totalPhilhealth += Number(emp.philhealth || 0)
-          totalPagibig += Number(emp.pagibig || 0)
+          totalSSSEe += Number(emp.sss || 0)
+          totalPhilhealthEe += Number(emp.philhealth || 0)
+          totalPagibigEe += Number(emp.pagibig || 0)
+          totalSSSEr += Number(emp.sss_er || 0)
+          totalPhilhealthEr += Number(emp.philhealth_er || 0)
+          totalPagibigEr += Number(emp.pagibig_er || 0)
           totalTax += Number(emp.tax_withheld || 0)
-          totalOtherDeductions += Number(emp.cash_advance || 0) + Number(emp.other_deductions || 0) + Number(emp.license_fee || 0)
+          totalLoanDeductions += Number(emp.cash_advance || 0) + Number(emp.other_deductions || 0) + Number(emp.license_fee || 0)
           totalNet += Number(emp.net_pay || 0)
 
           if (emp.processedLoans) {
@@ -275,22 +302,47 @@ export const PayrollService = {
 
         const lines: any[] = []
 
-        // 1. DEBIT: Total Salaries and Wages Expense (5100)
+        // 1. DEBIT: Salaries and Wages Expense (5100)
         lines.push({ account_id: '5100', debit: totalGross, credit: 0 })
 
-        // 2. CREDIT: Statutory Payables and other deductions (2040)
-        const totalStatutoryAndOther = totalSSS + totalPhilhealth + totalPagibig + totalOtherDeductions
-        if (totalStatutoryAndOther > 0) {
-          lines.push({ account_id: '2040', debit: 0, credit: totalStatutoryAndOther })
+        // 2. DEBIT: Employer Statutory Contributions Expense (5110)
+        const totalErStatutory = totalSSSEr + totalPhilhealthEr + totalPagibigEr
+        if (totalErStatutory > 0) {
+          lines.push({ account_id: '5110', debit: totalErStatutory, credit: 0 })
         }
 
-        // CREDIT: Withholding Tax Payable (2050)
+        // 3. CREDIT: Salaries / Net Payroll Payable (2040)
+        if (totalNet > 0) {
+          lines.push({ account_id: '2040', debit: 0, credit: totalNet })
+        }
+
+        // 4. CREDIT: SSS & EC Premium Payable (2041)
+        const totalSSS = totalSSSEe + totalSSSEr
+        if (totalSSS > 0) {
+          lines.push({ account_id: '2041', debit: 0, credit: totalSSS })
+        }
+
+        // 5. CREDIT: PhilHealth Premium Payable (2042)
+        const totalPhilhealth = totalPhilhealthEe + totalPhilhealthEr
+        if (totalPhilhealth > 0) {
+          lines.push({ account_id: '2042', debit: 0, credit: totalPhilhealth })
+        }
+
+        // 6. CREDIT: Pag-IBIG Premium Payable (2043)
+        const totalPagibig = totalPagibigEe + totalPagibigEr
+        if (totalPagibig > 0) {
+          lines.push({ account_id: '2043', debit: 0, credit: totalPagibig })
+        }
+
+        // 7. CREDIT: Withholding Tax Payable - Compensation (2051)
         if (totalTax > 0) {
-          lines.push({ account_id: '2050', debit: 0, credit: totalTax })
+          lines.push({ account_id: '2051', debit: 0, credit: totalTax })
         }
 
-        // 3. CREDIT: Cash in Bank (1010)
-        lines.push({ account_id: '1010', debit: 0, credit: totalNet })
+        // 8. CREDIT: Advances to Officers & Employees (1210)
+        if (totalLoanDeductions > 0) {
+          lines.push({ account_id: '1210', debit: 0, credit: totalLoanDeductions })
+        }
 
         // Create the Master Journal Entry
         const entry = await tx.journalEntry.create({
@@ -304,6 +356,17 @@ export const PayrollService = {
             lines: { create: lines }
           }
         })
+
+        // Audit Trail for Lock Override
+        if (lockCheck.lockDate && entryDate <= new Date(lockCheck.lockDate)) {
+          await tx.auditLog.create({
+            data: {
+              user_id: data.userId,
+              action: 'PAYROLL_POSTED_LOCKED_PERIOD',
+              details: `Payroll ${data.referenceNo} approved in locked period with Manager Override PIN (Entry ${entry.id})`
+            }
+          })
+        }
 
         // Create individual database Payslips
         const payslipsData = data.employees.map((emp: any) => ({
