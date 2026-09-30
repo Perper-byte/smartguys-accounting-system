@@ -1,6 +1,16 @@
-// src/main/services/payroll.service.ts
 import { PrismaClient } from '@prisma/client'
-import { calculateHourlyRate, calculateOvertimeAndDiff, calculateStatutoryDeductions, OvertimeHours } from './payroll-calculator'
+import { 
+  calculateHourlyRate, 
+  calculateOvertimeAndDiff, 
+  calculateStatutoryDeductions, 
+  OvertimeHours,
+  calculateAttendanceDemerits,
+  AttendanceDemerits,
+  calculateSSSContribution,
+  calculatePhilHealthContribution,
+  calculatePagIbigContribution,
+  calculateWithholdingTax
+} from './payroll-calculator'
 
 const prisma = new PrismaClient()
 
@@ -50,20 +60,84 @@ export const PayrollService = {
     };
   },
 
-  async calculateEmployeePayroll(monthlySalary: number, hours: OvertimeHours) {
-    const settings = await this.getPayrollSettings()
-    const hourlyRate = calculateHourlyRate(monthlySalary)
-    const overtimeAndDiff = calculateOvertimeAndDiff(hourlyRate, hours, settings)
+  async calculateEmployeePayroll(
+    monthlySalary: number, 
+    hours: OvertimeHours,
+    demerits: AttendanceDemerits,
+    allowances: any[] = [],
+    loans: any[] = []
+  ) {
+    const settings = await this.getPayrollSettings();
+    const hourlyRate = calculateHourlyRate(monthlySalary);
     
-    // In a real scenario we'd fetch these from StatutoryRateTable via Prisma
-    const rateTables = { sss: [], philhealth: [], pagibig: [] }
-    const deductions = calculateStatutoryDeductions(monthlySalary, rateTables)
+    const basePay = monthlySalary / 2;
+    const demeritResult = calculateAttendanceDemerits(hourlyRate, demerits);
+    const totalDemerits = demeritResult.total_demerits;
+    
+    const overtimeAndDiff = calculateOvertimeAndDiff(hourlyRate, hours, settings);
+    
+    let taxableAllowances = 0;
+    let nonTaxableAllowances = 0;
+    for (const al of allowances) {
+      const amount = Number(al.amount) / 2;
+      if (al.is_taxable) {
+        taxableAllowances += amount;
+      } else {
+        nonTaxableAllowances += amount;
+      }
+    }
+    const other_earnings = taxableAllowances + nonTaxableAllowances;
+    
+    const sss = calculateSSSContribution(monthlySalary).total_ee / 2;
+    const philhealth = calculatePhilHealthContribution(monthlySalary).eeShare / 2;
+    const pagibig = calculatePagIbigContribution(monthlySalary).eeShare / 2;
+    
+    const grossIncomeForTax = basePay - totalDemerits + overtimeAndDiff + taxableAllowances;
+    const taxableBase = grossIncomeForTax - sss - philhealth - pagibig;
+    const tax_withheld = calculateWithholdingTax(taxableBase > 0 ? taxableBase : 0, 'SEMI_MONTHLY');
+    
+    let cash_advance = 0;
+    let other_deductions = 0;
+    const processedLoans = [];
+    for (const loan of loans) {
+      if (loan.is_active && Number(loan.balance) > 0) {
+        let deduction = Number(loan.monthly_amort) / 2;
+        if (deduction > Number(loan.balance)) {
+          deduction = Number(loan.balance);
+        }
+        if (loan.type === 'CASH_ADVANCE') {
+          cash_advance += deduction;
+        } else {
+          other_deductions += deduction;
+        }
+        processedLoans.push({
+          id: loan.id,
+          deduction: deduction
+        });
+      }
+    }
+    
+    const gross_pay = basePay + overtimeAndDiff + other_earnings;
+    const total_deductions = totalDemerits + sss + philhealth + pagibig + cash_advance + other_deductions;
+    const net_pay = gross_pay - total_deductions - tax_withheld;
 
     return {
-      hourlyRate,
-      overtimeAndDiff,
-      deductions
-    }
+      base_pay: basePay,
+      overtime: overtimeAndDiff,
+      night_diff: 0,
+      other_earnings,
+      gross_pay,
+      sss,
+      philhealth,
+      pagibig,
+      cash_advance,
+      license_fee: 0,
+      other_deductions,
+      total_deductions,
+      tax_withheld,
+      net_pay,
+      processedLoans
+    };
   },
 
   async getEmployees() {
