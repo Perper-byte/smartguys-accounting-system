@@ -5,6 +5,7 @@ import { PayrollDirectoryTab } from './payroll/PayrollDirectoryTab'
 import { PayrollHistoryTab } from './payroll/PayrollHistoryTab'
 import { PayrollGridTab } from './payroll/PayrollGridTab'
 import { PayrollSettingsTab } from './payroll/PayrollSettingsTab'
+import { DtrImportTab } from './payroll/DtrImportTab'
 
 export function PayrollView({ userId }: { userId: string }) {
   const [view, setView] = useState<'GRID' | 'SETTINGS' | 'IMPORT' | 'HISTORY' | 'DIRECTORY'>('GRID')
@@ -14,6 +15,11 @@ export function PayrollView({ userId }: { userId: string }) {
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
   // Run Payroll States
+  const [payrollItems, setPayrollItems] = useState<any[]>([])
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const [refSequence, setRefSequence] = useState('')
+  const [description, setDescription] = useState('')
+  const [showDetailed, setShowDetailed] = useState(false)
 
   const fetchEmployees = async () => {
     setLoading(true)
@@ -146,9 +152,49 @@ export function PayrollView({ userId }: { userId: string }) {
     )
   }
 
-  
-
-  
+  const handleImportApply = async (updates: any[]) => {
+    try {
+      const api = (window as any).api || (window as any).electronAPI
+      const settings = (await api.getPayrollSettings?.()) || {}
+      
+      setPayrollItems((prev) => {
+        const next = [...prev]
+        updates.forEach(update => {
+          const empItem = next.find(item => item.id === update.id)
+          if (!empItem) return
+          
+          const empRef = employees.find(e => e.id === update.id)
+          if (!empRef) return
+          
+          const hourlyRate = (empRef.monthly_salary ? Number(empRef.monthly_salary) / 2 : 0) / 104 // Approx 104 hours per cutoff
+          
+          const regOtMultiplier = settings.regular_ot || 1.25
+          const nightDiffMultiplier = settings.regular_night || 1.10
+          
+          const basePay = update.baseHours * hourlyRate
+          const overtimePay = update.overtimeHours.regular_ot * hourlyRate * regOtMultiplier
+          const nightDiffPay = update.overtimeHours.regular_night * hourlyRate * nightDiffMultiplier
+          
+          const lateDemerit = (update.demerits.late_minutes / 60) * hourlyRate
+          const undertimeDemerit = (update.demerits.undertime_minutes / 60) * hourlyRate
+          
+          empItem.basePay = Number(basePay.toFixed(2))
+          empItem.overtime = Number(overtimePay.toFixed(2))
+          empItem.nightDiff = Number(nightDiffPay.toFixed(2))
+          empItem.otherDeductions = Number((empItem.otherDeductions + lateDemerit + undertimeDemerit).toFixed(2))
+          
+          empItem.gross = empItem.basePay + empItem.overtime + empItem.nightDiff + empItem.otherEarnings
+          empItem.deductions = empItem.sss + empItem.philhealth + empItem.pagibig + empItem.cashAdvance + empItem.licenseFee + empItem.otherDeductions
+          empItem.net = empItem.gross - empItem.deductions - empItem.tax
+        })
+        return next
+      })
+      setView('GRID')
+      setStatus({ type: 'success', msg: 'DTR data applied to grid successfully.' })
+    } catch (err) {
+      setStatus({ type: 'error', msg: 'Failed to apply DTR data.' })
+    }
+  }
 
   const handleProcessPayroll = async () => {
     setStatus(null)
@@ -604,6 +650,9 @@ export function PayrollView({ userId }: { userId: string }) {
 
          {/* SETTINGS TAB */}
         {view === 'SETTINGS' && <PayrollSettingsTab />}
+
+         {/* IMPORT TAB */}
+        {view === 'IMPORT' && <DtrImportTab employees={employees} onApply={handleImportApply} />}
 
          {/* HISTORY TAB */}
         {view === 'HISTORY' && <PayrollHistoryTab payrollHistory={payrollHistory} />}
