@@ -105,8 +105,14 @@ export const api = {
   getPayoutHistory: () => ipcRenderer.invoke('get-payout-history'),
   getCashierDisbursements: (limit?: number) =>
     ipcRenderer.invoke('get-cashier-disbursements', limit),
+  acknowledgeCashierDisbursement: (entryId: string, userId?: string, note?: string) =>
+    ipcRenderer.invoke('acknowledge-cashier-disbursement', entryId, userId, note),
+  updateDisbursementAttachment: (entryId: string, attachment: any) =>
+    ipcRenderer.invoke('update-disbursement-attachment', entryId, attachment),
   getRecentDisbursements: (limit?: number) =>
     ipcRenderer.invoke('get-recent-disbursements', limit),
+  getHistoricalDisbursements: (options?: any) =>
+    ipcRenderer.invoke('get-historical-disbursements', options),
   getAllRecentTransactions: () => ipcRenderer.invoke('get-all-recent-transactions'),
   getUserSalesHistory: (userId: string) => ipcRenderer.invoke('get-user-sales-history', userId),
   getShiftReport: (userId: string) => ipcRenderer.invoke('get-shift-report', userId),

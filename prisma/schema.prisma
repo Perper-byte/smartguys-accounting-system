@@ -1,6 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
-  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"] 
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -36,15 +36,15 @@ enum Role {
 }
 
 model Attachment {
-  id             String       @id @default(uuid())
+  id             String   @id @default(uuid())
   journalEntryId String
   fileName       String
   fileType       String
-  fileData       String       // This will store the Base64 string
-  createdAt      DateTime     @default(now())
+  fileData       String   @db.LongText // This will store the Base64 string
+  createdAt      DateTime @default(now())
 
   // Link it to the Journal Entry
-  entry          JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  entry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
 }
 
 // ------------------------------------------
@@ -56,7 +56,7 @@ model InventoryItem {
   name      String  @db.VarChar(150) // The "Product / Description"
   location  String? @db.VarChar(100) // The "Location"
   stock     Int     @default(0) // The "Quantity On Hand"
-   uom         String?  @default("Pieces") 
+  uom       String? @default("Pieces")
   is_active Boolean @default(true)
 
   logs InventoryLog[]
@@ -73,7 +73,7 @@ model InventoryLog {
   balance Int      @default(0)
   remarks String?  @db.VarChar(255)
 
-  // 🔥 NEW: Expiry Date tracking for deliveries
+  // ðŸ”¥ NEW: Expiry Date tracking for deliveries
   expiry_date DateTime? @db.Date
 
   user_id String @db.VarChar(50)
@@ -129,36 +129,37 @@ model Account {
 // 3. TRANSACTIONS & BOOKKEEPING (Core Engine)
 // ------------------------------------------
 model Payee {
-  id           String  @id @default(uuid()) @db.VarChar(50)
-  name         String  @db.VarChar(150)
-  tin          String? @db.VarChar(50)
-  type         String  @default("PATIENT") @db.VarChar(50) 
-  
+  id   String  @id @default(uuid()) @db.VarChar(50)
+  name String  @db.VarChar(150)
+  tin  String? @db.VarChar(50)
+  type String  @default("PATIENT") @db.VarChar(50)
+
   email        String? @db.VarChar(100)
   phone_number String? @db.VarChar(50)
   address      String? @db.Text
 
-  // 🔥 UPGRADED: Full HMO Tracking
+  // ðŸ”¥ UPGRADED: Full HMO Tracking
   hmo_affiliation String?   @db.VarChar(150)
   hmo_card_no     String?   @db.VarChar(100)
   hmo_expiry_date DateTime? @db.Date
 
-   is_active       Boolean   @default(true)
+  is_active Boolean @default(true)
 
   journal_entries JournalEntry[]
+
   @@map("payees")
 }
 
 model JournalEntry {
-  id           String   @id @default(uuid()) @db.VarChar(50)
-  date         DateTime @db.DateTime
-  reference_no String   @db.VarChar(100)
-  vat_type     String   @default("VATABLE") @db.VarChar(20)
-  description  String   @db.Text
-  payee_id     String?  @db.VarChar(50)
-  user_id      String   @db.VarChar(50)
-  created_at   DateTime @default(now())
-  attachments Attachment[]
+  id           String       @id @default(uuid()) @db.VarChar(50)
+  date         DateTime     @db.DateTime(0)
+  reference_no String       @db.VarChar(100)
+  vat_type     String       @default("VATABLE") @db.VarChar(20)
+  description  String       @db.Text
+  payee_id     String?      @db.VarChar(50)
+  user_id      String       @db.VarChar(50)
+  created_at   DateTime     @default(now())
+  attachments  Attachment[]
 
   // VOID SYSTEM STATUS
   status      String  @default("ACTIVE") @db.VarChar(20)
@@ -208,7 +209,9 @@ model Employee {
   is_active      Boolean  @default(true)
   created_at     DateTime @default(now())
 
-  payslips Payslip[] // 🔥 ADD THIS
+  allowances EmployeeAllowance[]
+  loans      EmployeeLoan[]
+  payslips   Payslip[] // ðŸ”¥ ADD THIS
 
   @@map("employees")
 }
@@ -228,19 +231,19 @@ model BankAccount {
 }
 
 model BankTransaction {
-  id               String   @id @default(uuid()) @db.VarChar(50)
-  bank_account_id  String   @db.VarChar(50)
-  transaction_date DateTime @db.DateTime
-  description      String   @db.Text
-  reference_no     String?  @db.VarChar(100)
-  amount           Decimal  @db.Decimal(15, 2)
-  status           String   @default("UNMATCHED") @db.VarChar(20)
-  created_at       DateTime @default(now())
+  id               String    @id @default(uuid()) @db.VarChar(50)
+  bank_account_id  String    @db.VarChar(50)
+  transaction_date DateTime  @db.DateTime
+  description      String    @db.Text
+  reference_no     String?   @db.VarChar(100)
+  amount           Decimal   @db.Decimal(15, 2)
+  status           String    @default("UNMATCHED") @db.VarChar(20)
+  created_at       DateTime  @default(now())
   removed_at       DateTime?
 
-  bank_account   BankAccount      @relation(fields: [bank_account_id], references: [id], onDelete: Cascade)
-  
-  reconciliations Reconciliation[] 
+  bank_account BankAccount @relation(fields: [bank_account_id], references: [id], onDelete: Cascade)
+
+  reconciliations Reconciliation[]
 
   @@index([bank_account_id, transaction_date])
   @@index([status])
@@ -262,8 +265,8 @@ model ServiceItem {
 
 model Reconciliation {
   id                  String   @id @default(uuid()) @db.VarChar(50)
-  // 🔥 CHANGED: Removed @unique so multiple records can share the same bank_transaction_id
-  bank_transaction_id String   @db.VarChar(50) 
+  // ðŸ”¥ CHANGED: Removed @unique so multiple records can share the same bank_transaction_id
+  bank_transaction_id String   @db.VarChar(50)
   journal_entry_id    String   @unique @db.VarChar(50)
   matched_at          DateTime @default(now())
   matched_by          String   @db.VarChar(50)
@@ -281,11 +284,30 @@ model Reconciliation {
 model SystemSetting {
   id            String    @id @default(uuid())
   lock_date     DateTime? @db.Date
-  auto_lock_day Int?      
-  override_pin  String?   @db.VarChar(50) // 🔥 NEW: Admin Override PIN
+  auto_lock_day Int?
+  override_pin  String?   @db.VarChar(50) // ðŸ”¥ NEW: Admin Override PIN
+
+  // Dynamic Payroll Multipliers (Default Philippine DOLE standard multipliers)
+  regular_ot_rate                        Decimal @default(1.25) @db.Decimal(5, 4)
+  regular_night_rate                     Decimal @default(1.10) @db.Decimal(5, 4)
+  regular_night_ot_rate                  Decimal @default(1.375) @db.Decimal(5, 4)
+  rest_day_rate                          Decimal @default(1.30) @db.Decimal(5, 4)
+  rest_day_ot_rate                       Decimal @default(1.69) @db.Decimal(5, 4)
+  rest_day_night_rate                    Decimal @default(1.43) @db.Decimal(5, 4)
+  rest_day_night_ot_rate                 Decimal @default(1.859) @db.Decimal(5, 4)
+  special_holiday_rate                   Decimal @default(1.30) @db.Decimal(5, 4)
+  special_holiday_ot_rate                Decimal @default(1.69) @db.Decimal(5, 4)
+  special_holiday_night_rate             Decimal @default(1.43) @db.Decimal(5, 4)
+  special_holiday_night_ot_rate          Decimal @default(1.859) @db.Decimal(5, 4)
+  special_holiday_rest_day_rate          Decimal @default(1.50) @db.Decimal(5, 4)
+  special_holiday_rest_day_ot_rate       Decimal @default(1.95) @db.Decimal(5, 4)
+  special_holiday_rest_day_night_rate    Decimal @default(1.65) @db.Decimal(5, 4)
+  special_holiday_rest_day_night_ot_rate Decimal @default(2.145) @db.Decimal(5, 4)
+  legal_holiday_rate                     Decimal @default(2.00) @db.Decimal(5, 4)
 
   @@map("system_settings")
 }
+
 model Payslip {
   id               String   @id @default(uuid()) @db.VarChar(50)
   employee_id      Int
@@ -316,4 +338,47 @@ model Payslip {
   journal_entry JournalEntry @relation(fields: [journal_entry_id], references: [id], onDelete: Cascade)
 
   @@map("payslips")
+}
+
+model EmployeeAllowance {
+  id           String   @id @default(uuid()) @db.VarChar(50)
+  employee_id  Int
+  name         String   @db.VarChar(100) // e.g., "De Minimis / Transportation"
+  amount       Decimal  @default(0.00) @db.Decimal(15, 2)
+  is_taxable   Boolean  @default(false)
+  is_recurring Boolean  @default(true)
+  created_at   DateTime @default(now())
+
+  employee Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+
+  @@map("employee_allowances")
+}
+
+model EmployeeLoan {
+  id            String   @id @default(uuid()) @db.VarChar(50)
+  employee_id   Int
+  type          String   @db.VarChar(50) // "SSS", "PAGIBIG", "CASH_ADVANCE"
+  principal     Decimal  @db.Decimal(15, 2)
+  monthly_amort Decimal  @db.Decimal(15, 2)
+  balance       Decimal  @db.Decimal(15, 2)
+  is_active     Boolean  @default(true)
+  created_at    DateTime @default(now())
+
+  employee Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+
+  @@map("employee_loans")
+}
+
+model StatutoryRateTable {
+  id              String   @id @default(uuid()) @db.VarChar(50)
+  agency          String   @db.VarChar(20) // "SSS", "PHILHEALTH", "PAGIBIG"
+  min_salary      Decimal  @default(0.00) @db.Decimal(15, 2)
+  max_salary      Decimal  @default(999999.99) @db.Decimal(15, 2)
+  ee_rate         Decimal  @default(0.00) @db.Decimal(7, 4) // Employee share rate/amount
+  er_rate         Decimal  @default(0.00) @db.Decimal(7, 4) // Employer share rate/amount
+  fixed_ee_amount Decimal? @db.Decimal(15, 2) // For fixed tiered amounts (SSS/Pag-IBIG cap)
+  fixed_er_amount Decimal? @db.Decimal(15, 2)
+  effective_year  Int      @default(2026)
+
+  @@map("statutory_rate_tables")
 }

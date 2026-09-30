@@ -13,7 +13,16 @@ import {
   HelpCircle,
   SplitSquareHorizontal,
   RefreshCw,
-  Eye
+  Eye,
+  ShieldAlert,
+  AlertTriangle,
+  Search,
+  Filter,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  History,
+  Calendar
 } from 'lucide-react'
 
 const getLocalDateString = () =>
@@ -30,11 +39,32 @@ export interface DisbursementLineItem {
 }
 
 export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) => {
+  // Navigation Tabs
+  const [activeTab, setActiveTab] = useState<'cdv' | 'cashier-audit' | 'history'>('cdv')
+
   // Dropdowns & Data
   const [expenseAccounts, setExpenseAccounts] = useState<any[]>([])
   const [cashAccounts, setCashAccounts] = useState<any[]>([])
   const [payees, setPayees] = useState<any[]>([])
   const [recentVouchers, setRecentVouchers] = useState<any[]>([])
+
+  // Cashier Petty Cash Audit State
+  const [cashierVouchers, setCashierVouchers] = useState<any[]>([])
+  const [loadingCashier, setLoadingCashier] = useState(false)
+  const [cashierSearch, setCashierSearch] = useState('')
+  const [highValueOnly, setHighValueOnly] = useState(false)
+  const [ackFilter, setAckFilter] = useState<'all' | 'pending' | 'acknowledged'>('all')
+  const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null)
+  const [cashierDateSort, setCashierDateSort] = useState<'desc' | 'asc'>('desc')
+
+  // Historical Vouchers Register State
+  const [historyVouchers, setHistoryVouchers] = useState<any[]>([])
+  const [loadingHistory, setLoadingHistory] = useState(false)
+  const [historySearch, setHistorySearch] = useState('')
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<'ALL' | 'CDV' | 'PCV' | 'CV' | 'DV' | 'REF'>('ALL')
+  const [historyDateSort, setHistoryDateSort] = useState<'desc' | 'asc'>('desc')
+  const [historyDateFrom, setHistoryDateFrom] = useState('')
+  const [historyDateTo, setHistoryDateTo] = useState('')
 
   // Section 1: Payment Info
   const [date, setDate] = useState(getLocalDateString())
@@ -80,6 +110,20 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
           ? 'Disbursement Voucher No.'
           : 'Reference No.'
 
+  const loadCashierVouchers = async () => {
+    const api = (window as any).api || (window as any).electronAPI
+    if (!api || !api.getCashierDisbursements) return
+    setLoadingCashier(true)
+    try {
+      const data = await api.getCashierDisbursements(200)
+      setCashierVouchers(data || [])
+    } catch (err) {
+      console.error('Failed to load cashier disbursements:', err)
+    } finally {
+      setLoadingCashier(false)
+    }
+  }
+
   const loadData = async () => {
     const api = (window as any).api || (window as any).electronAPI
     if (!api) return
@@ -101,14 +145,141 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
       }
       if (api.getPayees) setPayees(await api.getPayees())
       if (api.getRecentDisbursements) setRecentVouchers((await api.getRecentDisbursements(5)) || [])
+      await loadCashierVouchers()
+      await loadHistoricalVouchers()
     } catch (e) {
       console.error(e)
+    }
+  }
+
+  const loadHistoricalVouchers = async () => {
+    const api = (window as any).api || (window as any).electronAPI
+    if (!api || !api.getHistoricalDisbursements) return
+    setLoadingHistory(true)
+    try {
+      const data = await api.getHistoricalDisbursements({
+        startDate: historyDateFrom || undefined,
+        endDate: historyDateTo || undefined,
+        voucherType: historyTypeFilter,
+        sortOrder: historyDateSort,
+        limit: 500
+      })
+      setHistoryVouchers(data || [])
+    } catch (err) {
+      console.error('Failed to load historical vouchers:', err)
+    } finally {
+      setLoadingHistory(false)
     }
   }
 
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+    if (activeTab === 'history') {
+      loadHistoricalVouchers()
+    }
+  }, [activeTab, historyDateSort, historyTypeFilter, historyDateFrom, historyDateTo])
+
+  const handleAcknowledge = async (voucherId: string) => {
+    const api = (window as any).api || (window as any).electronAPI
+    if (!api?.acknowledgeCashierDisbursement) return
+    setAcknowledgingId(voucherId)
+    try {
+      const res = await api.acknowledgeCashierDisbursement(voucherId, userId || 'Accountant')
+      if (res.success) {
+        setStatus({ type: 'success', msg: 'High-value alert acknowledged successfully.' })
+        await loadCashierVouchers()
+        await loadHistoricalVouchers()
+      } else {
+        setStatus({ type: 'error', msg: res.error || 'Failed to acknowledge alert.' })
+      }
+    } catch (err: any) {
+      setStatus({ type: 'error', msg: err.message || 'Failed to acknowledge alert.' })
+    } finally {
+      setAcknowledgingId(null)
+    }
+  }
+
+  const cashierMetrics = useMemo(() => {
+    const totalAmount = cashierVouchers.reduce((s, v) => s + (Number(v.amount) || 0), 0)
+    const highValueList = cashierVouchers.filter((v) => Number(v.amount) > 2000)
+    const pendingList = highValueList.filter((v) => !v.isAcknowledged)
+    const acknowledgedList = highValueList.filter((v) => v.isAcknowledged)
+    const highValueAmount = highValueList.reduce((s, v) => s + (Number(v.amount) || 0), 0)
+    return {
+      totalCount: cashierVouchers.length,
+      totalAmount,
+      highValueCount: highValueList.length,
+      pendingCount: pendingList.length,
+      acknowledgedCount: acknowledgedList.length,
+      highValueAmount
+    }
+  }, [cashierVouchers])
+
+  const filteredCashierVouchers = useMemo(() => {
+    const list = cashierVouchers.filter((v) => {
+      const isHigh = Number(v.amount) > 2000
+      if (highValueOnly && !isHigh) return false
+      if (ackFilter === 'pending' && (!isHigh || v.isAcknowledged)) return false
+      if (ackFilter === 'acknowledged' && (!isHigh || !v.isAcknowledged)) return false
+      if (!cashierSearch.trim()) return true
+      const q = cashierSearch.toLowerCase()
+      return (
+        v.referenceNo?.toLowerCase().includes(q) ||
+        v.payeeName?.toLowerCase().includes(q) ||
+        v.cashierName?.toLowerCase().includes(q) ||
+        v.description?.toLowerCase().includes(q) ||
+        v.expenseAccountName?.toLowerCase().includes(q) ||
+        v.expenseAccountCode?.toLowerCase().includes(q)
+      )
+    })
+
+    return [...list].sort((a, b) => {
+      const timeA = new Date(a.date).getTime()
+      const timeB = new Date(b.date).getTime()
+      return cashierDateSort === 'asc' ? timeA - timeB : timeB - timeA
+    })
+  }, [cashierVouchers, highValueOnly, ackFilter, cashierSearch, cashierDateSort])
+
+  const filteredHistoryVouchers = useMemo(() => {
+    let list = historyVouchers
+    if (historySearch.trim()) {
+      const q = historySearch.toLowerCase()
+      list = list.filter(
+        (v) =>
+          v.referenceNo?.toLowerCase().includes(q) ||
+          v.payeeName?.toLowerCase().includes(q) ||
+          v.issuedBy?.toLowerCase().includes(q) ||
+          v.description?.toLowerCase().includes(q) ||
+          v.typeLabel?.toLowerCase().includes(q) ||
+          v.sourceAccountName?.toLowerCase().includes(q)
+      )
+    }
+
+    return [...list].sort((a, b) => {
+      const timeA = new Date(a.date).getTime()
+      const timeB = new Date(b.date).getTime()
+      return historyDateSort === 'asc' ? timeA - timeB : timeB - timeA
+    })
+  }, [historyVouchers, historySearch, historyDateSort])
+
+  const historyMetrics = useMemo(() => {
+    const totalAmount = filteredHistoryVouchers.reduce((s, v) => s + (Number(v.amount) || 0), 0)
+    const checkAmount = filteredHistoryVouchers
+      .filter((v) => v.typeLabel === 'CHECK' || v.typeLabel === 'TRANSFER')
+      .reduce((s, v) => s + (Number(v.amount) || 0), 0)
+    const cashAmount = filteredHistoryVouchers
+      .filter((v) => v.typeLabel === 'CASH VOUCHER' || v.typeLabel === 'PETTY CASH')
+      .reduce((s, v) => s + (Number(v.amount) || 0), 0)
+    return {
+      totalCount: filteredHistoryVouchers.length,
+      totalAmount,
+      checkAmount,
+      cashAmount
+    }
+  }, [filteredHistoryVouchers])
 
   // Only fetch sequence if a payment method is selected
   useEffect(() => {
@@ -311,13 +482,21 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
       <div className="mb-6 flex justify-between items-center pb-4 border-b border-[#B0DCDA]">
         <div>
           <h2 className="text-2xl font-black text-gray-800 tracking-tight flex items-center gap-2.5">
-            Cash Disbursements (Check / Bank Transfer)
+            Cash Disbursements
             <span className="bg-emerald-50 text-[#1B9387] border border-emerald-200 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full tracking-wider">
-              Multi-Line Enabled
+              {activeTab === 'cdv'
+                ? 'CDV Check & Transfer'
+                : activeTab === 'cashier-audit'
+                  ? 'Cashier Petty Cash Audit'
+                  : 'Voucher History & Register'}
             </span>
           </h2>
           <p className="text-xs text-gray-500 mt-0.5 font-medium">
-            Issue checks, bank transfers, or official vouchers with single or multiple expense distributions.
+            {activeTab === 'cdv'
+              ? 'Issue checks, bank transfers, or official vouchers with single or multiple expense distributions.'
+              : activeTab === 'cashier-audit'
+                ? 'Audit cashier petty cash disbursements, monitor high-value alerts (> ₱2,000), and inspect receipt photos.'
+                : 'Browse, sort by date, filter, and audit all historical vouchers issued across CDV and Petty Cash.'}
           </p>
         </div>
 
@@ -331,6 +510,67 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
         </button>
       </div>
 
+      {/* TOP TABS */}
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
+        <button
+          type="button"
+          onClick={() => setActiveTab('cdv')}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition cursor-pointer border ${
+            activeTab === 'cdv'
+              ? 'bg-[#1B9387] text-white border-[#1B9387] shadow-sm'
+              : 'bg-white text-gray-600 border-gray-200 hover:bg-[#FBF8F8]'
+          }`}
+        >
+          <Receipt size={16} />
+          Cash Disbursement Voucher (CDV)
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('cashier-audit')
+            loadCashierVouchers()
+          }}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition cursor-pointer border ${
+            activeTab === 'cashier-audit'
+              ? 'bg-[#1B9387] text-white border-[#1B9387] shadow-sm'
+              : 'bg-white text-gray-600 border-gray-200 hover:bg-[#FBF8F8]'
+          }`}
+        >
+          <ShieldAlert size={16} />
+          Cashier Petty Cash Audit & Alerts
+          {cashierMetrics.pendingCount > 0 ? (
+            <span className="ml-1 bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full animate-pulse shadow-xs">
+              {cashierMetrics.pendingCount} Pending {cashierMetrics.pendingCount === 1 ? 'Alert' : 'Alerts'}
+            </span>
+          ) : cashierMetrics.acknowledgedCount > 0 ? (
+            <span className="ml-1 bg-emerald-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-xs">
+              ✓ All Reviewed
+            </span>
+          ) : null}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('history')
+            loadHistoricalVouchers()
+          }}
+          className={`flex items-center gap-2 px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition cursor-pointer border ${
+            activeTab === 'history'
+              ? 'bg-[#1B9387] text-white border-[#1B9387] shadow-sm'
+              : 'bg-white text-gray-600 border-gray-200 hover:bg-[#FBF8F8]'
+          }`}
+        >
+          <History size={16} />
+          Voucher History & Register
+          <span className="ml-1 bg-gray-100 text-gray-600 text-[10px] font-black px-2 py-0.5 rounded-full border border-gray-200">
+            {historyVouchers.length}
+          </span>
+        </button>
+      </div>
+
+      {activeTab === 'cdv' && (
       <div className="flex flex-col lg:flex-row items-start gap-8">
         {/* LEFT SIDE: MAIN FORM */}
         <div className="flex-1 w-full bg-white border border-[#B0DCDA] rounded-xl shadow-sm relative overflow-hidden">
@@ -919,6 +1159,684 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
           </div>
         </div>
       </div>
+      )}
+
+      {/* TAB 2: CASHIER PETTY CASH AUDIT & ALERTS */}
+      {activeTab === 'cashier-audit' && (
+        <div className="space-y-6">
+          {/* Summary Metric Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="bg-white border border-[#B0DCDA] rounded-xl p-5 shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-1">
+                Total Petty Cash Disbursed
+              </span>
+              <div className="text-2xl font-black text-gray-800 font-mono">
+                {formatCurrency(cashierMetrics.totalAmount)}
+              </div>
+              <span className="text-xs text-gray-500 font-medium mt-1 block">
+                {cashierMetrics.totalCount} total cashier vouchers logged
+              </span>
+            </div>
+
+            <div className="bg-white border border-[#B0DCDA] rounded-xl p-5 shadow-sm">
+              <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 block mb-1">
+                Audited Cashier Vouchers
+              </span>
+              <div className="text-2xl font-black text-[#1B9387] font-mono">
+                {cashierMetrics.totalCount}
+              </div>
+              <span className="text-xs text-gray-500 font-medium mt-1 block">
+                Petty Cash Fund (1020) & Cash in Hand (1010)
+              </span>
+            </div>
+
+            <div
+              className={`rounded-xl p-5 shadow-sm border ${
+                cashierMetrics.pendingCount > 0
+                  ? 'bg-amber-50/60 border-amber-300'
+                  : cashierMetrics.highValueCount > 0
+                    ? 'bg-emerald-50/50 border-emerald-200'
+                    : 'bg-white border-[#B0DCDA]'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span
+                  className={`text-[10px] font-black uppercase tracking-wider ${
+                    cashierMetrics.pendingCount > 0 ? 'text-amber-800' : 'text-gray-400'
+                  }`}
+                >
+                  High-Value Alerts (&gt; ₱2,000)
+                </span>
+                {cashierMetrics.pendingCount > 0 ? (
+                  <span className="inline-flex items-center gap-1 bg-amber-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase animate-pulse">
+                    <AlertTriangle size={12} /> {cashierMetrics.pendingCount} Pending
+                  </span>
+                ) : cashierMetrics.highValueCount > 0 ? (
+                  <span className="inline-flex items-center gap-1 bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
+                    <CheckCircle size={12} /> All Reviewed
+                  </span>
+                ) : null}
+              </div>
+              <div
+                className={`text-2xl font-black font-mono ${
+                  cashierMetrics.pendingCount > 0 ? 'text-amber-900' : 'text-gray-800'
+                }`}
+              >
+                {cashierMetrics.highValueCount}
+              </div>
+              <span
+                className={`text-xs font-medium mt-1 block ${
+                  cashierMetrics.pendingCount > 0 ? 'text-amber-700' : 'text-gray-500'
+                }`}
+              >
+                {cashierMetrics.pendingCount > 0
+                  ? `${cashierMetrics.pendingCount} pending review (${formatCurrency(cashierMetrics.highValueAmount)} total)`
+                  : `All ${cashierMetrics.acknowledgedCount} alerts reviewed and acknowledged`}
+              </span>
+            </div>
+          </div>
+
+          {/* Search & Filter Toolbar */}
+          <div className="bg-white border border-[#B0DCDA] rounded-xl p-4 shadow-sm flex flex-col sm:flex-row gap-4 justify-between items-center">
+            <div className="relative w-full sm:w-80">
+              <Search
+                size={16}
+                className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+              />
+              <input
+                type="text"
+                value={cashierSearch}
+                onChange={(e) => setCashierSearch(e.target.value)}
+                placeholder="Search reference #, cashier, payee..."
+                className="w-full pl-10 pr-4 py-2.5 bg-[#FBF8F8] border border-[#B0DCDA] rounded-lg text-xs font-bold text-gray-800 placeholder-gray-400 focus:border-[#1B9387] outline-none transition"
+              />
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end flex-wrap">
+              <div className="flex rounded-lg border border-gray-200 p-0.5 bg-gray-100/60 text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHighValueOnly(false)
+                    setAckFilter('all')
+                  }}
+                  className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+                    !highValueOnly && ackFilter === 'all'
+                      ? 'bg-white shadow-2xs text-[#1B9387]'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  All ({cashierMetrics.totalCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHighValueOnly(true)
+                    setAckFilter('pending')
+                  }}
+                  className={`px-3 py-1.5 rounded-md transition cursor-pointer flex items-center gap-1 ${
+                    highValueOnly && ackFilter === 'pending'
+                      ? 'bg-amber-500 text-white shadow-2xs'
+                      : 'text-amber-800 hover:text-amber-950'
+                  }`}
+                >
+                  <AlertTriangle size={12} />
+                  Pending Alerts ({cashierMetrics.pendingCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHighValueOnly(true)
+                    setAckFilter('all')
+                  }}
+                  className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+                    highValueOnly && ackFilter === 'all'
+                      ? 'bg-white shadow-2xs text-gray-800'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  All &gt; ₱2k ({cashierMetrics.highValueCount})
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={loadCashierVouchers}
+                title="Reload cashier disbursements"
+                className="p-2.5 bg-[#FBF8F8] hover:bg-[#E9FAFA] text-gray-600 hover:text-[#1B9387] border border-[#B0DCDA] rounded-lg transition cursor-pointer"
+              >
+                <RefreshCw size={15} className={loadingCashier ? 'animate-spin' : ''} />
+              </button>
+            </div>
+          </div>
+
+          {/* Audit Data Table */}
+          <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-sm overflow-hidden">
+            <div className="bg-[#FBF8F8] border-b border-[#B0DCDA] px-6 py-4 flex justify-between items-center">
+              <h3 className="text-xs font-extrabold text-gray-800 uppercase tracking-wider flex items-center gap-2">
+                <ShieldAlert size={16} className="text-[#1B9387]" />
+                Cashier Petty Cash Vouchers ({filteredCashierVouchers.length})
+              </h3>
+              <span className="text-[10px] text-gray-400 font-bold uppercase">
+                Audited via General Ledger & Attachments
+              </span>
+            </div>
+
+            {loadingCashier ? (
+              <div className="p-12 text-center text-sm font-bold text-gray-500">
+                <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-[#1B9387]" />
+                Loading Cashier Disbursements...
+              </div>
+            ) : filteredCashierVouchers.length === 0 ? (
+              <div className="p-12 text-center text-sm text-gray-400">
+                {highValueOnly
+                  ? 'No high-value cashier disbursements exceeding ₱2,000 found.'
+                  : cashierSearch
+                    ? 'No cashier disbursements matched your search query.'
+                    : 'No cashier disbursements found.'}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50/80 border-b border-gray-200 text-[10px] font-black uppercase tracking-wider text-gray-500">
+                      <th
+                        className="py-3 px-4 cursor-pointer hover:bg-gray-100 select-none transition"
+                        onClick={() => setCashierDateSort(cashierDateSort === 'desc' ? 'asc' : 'desc')}
+                        title={`Click to sort by date (${cashierDateSort === 'desc' ? 'Newest first' : 'Oldest first'})`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Date & Ref #</span>
+                          {cashierDateSort === 'desc' ? (
+                            <ArrowDown size={13} className="text-[#1B9387]" />
+                          ) : (
+                            <ArrowUp size={13} className="text-[#1B9387]" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="py-3 px-4">Cashier</th>
+                      <th className="py-3 px-4">Payee / Vendor</th>
+                      <th className="py-3 px-4">Account & Description</th>
+                      <th className="py-3 px-4 text-right">Amount</th>
+                      <th className="py-3 px-4 text-center">Receipt Photo</th>
+                      <th className="py-3 px-4 text-center">Audit Status & Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-xs">
+                    {filteredCashierVouchers.map((v: any) => {
+                      const isHighValue = Number(v.amount) > 2000
+                      const hasAttachment = v.attachments && v.attachments.length > 0
+                      return (
+                        <tr
+                          key={v.id}
+                          className={`transition ${
+                            isHighValue
+                              ? v.isAcknowledged
+                                ? 'bg-emerald-50/20 hover:bg-emerald-50/40 border-l-4 border-l-emerald-400'
+                                : 'bg-amber-50/50 hover:bg-amber-100/40 border-l-4 border-l-amber-500'
+                              : 'hover:bg-gray-50/80 border-l-4 border-l-transparent'
+                          }`}
+                        >
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <div className="font-mono font-black text-gray-800 flex items-center gap-1.5">
+                              {v.referenceNo}
+                              {isHighValue && !v.isAcknowledged && (
+                                <span
+                                  title="Disbursement exceeds ₱2,000 threshold"
+                                  className="inline-flex items-center gap-1 bg-amber-100 text-amber-800 text-[9px] font-black uppercase px-2 py-0.5 rounded-full border border-amber-300"
+                                >
+                                  <AlertTriangle size={10} className="text-amber-600" /> &gt; ₱2,000 Alert
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10px] text-gray-400 font-medium">
+                              {new Date(v.date).toLocaleDateString(undefined, {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                              })}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span className="font-bold text-gray-700 bg-gray-100 px-2 py-1 rounded text-[11px]">
+                              {v.cashierName || 'Cashier'}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className="font-extrabold text-gray-900 block truncate max-w-[200px]">
+                              {v.payeeName || '—'}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className="font-bold text-[#1B9387] block text-[11px]">
+                              {v.expenseAccountCode ? `${v.expenseAccountCode} - ` : ''}
+                              {v.expenseAccountName || 'Expense'}
+                            </span>
+                            <span className="text-gray-500 text-[11px] block truncate max-w-[280px]">
+                              {v.description || '—'}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            <span
+                              className={`font-mono font-black text-sm ${
+                                isHighValue ? 'text-amber-800 font-extrabold' : 'text-gray-800'
+                              }`}
+                            >
+                              {formatCurrency(v.amount)}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                            {hasAttachment ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setPreviewAttachment({
+                                    ...v.attachments[0],
+                                    entryId: v.id
+                                  })
+                                }
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#E9FAFA] hover:bg-[#1B9387] text-[#1B9387] hover:text-white rounded-lg text-xs font-bold transition cursor-pointer border border-[#B0DCDA]"
+                              >
+                                <Eye size={13} />
+                                View Receipt
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-rose-500 font-bold bg-rose-50 border border-rose-200 px-2 py-1 rounded-md">
+                                Missing Photo
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                            {isHighValue ? (
+                              v.isAcknowledged ? (
+                                <div className="inline-flex flex-col items-center">
+                                  <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase px-2.5 py-1 rounded-full border border-emerald-300">
+                                    <CheckCircle size={12} className="text-emerald-600" /> Acknowledged
+                                  </span>
+                                  {v.acknowledgedInfo && (
+                                    <span
+                                      className="text-[9px] text-gray-400 mt-0.5 max-w-[150px] truncate"
+                                      title={v.acknowledgedInfo}
+                                    >
+                                      {v.acknowledgedInfo}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAcknowledge(v.id)}
+                                  disabled={acknowledgingId === v.id}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-lg text-xs font-black uppercase tracking-wider transition shadow-sm cursor-pointer"
+                                  title="Acknowledge and mark this disbursement as reviewed"
+                                >
+                                  <CheckCircle size={13} />
+                                  <span>
+                                    {acknowledgingId === v.id ? 'Saving...' : 'Acknowledge Alert'}
+                                  </span>
+                                </button>
+                              )
+                            ) : (
+                              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                Standard (&lt; ₱2k)
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'history' && (
+        <div className="space-y-6 animate-in fade-in">
+          {/* TOP METRICS SUMMARY */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white border border-[#B0DCDA] rounded-xl p-5 shadow-sm">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-gray-500">
+                  Total Disbursed (Filtered)
+                </span>
+                <span className="p-2 bg-[#E9FAFA] text-[#1B9387] rounded-lg">
+                  <Receipt size={16} />
+                </span>
+              </div>
+              <div className="text-2xl font-black text-gray-900 font-mono">
+                {formatCurrency(historyMetrics.totalAmount)}
+              </div>
+              <p className="text-[11px] font-semibold text-gray-400 mt-1">
+                {historyMetrics.totalCount} Vouchers Found
+              </p>
+            </div>
+
+            <div className="bg-white border border-blue-200 rounded-xl p-5 shadow-sm">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-blue-600">
+                  Checks & Transfers
+                </span>
+                <span className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                  <FileText size={16} />
+                </span>
+              </div>
+              <div className="text-2xl font-black text-blue-800 font-mono">
+                {formatCurrency(historyMetrics.checkAmount)}
+              </div>
+              <p className="text-[11px] font-semibold text-gray-400 mt-1">
+                Series: CV- (Checks) & REF- (Transfers)
+              </p>
+            </div>
+
+            <div className="bg-white border border-emerald-200 rounded-xl p-5 shadow-sm">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600">
+                  Cash & Petty Cash
+                </span>
+                <span className="p-2 bg-emerald-50 text-emerald-600 rounded-lg">
+                  <History size={16} />
+                </span>
+              </div>
+              <div className="text-2xl font-black text-emerald-800 font-mono">
+                {formatCurrency(historyMetrics.cashAmount)}
+              </div>
+              <p className="text-[11px] font-semibold text-gray-400 mt-1">
+                Series: CDV- (Accountant) & PCV- (Cashier)
+              </p>
+            </div>
+
+            <div className="bg-white border border-purple-200 rounded-xl p-5 shadow-sm">
+              <div className="flex justify-between items-start mb-2">
+                <span className="text-[10px] font-black uppercase tracking-wider text-purple-600">
+                  Date Sorting Order
+                </span>
+                <span className="p-2 bg-purple-50 text-purple-600 rounded-lg">
+                  <ArrowUpDown size={16} />
+                </span>
+              </div>
+              <div className="text-sm font-black text-purple-900 mt-1 flex items-center gap-1.5">
+                {historyDateSort === 'desc' ? (
+                  <>
+                    <ArrowDown size={16} className="text-purple-600" />
+                    <span>Newest First (Descending)</span>
+                  </>
+                ) : (
+                  <>
+                    <ArrowUp size={16} className="text-purple-600" />
+                    <span>Oldest First (Ascending)</span>
+                  </>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setHistoryDateSort(historyDateSort === 'desc' ? 'asc' : 'desc')}
+                className="mt-2 text-xs font-bold text-purple-600 hover:text-purple-800 hover:underline cursor-pointer flex items-center gap-1"
+              >
+                Switch to {historyDateSort === 'desc' ? 'Oldest First ▲' : 'Newest First ▼'}
+              </button>
+            </div>
+          </div>
+
+          {/* SEARCH, DATE RANGE, & TYPE FILTERS TOOLBAR */}
+          <div className="bg-white border border-[#B0DCDA] rounded-xl p-6 shadow-sm space-y-4">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              {/* Search Bar */}
+              <div className="relative flex-1">
+                <Search
+                  size={16}
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400"
+                />
+                <input
+                  type="text"
+                  placeholder="Search by Ref # (e.g. CV-001, PCV-001), payee, issued by, notes..."
+                  value={historySearch}
+                  onChange={(e) => setHistorySearch(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-xs font-medium focus:bg-white focus:border-[#1B9387] outline-none transition"
+                />
+              </div>
+
+              {/* Date Range Picker */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+                  <Calendar size={14} className="text-gray-400" />
+                  <span className="text-[10px] font-black uppercase text-gray-500">From</span>
+                  <input
+                    type="date"
+                    value={historyDateFrom}
+                    onChange={(e) => setHistoryDateFrom(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-gray-700 outline-none cursor-pointer"
+                  />
+                </div>
+
+                <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-lg px-3 py-1.5">
+                  <Calendar size={14} className="text-gray-400" />
+                  <span className="text-[10px] font-black uppercase text-gray-500">To</span>
+                  <input
+                    type="date"
+                    value={historyDateTo}
+                    onChange={(e) => setHistoryDateTo(e.target.value)}
+                    className="bg-transparent text-xs font-bold text-gray-700 outline-none cursor-pointer"
+                  />
+                </div>
+
+                {(historyDateFrom || historyDateTo || historySearch || historyTypeFilter !== 'ALL') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHistoryDateFrom('')
+                      setHistoryDateTo('')
+                      setHistorySearch('')
+                      setHistoryTypeFilter('ALL')
+                    }}
+                    className="px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 border border-rose-200 rounded-lg transition cursor-pointer"
+                    title="Reset all filters"
+                  >
+                    Clear Filters
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={loadHistoricalVouchers}
+                  className="p-2 text-gray-500 hover:text-[#1B9387] hover:bg-[#E9FAFA] border border-gray-200 rounded-lg transition cursor-pointer"
+                  title="Refresh Register"
+                >
+                  <RefreshCw size={15} className={loadingHistory ? 'animate-spin' : ''} />
+                </button>
+              </div>
+            </div>
+
+            {/* Voucher Type Pills */}
+            <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-gray-100">
+              <span className="text-[10px] font-black uppercase tracking-wider text-gray-400 mr-1 flex items-center gap-1">
+                <Filter size={12} /> Voucher Type:
+              </span>
+              {[
+                { id: 'ALL', label: 'All Series' },
+                { id: 'CDV', label: 'CDV (Accountant Cash)' },
+                { id: 'PCV', label: 'PCV (Petty Cash)' },
+                { id: 'CV', label: 'CV (Bank Checks)' },
+                { id: 'REF', label: 'REF (Bank Transfers)' },
+                { id: 'DV', label: 'DV (Disbursements)' }
+              ].map((pill) => (
+                <button
+                  key={pill.id}
+                  type="button"
+                  onClick={() => setHistoryTypeFilter(pill.id)}
+                  className={`px-3 py-1 rounded-full text-xs font-bold transition cursor-pointer border ${
+                    historyTypeFilter === pill.id
+                      ? 'bg-[#1B9387] text-white border-[#1B9387] shadow-xs'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* VOUCHER REGISTER TABLE */}
+          <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-sm overflow-hidden">
+            <div className="px-6 py-4 bg-gray-50/50 border-b border-[#B0DCDA] flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <History size={16} className="text-[#1B9387]" />
+                <h3 className="text-xs font-black uppercase tracking-wider text-gray-800">
+                  Historical Disbursement Voucher Register ({filteredHistoryVouchers.length})
+                </h3>
+              </div>
+              <div className="text-[10px] font-bold text-gray-500 uppercase flex items-center gap-1">
+                Sorted by Date:
+                <button
+                  type="button"
+                  onClick={() => setHistoryDateSort(historyDateSort === 'desc' ? 'asc' : 'desc')}
+                  className="font-black text-[#1B9387] hover:underline cursor-pointer flex items-center gap-0.5"
+                >
+                  {historyDateSort === 'desc' ? 'Descending ▼' : 'Ascending ▲'}
+                </button>
+              </div>
+            </div>
+
+            {loadingHistory ? (
+              <div className="p-12 text-center text-sm font-bold text-gray-500">
+                <RefreshCw size={24} className="animate-spin mx-auto mb-2 text-[#1B9387]" />
+                Loading Historical Vouchers...
+              </div>
+            ) : filteredHistoryVouchers.length === 0 ? (
+              <div className="p-12 text-center text-sm text-gray-400">
+                {historySearch || historyDateFrom || historyDateTo || historyTypeFilter !== 'ALL'
+                  ? 'No historical vouchers matched your filter criteria.'
+                  : 'No historical vouchers found in system.'}
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-gray-50/80 border-b border-gray-200 text-[10px] font-black uppercase tracking-wider text-gray-500">
+                      <th
+                        className="py-3 px-4 cursor-pointer hover:bg-gray-100 select-none transition"
+                        onClick={() => setHistoryDateSort(historyDateSort === 'desc' ? 'asc' : 'desc')}
+                        title={`Click to sort by date (${historyDateSort === 'desc' ? 'Newest first' : 'Oldest first'})`}
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span>Date</span>
+                          {historyDateSort === 'desc' ? (
+                            <ArrowDown size={13} className="text-[#1B9387]" />
+                          ) : (
+                            <ArrowUp size={13} className="text-[#1B9387]" />
+                          )}
+                        </div>
+                      </th>
+                      <th className="py-3 px-4">Ref #</th>
+                      <th className="py-3 px-4">Type & Source</th>
+                      <th className="py-3 px-4">Issued By</th>
+                      <th className="py-3 px-4">Payee / Vendor</th>
+                      <th className="py-3 px-4">Particulars / Description</th>
+                      <th className="py-3 px-4 text-right">Total Amount</th>
+                      <th className="py-3 px-4 text-center">Receipt</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 text-xs">
+                    {filteredHistoryVouchers.map((v: any) => {
+                      const hasAttachment = v.attachments && v.attachments.length > 0
+                      const refStr = v.referenceNo || ''
+                      let badgeStyle = 'bg-gray-100 text-gray-800 border-gray-300'
+                      if (refStr.startsWith('CV-')) {
+                        badgeStyle = 'bg-blue-50 text-blue-700 border-blue-200'
+                      } else if (refStr.startsWith('REF-')) {
+                        badgeStyle = 'bg-purple-50 text-purple-700 border-purple-200'
+                      } else if (refStr.startsWith('PCV-')) {
+                        badgeStyle = 'bg-amber-50 text-amber-800 border-amber-200'
+                      } else if (refStr.startsWith('DV-') || refStr.startsWith('CDV-')) {
+                        badgeStyle = 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      }
+
+                      return (
+                        <tr key={v.id} className="hover:bg-gray-50/80 transition">
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span className="font-bold text-gray-700">
+                              {new Date(v.date).toLocaleDateString(undefined, {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                              })}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span
+                              className={`inline-block font-mono font-black text-xs px-2.5 py-1 rounded-md border ${badgeStyle}`}
+                            >
+                              {v.referenceNo}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span className="font-bold text-gray-800 block text-[11px]">
+                              {v.typeLabel || 'Disbursement'}
+                            </span>
+                            <span className="text-[10px] text-gray-400 block truncate max-w-[150px]">
+                              {v.sourceAccountName || v.paymentMethod || '—'}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 whitespace-nowrap">
+                            <span className="font-medium text-gray-700 bg-gray-100 px-2 py-0.5 rounded text-[11px]">
+                              {v.issuedBy || 'System'}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className="font-extrabold text-gray-900 block truncate max-w-[180px]">
+                              {v.payeeName || '—'}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4">
+                            <span className="text-gray-600 block text-[11px] truncate max-w-[260px]">
+                              {v.description || '—'}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-right whitespace-nowrap">
+                            <span className="font-mono font-black text-sm text-gray-900">
+                              {formatCurrency(v.amount)}
+                            </span>
+                          </td>
+
+                          <td className="py-3.5 px-4 text-center whitespace-nowrap">
+                            {hasAttachment ? (
+                              <button
+                                type="button"
+                                onClick={() => setPreviewAttachment(v.attachments[0])}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-[#E9FAFA] text-[#1B9387] border border-[#B0DCDA] rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+                                title="Inspect receipt attachment"
+                              >
+                                <Eye size={12} />
+                                <span>View ({v.attachments.length})</span>
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-gray-400 italic">None</span>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* CONFIRMATION MODAL */}
       {showConfirmModal && (
@@ -1026,6 +1944,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
         <AttachmentPreviewModal
           attachment={previewAttachment}
           onClose={() => setPreviewAttachment(null)}
+          onAttachmentUpdated={() => loadCashierVouchers()}
         />
       )}
     </div>

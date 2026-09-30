@@ -465,10 +465,37 @@ app.whenReady().then(() => {
       return []
     }
   })
+  ipcMain.handle('acknowledge-cashier-disbursement', async (e, entryId, userId, note) => {
+    try {
+      return typeof (LedgerService as any).acknowledgeCashierDisbursement === 'function'
+        ? await (LedgerService as any).acknowledgeCashierDisbursement(entryId, userId, note)
+        : { success: false }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+  ipcMain.handle('update-disbursement-attachment', async (e, entryId, attachment) => {
+    try {
+      return typeof (LedgerService as any).updateDisbursementAttachment === 'function'
+        ? await (LedgerService as any).updateDisbursementAttachment(entryId, attachment)
+        : { success: false }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
   ipcMain.handle('get-recent-disbursements', async (e, limit = 20) => {
     try {
       return typeof LedgerService.getRecentDisbursements === 'function'
         ? await LedgerService.getRecentDisbursements(limit)
+        : []
+    } catch (err) {
+      return []
+    }
+  })
+  ipcMain.handle('get-historical-disbursements', async (e, options) => {
+    try {
+      return typeof (LedgerService as any).getHistoricalDisbursements === 'function'
+        ? await (LedgerService as any).getHistoricalDisbursements(options)
         : []
     } catch (err) {
       return []

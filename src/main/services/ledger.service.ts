@@ -1127,6 +1127,10 @@ export const LedgerService = {
                 const cashLine = entry.lines.find(l => l.account.code.startsWith('10')) || entry.lines[1];
                 const amount = expenseLine ? Number(expenseLine.debit) : entry.lines.reduce((s, l) => s + Number(l.debit), 0);
 
+                const isAck = (entry.description || '').includes('[ACKNOWLEDGED');
+                const ackMatch = (entry.description || '').match(/\[ACKNOWLEDGED[^\]]*\]/);
+                const ackText = ackMatch ? ackMatch[0].replace(/^\[ACKNOWLEDGED:?\s*/i, '').replace(/\]$/, '') : '';
+
                 return {
                     id: entry.id,
                     date: entry.date,
@@ -1136,6 +1140,8 @@ export const LedgerService = {
                     payeeId: entry.payee_id,
                     description: cleanDescription(entry.description),
                     rawDescription: entry.description,
+                    isAcknowledged: isAck,
+                    acknowledgedInfo: ackText,
                     expenseAccountCode: expenseLine?.account.code || '',
                     expenseAccountName: expenseLine?.account.name || '',
                     sourceAccountCode: cashLine?.account.code || '1020',
@@ -1154,6 +1160,54 @@ export const LedgerService = {
         } catch (error) {
             console.error('[Cashier Disbursements] Failed:', error);
             return [];
+        }
+    },
+
+    async acknowledgeCashierDisbursement(entryId: string, acknowledgedBy: string = 'Accountant', note?: string) {
+        try {
+            const entry = await prisma.journalEntry.findUnique({ where: { id: entryId } });
+            if (!entry) throw new Error("Voucher not found");
+
+            const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+            const ackTag = ` [ACKNOWLEDGED by ${acknowledgedBy} on ${dateStr}${note ? `: ${note}` : ''}]`;
+
+            let newDesc = entry.description || '';
+            if (newDesc.includes('[ACKNOWLEDGED')) {
+                newDesc = newDesc.replace(/\[ACKNOWLEDGED[^\]]*\]/g, ackTag.trim());
+            } else {
+                newDesc = `${newDesc}${ackTag}`;
+            }
+
+            await prisma.journalEntry.update({
+                where: { id: entryId },
+                data: { description: newDesc }
+            });
+
+            return { success: true };
+        } catch (error: any) {
+            console.error('[Acknowledge Disbursement] Failed:', error);
+            return { success: false, error: error.message };
+        }
+    },
+
+    async updateDisbursementAttachment(entryId: string, attachment: { name: string; type: string; data: string }) {
+        try {
+            if (!attachment?.data) throw new Error("Attachment data is required");
+            // Delete old attachments
+            await prisma.attachment.deleteMany({ where: { journalEntryId: entryId } });
+            // Insert replacement attachment with full longtext
+            const newAtt = await prisma.attachment.create({
+                data: {
+                    journalEntryId: entryId,
+                    fileName: attachment.name || 'Receipt.jpg',
+                    fileType: attachment.type || 'image/jpeg',
+                    fileData: attachment.data
+                }
+            });
+            return { success: true, attachmentId: newAtt.id };
+        } catch (error: any) {
+            console.error('[Update Disbursement Attachment] Failed:', error);
+            return { success: false, error: error.message };
         }
     },
 
@@ -1201,6 +1255,108 @@ export const LedgerService = {
             });
         } catch (err) {
             console.error('[Recent Disbursements] Failed:', err);
+            return [];
+        }
+    },
+
+    async getHistoricalDisbursements(options: {
+        startDate?: string;
+        endDate?: string;
+        voucherType?: 'ALL' | 'CDV' | 'PCV' | 'CV' | 'DV' | 'REF';
+        sortOrder?: 'asc' | 'desc';
+        limit?: number;
+    } = {}) {
+        try {
+            const { startDate, endDate, voucherType = 'ALL', sortOrder = 'desc', limit = 500 } = options;
+
+            // Prefix filters
+            let prefixes: string[] = ['CV-', 'DV-', 'REF-', 'PCV-'];
+            if (voucherType === 'CDV') prefixes = ['CV-', 'DV-', 'REF-'];
+            else if (voucherType === 'PCV') prefixes = ['PCV-'];
+            else if (voucherType === 'CV') prefixes = ['CV-'];
+            else if (voucherType === 'DV') prefixes = ['DV-'];
+            else if (voucherType === 'REF') prefixes = ['REF-'];
+
+            const whereClause: any = {
+                OR: prefixes.map(p => ({ reference_no: { startsWith: p } }))
+            };
+
+            if (startDate || endDate) {
+                whereClause.date = {};
+                if (startDate) {
+                    const start = new Date(startDate);
+                    start.setHours(0, 0, 0, 0);
+                    whereClause.date.gte = start;
+                }
+                if (endDate) {
+                    const end = new Date(endDate);
+                    end.setHours(23, 59, 59, 999);
+                    whereClause.date.lte = end;
+                }
+            }
+
+            const entries = await prisma.journalEntry.findMany({
+                where: whereClause,
+                include: {
+                    payee: true,
+                    user: true,
+                    lines: { include: { account: true } },
+                    attachments: true
+                },
+                orderBy: [
+                    { date: sortOrder },
+                    { created_at: sortOrder }
+                ],
+                take: limit
+            });
+
+            return entries.map((entry) => {
+                const totalDebit = entry.lines.reduce((s, l) => s + Number(l.debit), 0);
+                const creditLine = entry.lines.find(l => Number(l.credit) > 0);
+                const isAck = (entry.description || '').includes('[ACKNOWLEDGED');
+                const ackMatch = (entry.description || '').match(/\[ACKNOWLEDGED[^\]]*\]/);
+                const ackText = ackMatch ? ackMatch[0].replace(/^\[ACKNOWLEDGED:?\s*/i, '').replace(/\]$/, '') : '';
+
+                // Categorize voucher type
+                let typeLabel = 'OTHER';
+                if (entry.reference_no.startsWith('CV-')) typeLabel = 'CHECK';
+                else if (entry.reference_no.startsWith('REF-')) typeLabel = 'TRANSFER';
+                else if (entry.reference_no.startsWith('DV-')) typeLabel = 'CASH VOUCHER';
+                else if (entry.reference_no.startsWith('PCV-')) typeLabel = 'PETTY CASH';
+
+                return {
+                    id: entry.id,
+                    date: entry.date,
+                    createdAt: entry.created_at,
+                    referenceNo: entry.reference_no,
+                    typeLabel,
+                    payeeName: entry.payee?.name || '',
+                    payeeId: entry.payee_id,
+                    issuedBy: entry.user?.username || 'System',
+                    amount: totalDebit,
+                    sourceAccountCode: creditLine?.account?.code || '',
+                    sourceAccountName: creditLine?.account?.name || '',
+                    description: cleanDescription(entry.description),
+                    rawDescription: entry.description,
+                    status: entry.status,
+                    isAcknowledged: isAck,
+                    acknowledgedInfo: ackText,
+                    lines: entry.lines.map(l => ({
+                        accountCode: l.account?.code,
+                        accountName: l.account?.name,
+                        debit: Number(l.debit),
+                        credit: Number(l.credit)
+                    })),
+                    attachments: (entry.attachments || []).map((a) => ({
+                        id: a.id,
+                        name: a.fileName,
+                        type: a.fileType,
+                        data: a.fileData
+                    }))
+                };
+            });
+        } catch (err) {
+            console.error('[Historical Disbursements] Failed:', err);
             return [];
         }
     }

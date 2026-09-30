@@ -83,14 +83,17 @@ export function CashierDisbursementView({
         const expenses = accs.filter(
           (a: any) => a.account_type?.name === 'Expense' || a.code.startsWith('5') || a.code.startsWith('6')
         )
+        const allowedCashierCodes = ['1010', '1020']
         const assets = accs.filter(
-          (a: any) => a.account_type?.name === 'Asset' || a.code.startsWith('10')
+          (a: any) => allowedCashierCodes.includes(a.code)
         )
         setExpenseAccounts(expenses)
         setCashAccounts(assets)
 
         if (assets.some((a: any) => a.code === '1020')) {
           setSourceAccount('1020')
+        } else if (assets.some((a: any) => a.code === '1010')) {
+          setSourceAccount('1010')
         } else if (assets.length > 0) {
           setSourceAccount(assets[0].code)
         }
@@ -252,13 +255,23 @@ export function CashierDisbursementView({
       return
     }
 
+    if (!attachment) {
+      setStatus({
+        type: 'error',
+        msg: 'Receipt photo is mandatory. Please take or attach a photo of the official receipt or signed petty cash voucher.'
+      })
+      return
+    }
+
     const payeeToUse = payeeNameInput.trim() || 'Incidental / Cash'
     const fullRefNo = `PCV-${refSequence.padStart(3, '0')}`
 
     const selectedCategory = expenseAccounts.find((a) => a.code === selectedCategoryCode) ||
       QUICK_CATEGORIES.find((c) => c.code === selectedCategoryCode)
 
-    const description = `Petty Cash Out: ${payeeToUse} | Purpose: ${particulars.trim()} | Account: ${selectedCategory?.name || 'Expense'}`
+    const isHighValue = numAmount > 2000
+    const highValueFlag = isHighValue ? ' [HIGH-VALUE ALERT > ₱2,000]' : ''
+    const description = `Petty Cash Out: ${payeeToUse} | Purpose: ${particulars.trim()} | Account: ${selectedCategory?.name || 'Expense'}${highValueFlag}`
 
     const lines = [
       { accountId: selectedCategoryCode, debit: numAmount, credit: 0 },
@@ -531,6 +544,15 @@ export function CashierDisbursementView({
                   </button>
                 )}
               </div>
+
+              {Number(amount) > 2000 && (
+                <div className="mt-2.5 p-2.5 bg-amber-50 border border-amber-200 rounded-xl flex items-center gap-2 text-amber-800 text-xs font-medium animate-fadeIn">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>
+                    <strong>High-Value Notice:</strong> Disbursements exceeding <strong>₱2,000.00</strong> will be flagged for Accountant Audit.
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* STEP 3: PAYEE & PARTICULARS */}
@@ -645,8 +667,9 @@ export function CashierDisbursementView({
 
               {/* Receipt Attachment Upload */}
               <div>
-                <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5">
-                  Receipt Photo / Attachment (Optional)
+                <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Receipt Photo / Voucher <span className="text-rose-500 font-black">*Required</span></span>
+                  <span className="text-[10px] text-gray-400 font-normal">Photo of OR / signed slip</span>
                 </label>
                 {attachment ? (
                   <div className="flex items-center justify-between p-2 bg-emerald-50 border border-emerald-200 rounded-xl">
