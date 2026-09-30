@@ -208,7 +208,9 @@ model Employee {
   is_active      Boolean  @default(true)
   created_at     DateTime @default(now())
 
-  payslips Payslip[] // 🔥 ADD THIS
+  allowances EmployeeAllowance[]
+  loans      EmployeeLoan[]
+  payslips   Payslip[] // 🔥 ADD THIS
 
   @@map("employees")
 }
@@ -284,6 +286,13 @@ model SystemSetting {
   auto_lock_day Int?      
   override_pin  String?   @db.VarChar(50) // 🔥 NEW: Admin Override PIN
 
+  // Dynamic Payroll Multipliers (Default Philippine DOLE standard multipliers)
+  ot_rate            Decimal @default(1.25) @db.Decimal(5, 4) // Regular Overtime (125%)
+  night_diff_rate    Decimal @default(0.10) @db.Decimal(5, 4) // Night Differential (10%)
+  rest_day_rate      Decimal @default(1.30) @db.Decimal(5, 4) // Rest Day Work (130%)
+  special_holiday_rate Decimal @default(1.30) @db.Decimal(5, 4) // Special Non-Working Day (130%)
+  legal_holiday_rate   Decimal @default(2.00) @db.Decimal(5, 4) // Regular/Legal Holiday (200%)
+
   @@map("system_settings")
 }
 model Payslip {
@@ -316,4 +325,47 @@ model Payslip {
   journal_entry JournalEntry @relation(fields: [journal_entry_id], references: [id], onDelete: Cascade)
 
   @@map("payslips")
+}
+
+model EmployeeAllowance {
+  id           String   @id @default(uuid()) @db.VarChar(50)
+  employee_id  Int
+  name         String   @db.VarChar(100) // e.g., "De Minimis / Transportation"
+  amount       Decimal  @default(0.00) @db.Decimal(15, 2)
+  is_taxable   Boolean  @default(false)
+  is_recurring Boolean  @default(true)
+  created_at   DateTime @default(now())
+
+  employee Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+
+  @@map("employee_allowances")
+}
+
+model EmployeeLoan {
+  id             String   @id @default(uuid()) @db.VarChar(50)
+  employee_id    Int
+  type           String   @db.VarChar(50) // "SSS", "PAGIBIG", "CASH_ADVANCE"
+  principal      Decimal  @db.Decimal(15, 2)
+  monthly_amort  Decimal  @db.Decimal(15, 2)
+  balance        Decimal  @db.Decimal(15, 2)
+  is_active      Boolean  @default(true)
+  created_at     DateTime @default(now())
+
+  employee Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
+
+  @@map("employee_loans")
+}
+
+model StatutoryRateTable {
+  id              String   @id @default(uuid()) @db.VarChar(50)
+  agency          String   @db.VarChar(20) // "SSS", "PHILHEALTH", "PAGIBIG"
+  min_salary      Decimal  @default(0.00) @db.Decimal(15, 2)
+  max_salary      Decimal  @default(999999.99) @db.Decimal(15, 2)
+  ee_rate         Decimal  @default(0.00) @db.Decimal(7, 4) // Employee share rate/amount
+  er_rate         Decimal  @default(0.00) @db.Decimal(7, 4) // Employer share rate/amount
+  fixed_ee_amount Decimal? @db.Decimal(15, 2)               // For fixed tiered amounts (SSS/Pag-IBIG cap)
+  fixed_er_amount Decimal? @db.Decimal(15, 2)
+  effective_year  Int      @default(2026)
+
+  @@map("statutory_rate_tables")
 }
