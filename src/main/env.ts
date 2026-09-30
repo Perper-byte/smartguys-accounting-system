@@ -15,9 +15,11 @@ if (fs.existsSync(configPath)) {
       serverIp = config.serverIp;
     }
   } catch (e) {
+
+    
     console.error("Failed to read server config:", e);
   }
 }
 
 // 🚀 DYNAMICALLY SET THE DATABASE URL BEFORE PRISMA LOADS!
-process.env.DATABASE_URL = `mysql://root:@${serverIp}:3307/smartguys_db?connect_timeout=30`;
+process.env.DATABASE_URL = `mysql://root:@localhost:3307/smartguys_db?connect_timeout=30`;

@@ -73,7 +73,7 @@ model InventoryLog {
   balance Int      @default(0)
   remarks String?  @db.VarChar(255)
 
-  // ðŸ”¥ NEW: Expiry Date tracking for deliveries
+  // 🔥 NEW: Expiry Date tracking for deliveries
   expiry_date DateTime? @db.Date
 
   user_id String @db.VarChar(50)
@@ -138,7 +138,7 @@ model Payee {
   phone_number String? @db.VarChar(50)
   address      String? @db.Text
 
-  // ðŸ”¥ UPGRADED: Full HMO Tracking
+  // 🔥 UPGRADED: Full HMO Tracking
   hmo_affiliation String?   @db.VarChar(150)
   hmo_card_no     String?   @db.VarChar(100)
   hmo_expiry_date DateTime? @db.Date
@@ -208,9 +208,7 @@ model Employee {
   is_active      Boolean  @default(true)
   created_at     DateTime @default(now())
 
-  allowances EmployeeAllowance[]
-  loans      EmployeeLoan[]
-  payslips   Payslip[] // ðŸ”¥ ADD THIS
+  payslips Payslip[] // 🔥 ADD THIS
 
   @@map("employees")
 }
@@ -264,7 +262,7 @@ model ServiceItem {
 
 model Reconciliation {
   id                  String   @id @default(uuid()) @db.VarChar(50)
-  // ðŸ”¥ CHANGED: Removed @unique so multiple records can share the same bank_transaction_id
+  // 🔥 CHANGED: Removed @unique so multiple records can share the same bank_transaction_id
   bank_transaction_id String   @db.VarChar(50) 
   journal_entry_id    String   @unique @db.VarChar(50)
   matched_at          DateTime @default(now())
@@ -284,25 +282,7 @@ model SystemSetting {
   id            String    @id @default(uuid())
   lock_date     DateTime? @db.Date
   auto_lock_day Int?      
-  override_pin  String?   @db.VarChar(50) // ðŸ”¥ NEW: Admin Override PIN
-
-  // Dynamic Payroll Multipliers (Default Philippine DOLE standard multipliers)
-  regular_ot_rate            Decimal @default(1.25) @db.Decimal(5, 4)
-  regular_night_rate         Decimal @default(1.10) @db.Decimal(5, 4)
-  regular_night_ot_rate      Decimal @default(1.375) @db.Decimal(5, 4)
-  rest_day_rate              Decimal @default(1.30) @db.Decimal(5, 4)
-  rest_day_ot_rate           Decimal @default(1.69) @db.Decimal(5, 4)
-  rest_day_night_rate        Decimal @default(1.43) @db.Decimal(5, 4)
-  rest_day_night_ot_rate     Decimal @default(1.859) @db.Decimal(5, 4)
-  special_holiday_rate       Decimal @default(1.30) @db.Decimal(5, 4)
-  special_holiday_ot_rate    Decimal @default(1.69) @db.Decimal(5, 4)
-  special_holiday_night_rate Decimal @default(1.43) @db.Decimal(5, 4)
-  special_holiday_night_ot_rate Decimal @default(1.859) @db.Decimal(5, 4)
-  special_holiday_rest_day_rate Decimal @default(1.50) @db.Decimal(5, 4)
-  special_holiday_rest_day_ot_rate Decimal @default(1.95) @db.Decimal(5, 4)
-  special_holiday_rest_day_night_rate Decimal @default(1.65) @db.Decimal(5, 4)
-  special_holiday_rest_day_night_ot_rate Decimal @default(2.145) @db.Decimal(5, 4)
-  legal_holiday_rate         Decimal @default(2.00) @db.Decimal(5, 4)
+  override_pin  String?   @db.VarChar(50) // 🔥 NEW: Admin Override PIN
 
   @@map("system_settings")
 }
@@ -336,47 +316,4 @@ model Payslip {
   journal_entry JournalEntry @relation(fields: [journal_entry_id], references: [id], onDelete: Cascade)
 
   @@map("payslips")
-}
-
-model EmployeeAllowance {
-  id           String   @id @default(uuid()) @db.VarChar(50)
-  employee_id  Int
-  name         String   @db.VarChar(100) // e.g., "De Minimis / Transportation"
-  amount       Decimal  @default(0.00) @db.Decimal(15, 2)
-  is_taxable   Boolean  @default(false)
-  is_recurring Boolean  @default(true)
-  created_at   DateTime @default(now())
-
-  employee Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
-
-  @@map("employee_allowances")
-}
-
-model EmployeeLoan {
-  id             String   @id @default(uuid()) @db.VarChar(50)
-  employee_id    Int
-  type           String   @db.VarChar(50) // "SSS", "PAGIBIG", "CASH_ADVANCE"
-  principal      Decimal  @db.Decimal(15, 2)
-  monthly_amort  Decimal  @db.Decimal(15, 2)
-  balance        Decimal  @db.Decimal(15, 2)
-  is_active      Boolean  @default(true)
-  created_at     DateTime @default(now())
-
-  employee Employee @relation(fields: [employee_id], references: [id], onDelete: Cascade)
-
-  @@map("employee_loans")
-}
-
-model StatutoryRateTable {
-  id              String   @id @default(uuid()) @db.VarChar(50)
-  agency          String   @db.VarChar(20) // "SSS", "PHILHEALTH", "PAGIBIG"
-  min_salary      Decimal  @default(0.00) @db.Decimal(15, 2)
-  max_salary      Decimal  @default(999999.99) @db.Decimal(15, 2)
-  ee_rate         Decimal  @default(0.00) @db.Decimal(7, 4) // Employee share rate/amount
-  er_rate         Decimal  @default(0.00) @db.Decimal(7, 4) // Employer share rate/amount
-  fixed_ee_amount Decimal? @db.Decimal(15, 2)               // For fixed tiered amounts (SSS/Pag-IBIG cap)
-  fixed_er_amount Decimal? @db.Decimal(15, 2)
-  effective_year  Int      @default(2026)
-
-  @@map("statutory_rate_tables")
 }
