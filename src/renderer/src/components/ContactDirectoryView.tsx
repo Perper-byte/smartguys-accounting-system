@@ -79,10 +79,18 @@ export function ContactDirectoryView({
 
   const filteredContacts = useMemo(() => {
     return contacts.filter((c) => {
+      const q = searchQuery.toLowerCase()
       const matchesSearch =
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (c.tin && c.tin.includes(searchQuery)) ||
-        (c.hmo_affiliation && c.hmo_affiliation.toLowerCase().includes(searchQuery.toLowerCase()))
+        c.name.toLowerCase().includes(q) ||
+        (c.tin && c.tin.includes(q)) ||
+        (c.hmo_affiliation && c.hmo_affiliation.toLowerCase().includes(q)) ||
+        (c.affiliatedPatients &&
+          c.affiliatedPatients.some(
+            (pt: any) =>
+              pt.name.toLowerCase().includes(q) ||
+              (pt.cardNo && pt.cardNo.toLowerCase().includes(q)) ||
+              (pt.loaNumbers && pt.loaNumbers.some((l: string) => l.toLowerCase().includes(q)))
+          ))
 
       const matchesType =
         filterType === 'ALL' ||
@@ -552,6 +560,11 @@ export function ContactDirectoryView({
                               {c.hmo_affiliation} {c.hmo_card_no ? `• #${c.hmo_card_no}` : ''}
                             </span>
                           )}
+                          {(c.type === 'HMO' || c.type === 'CORPORATE') && (
+                            <span className="text-[10px] font-bold text-[#1B9387] mt-0.5 flex items-center gap-1">
+                              👥 {c.affiliatedPatientCount || 0} patient{(c.affiliatedPatientCount || 0) === 1 ? '' : 's'} under this {c.type === 'HMO' ? 'HMO' : 'Corp'}
+                            </span>
+                          )}
                         </div>
                       </td>
                       <td className="p-4">
@@ -772,6 +785,89 @@ export function ContactDirectoryView({
                                     <p className="text-sm text-gray-400 italic">
                                       No HMO / Corporate Guarantor assigned.
                                     </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {(c.type === 'HMO' || c.type === 'CORPORATE') && (
+                                <div className="mt-4 pt-4 border-t border-gray-200">
+                                  <div className="flex items-center justify-between mb-2.5">
+                                    <p className="text-[10px] text-[#1B9387] font-extrabold uppercase tracking-wider flex items-center gap-1.5">
+                                      <span>👥</span>
+                                      <span>Patients & Members Under this {c.type === 'HMO' ? 'HMO' : 'Corporate'} ({c.affiliatedPatients?.length || 0})</span>
+                                    </p>
+                                    {c.affiliatedPatients && c.affiliatedPatients.length > 0 && onNavigate && (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          onNavigate('history', { searchQuery: c.name })
+                                        }}
+                                        className="text-[10px] font-bold text-[#1B9387] hover:underline cursor-pointer"
+                                      >
+                                        View All Transactions →
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {c.affiliatedPatients && c.affiliatedPatients.length > 0 ? (
+                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                      {c.affiliatedPatients.map((pt: any, ptIdx: number) => (
+                                        <div
+                                          key={ptIdx}
+                                          className="p-2.5 bg-white border border-gray-200 rounded-lg hover:border-[#B0DCDA] transition flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs"
+                                        >
+                                          <div className="flex items-start gap-2.5 min-w-0">
+                                            <div className="w-7 h-7 rounded-full bg-[#E9FAFA] text-[#1B9387] font-black text-xs flex items-center justify-center shrink-0 border border-[#B0DCDA]">
+                                              {pt.name ? pt.name.charAt(0).toUpperCase() : 'P'}
+                                            </div>
+                                            <div className="min-w-0">
+                                              <div className="flex items-center gap-2 flex-wrap">
+                                                <span className="font-extrabold text-xs text-gray-800">
+                                                  {pt.name}
+                                                </span>
+                                                {pt.isRegistered ? (
+                                                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] px-1.5 py-0.5 rounded font-bold">
+                                                    Registered Patient
+                                                  </span>
+                                                ) : (
+                                                  <span className="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-1.5 py-0.5 rounded font-bold">
+                                                    Billed Patient
+                                                  </span>
+                                                )}
+                                              </div>
+                                              <div className="text-[11px] text-gray-500 font-medium flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                                                {pt.cardNo && (
+                                                  <span>
+                                                    Card/Policy: <strong className="font-mono text-gray-700">{pt.cardNo}</strong>
+                                                  </span>
+                                                )}
+                                                {pt.loaNumbers && pt.loaNumbers.length > 0 && (
+                                                  <span>
+                                                    LOA: <strong className="font-mono text-gray-700">{pt.loaNumbers.join(', ')}</strong>
+                                                  </span>
+                                                )}
+                                                {pt.phone && <span>📞 {pt.phone}</span>}
+                                                {pt.email && <span>✉️ {pt.email}</span>}
+                                              </div>
+                                            </div>
+                                          </div>
+                                          <div className="text-right shrink-0 sm:self-center pl-9 sm:pl-0 flex sm:flex-col justify-between items-end">
+                                            <div className="text-xs font-mono font-black text-[#1B9387]">
+                                              ₱ {Number(pt.totalBilled || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                            </div>
+                                            <div className="text-[10px] text-gray-400 font-medium">
+                                              {pt.transactionCount} claim{pt.transactionCount === 1 ? '' : 's'}
+                                              {pt.recentRefNo ? ` • Ref: ${pt.recentRefNo}` : ''}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <div className="text-xs text-gray-500 bg-white p-3 rounded-lg border border-dashed border-gray-200 text-center">
+                                      No patients currently registered or billed under this {c.type === 'HMO' ? 'HMO' : 'Corporate guarantor'}.
+                                    </div>
                                   )}
                                 </div>
                               )}

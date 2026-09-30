@@ -1,6 +1,7 @@
 // src/renderer/src/components/GeneralLedgerView.tsx
 import * as React from 'react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { cleanDescription } from '../utils/formatters'
 
 const getLocalDateString = (date: Date) => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0]
@@ -100,19 +101,19 @@ export const GeneralLedgerView: React.FC = () => {
 
     if (startDate) {
       const pastTx = singleLedgerData.transactions.filter(
-        (tx: any) => new Date(tx.date).toISOString().split('T')[0] < startDate
+        (tx: any) => getLocalDateString(new Date(tx.date)) < startDate
       )
       if (pastTx.length > 0) {
         beginningBalance = pastTx[pastTx.length - 1].balance
       }
       filtered = filtered.filter(
-        (tx: any) => new Date(tx.date).toISOString().split('T')[0] >= startDate
+        (tx: any) => getLocalDateString(new Date(tx.date)) >= startDate
       )
     }
 
     if (endDate) {
       filtered = filtered.filter(
-        (tx: any) => new Date(tx.date).toISOString().split('T')[0] <= endDate
+        (tx: any) => getLocalDateString(new Date(tx.date)) <= endDate
       )
     }
 
@@ -502,9 +503,9 @@ export const GeneralLedgerView: React.FC = () => {
                         </td>
                         <td
                           className="py-3 px-4 text-sm text-gray-700 truncate max-w-[250px]"
-                          title={tx.description}
+                          title={cleanDescription(tx.description)}
                         >
-                          {tx.description}
+                          {cleanDescription(tx.description)}
                         </td>
                         <td className="py-3 px-4 text-sm text-gray-700">
                           {tx.payeeName === '-' ? '' : tx.payeeName}
@@ -604,9 +605,9 @@ export const GeneralLedgerView: React.FC = () => {
                       </td>
                       <td
                         className="py-3 px-4 text-sm text-gray-700 truncate max-w-[250px]"
-                        title={tx.description}
+                        title={cleanDescription(tx.description)}
                       >
-                        {tx.description}
+                        {cleanDescription(tx.description)}
                       </td>
                       <td className="py-3 px-4 text-sm text-gray-700">
                         {tx.payee === '-' ? '' : tx.payee}
@@ -684,7 +685,7 @@ export const GeneralLedgerView: React.FC = () => {
                 <p className="text-[10px] text-gray-500 uppercase font-extrabold tracking-widest mb-1">
                   Description
                 </p>
-                <p className="text-sm text-gray-800 font-medium">{selectedTx.description}</p>
+                <p className="text-sm text-gray-800 font-medium">{cleanDescription(selectedTx.description)}</p>
               </div>
 
               <div className="bg-white p-5 rounded-lg border border-[#B0DCDA] shadow-sm">

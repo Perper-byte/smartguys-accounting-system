@@ -1,6 +1,8 @@
 import * as React from 'react'
 import { useState, useEffect, useMemo } from 'react'
 import * as XLSX from 'xlsx'
+import { PatientInvoiceModal } from './PatientInvoiceModal'
+import { cleanDescription } from '../utils/formatters'
 
 export function CashierHistoryView({ userId }: { userId: string }) {
   const [transactions, setTransactions] = useState<any[]>([])
@@ -14,10 +16,14 @@ export function CashierHistoryView({ userId }: { userId: string }) {
   const [voidReason, setVoidReason] = useState('')
   const [showVoidId, setShowVoidId] = useState<string | null>(null)
   const [receiptToPrint, setReceiptToPrint] = useState<any>(null)
+  const [selectedInvoice, setSelectedInvoice] = useState<any | null>(null)
+  const [isSelectionMode, setIsSelectionMode] = useState(false)
+  const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set())
+  const [bulkInvoicesToPrint, setBulkInvoicesToPrint] = useState<any[] | null>(null)
 
   // States for Search, Filter, and Pagination
   const [searchQuery, setSearchQuery] = useState('')
-  const [dateFilter, setDateFilter] = useState('all')
+  const [dateFilter, setDateFilter] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
@@ -71,6 +77,16 @@ export function CashierHistoryView({ userId }: { userId: string }) {
     setCurrentPage(1)
   }, [searchQuery, dateFilter])
 
+  const toggleSelectTx = (id: string) => {
+    const newSet = new Set(selectedTxIds)
+    if (newSet.has(id)) {
+      newSet.delete(id)
+    } else {
+      newSet.add(id)
+    }
+    setSelectedTxIds(newSet)
+  }
+
   useEffect(() => {
     if (receiptToPrint) {
       // Create a function to clear the state after the print dialog closes
@@ -92,6 +108,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
         window.removeEventListener('afterprint', handleAfterPrint)
       }
     }
+    return undefined
   }, [receiptToPrint])
 
   const filteredTransactions = useMemo(() => {
@@ -112,21 +129,11 @@ export function CashierHistoryView({ userId }: { userId: string }) {
 
       const txDate = new Date(tx.date)
 
-      const now = new Date()
-
       let matchesDate = true
-
-      if (dateFilter === 'today') {
-        matchesDate = txDate.toDateString() === now.toDateString()
-      } else if (dateFilter === 'week') {
-        const oneWeekAgo = new Date()
-
-        oneWeekAgo.setDate(now.getDate() - 7)
-
-        matchesDate = txDate >= oneWeekAgo
-      } else if (dateFilter === 'month') {
-        matchesDate =
-          txDate.getMonth() === now.getMonth() && txDate.getFullYear() === now.getFullYear()
+      if (dateFilter) {
+        const d = new Date(tx.date)
+        const localDateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        matchesDate = localDateStr === dateFilter
       }
 
       return matchesSearch && matchesDate
@@ -213,7 +220,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
       'Reference No.': tx.referenceNo,
       'Patient / Entity': tx.payeeName,
       'Payment Method': getPaymentMethod(tx),
-      Description: tx.description,
+      Description: cleanDescription(tx.description),
       'Total Amount (PHP)': tx.totalAmount,
       Status: tx.status
     }))
@@ -298,22 +305,38 @@ export function CashierHistoryView({ userId }: { userId: string }) {
 
           <div>
             <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
-              Date Range
+              Filter by Date
             </label>
-            <div className="relative">
-              <span className="absolute inset-y-0 left-0 flex items-center pl-2.5 text-sm">📅</span>
-              <select
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
                 value={dateFilter}
                 onChange={(e) => setDateFilter(e.target.value)}
-                className="w-36 bg-[#FBF8F8] border border-[#B0DCDA] rounded-md py-2 pl-8 pr-3 text-sm text-gray-800 font-bold outline-none cursor-pointer focus:border-[#1B9387]"
-              >
-                <option value="all">All Time</option>
-                <option value="today">Today</option>
-                <option value="week">This Week</option>
-                <option value="month">This Month</option>
-              </select>
+                className="w-40 bg-[#FBF8F8] border border-[#B0DCDA] rounded-md py-2 px-3 text-sm text-gray-800 font-bold outline-none focus:border-[#1B9387] cursor-pointer h-[38px]"
+              />
+              {dateFilter && (
+                <button
+                  type="button"
+                  onClick={() => setDateFilter('')}
+                  className="px-2.5 py-1.5 text-xs font-bold text-gray-500 hover:text-red-600 bg-white border border-[#B0DCDA] hover:border-red-300 rounded-md transition h-[38px] cursor-pointer"
+                  title="Clear Date Filter (Show All)"
+                >
+                  All
+                </button>
+              )}
             </div>
           </div>
+
+          <button
+            type="button"
+            onClick={fetchHistory}
+            disabled={loading}
+            className="bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] px-4 py-2 rounded-md text-sm font-extrabold shadow-sm transition flex items-center space-x-1.5 cursor-pointer h-[38px] disabled:opacity-50"
+            title="Refresh transaction history"
+          >
+            <span className={loading ? 'animate-spin' : ''}>🔄</span>
+            <span>Refresh</span>
+          </button>
 
           <button
             onClick={handleExportExcel}
@@ -321,8 +344,72 @@ export function CashierHistoryView({ userId }: { userId: string }) {
           >
             <span>📊</span> <span>Export Excel</span>
           </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setIsSelectionMode(!isSelectionMode)
+              if (!isSelectionMode) {
+                setSelectedTxIds(new Set(paginatedTransactions.map((t) => t.id)))
+              } else {
+                setSelectedTxIds(new Set())
+              }
+            }}
+            className={`border px-4 py-2 rounded-md text-sm font-extrabold shadow-sm transition flex items-center space-x-1.5 cursor-pointer h-[38px] ${
+              isSelectionMode
+                ? 'bg-amber-500 text-white border-amber-600'
+                : 'bg-white border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387]'
+            }`}
+          >
+            <span>🖨️</span>
+            <span>{isSelectionMode ? 'Cancel Print' : 'Bulk Print'}</span>
+          </button>
         </div>
       </div>
+
+      {/* Bulk Print Selection Bar */}
+      {isSelectionMode && (
+        <div className="bg-[#E9FAFA] border border-[#B0DCDA] rounded-xl px-5 py-3 mb-4 flex flex-wrap items-center justify-between gap-3 shadow-sm animate-in slide-in-from-top-2">
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 cursor-pointer font-bold text-xs text-[#1B9387]">
+              <input
+                type="checkbox"
+                checked={
+                  paginatedTransactions.length > 0 &&
+                  paginatedTransactions.every((t) => selectedTxIds.has(t.id))
+                }
+                onChange={(e) => {
+                  if (e.target.checked) {
+                    setSelectedTxIds(new Set(paginatedTransactions.map((t) => t.id)))
+                  } else {
+                    setSelectedTxIds(new Set())
+                  }
+                }}
+                className="w-4 h-4 text-[#1B9387] rounded border-gray-300 focus:ring-[#1B9387] cursor-pointer"
+              />
+              <span>Select All on Page ({paginatedTransactions.length})</span>
+            </label>
+            <span className="text-xs text-gray-500 font-semibold">
+              • <strong>{selectedTxIds.size}</strong> transaction(s) checked
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              const toPrint = transactions.filter((t) => selectedTxIds.has(t.id))
+              if (toPrint.length > 0) {
+                setBulkInvoicesToPrint(toPrint)
+              }
+            }}
+            disabled={selectedTxIds.size === 0}
+            className="px-5 py-2 bg-[#1B9387] hover:bg-[#15796f] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-lg text-xs transition shadow-md shadow-[#1B9387]/20 flex items-center gap-2 cursor-pointer"
+          >
+            <span>🖨️</span>
+            <span>Print Selected ({selectedTxIds.size} Pages PDF)</span>
+          </button>
+        </div>
+      )}
 
       {statusMessage && (
         <div
@@ -344,6 +431,25 @@ export function CashierHistoryView({ userId }: { userId: string }) {
             <table className="w-full text-left text-sm">
               <thead className="bg-[#FBF8F8] sticky top-0 z-10 border-b border-[#B0DCDA] shadow-sm">
                 <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold">
+                  {isSelectionMode && (
+                    <th className="p-4 w-12 text-center border-r border-gray-100">
+                      <input
+                        type="checkbox"
+                        checked={
+                          paginatedTransactions.length > 0 &&
+                          paginatedTransactions.every((t) => selectedTxIds.has(t.id))
+                        }
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedTxIds(new Set(paginatedTransactions.map((t) => t.id)))
+                          } else {
+                            setSelectedTxIds(new Set())
+                          }
+                        }}
+                        className="w-4 h-4 text-[#1B9387] rounded cursor-pointer"
+                      />
+                    </th>
+                  )}
                   <th className="p-4 border-r border-gray-100">Date & Time</th>
                   <th className="p-4 border-r border-gray-100">Reference No.</th>
                   <th className="p-4 border-r border-gray-100">Patient / Entity</th>
@@ -356,7 +462,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
               <tbody className="divide-y divide-gray-100">
                 {paginatedTransactions.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-12 text-center text-gray-500 italic font-medium">
+                    <td colSpan={isSelectionMode ? 8 : 7} className="p-12 text-center text-gray-500 italic font-medium">
                       No transactions found.
                     </td>
                   </tr>
@@ -364,21 +470,39 @@ export function CashierHistoryView({ userId }: { userId: string }) {
                   paginatedTransactions.map((tx) => (
                     <React.Fragment key={tx.id}>
                       <tr
-                        className={`hover:bg-gray-50 transition-colors ${tx.status === 'VOIDED' ? 'bg-gray-100 opacity-60' : 'even:bg-gray-50/50 odd:bg-white'} group`}
+                        className={`hover:bg-gray-50 transition-colors ${tx.status === 'VOIDED' ? 'bg-gray-100 opacity-60' : 'even:bg-gray-50/50 odd:bg-white'} ${selectedTxIds.has(tx.id) ? '!bg-teal-50/40' : ''} group`}
                       >
+                        {isSelectionMode && (
+                          <td
+                            className="p-4 text-center border-r border-gray-100"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedTxIds.has(tx.id)}
+                              onChange={() => toggleSelectTx(tx.id)}
+                              className="w-4 h-4 text-[#1B9387] rounded cursor-pointer"
+                            />
+                          </td>
+                        )}
                         <td className="p-4 text-gray-600 font-medium whitespace-nowrap border-r border-gray-100">
                           {formatDateTime(tx.date)}
                         </td>
 
                         <td
-                          onClick={() => console.log('Open receipt for:', tx.referenceNo)}
-                          className="p-4 border-r border-gray-100 font-mono font-extrabold text-[#1B9387] hover:underline cursor-pointer"
+                          onClick={() => setSelectedInvoice(tx)}
+                          className="p-4 border-r border-gray-100 font-mono font-extrabold text-[#1B9387] hover:underline cursor-pointer hover:bg-[#E9FAFA]/50 transition-colors"
+                          title="Click to view detailed invoice"
                         >
                           {tx.referenceNo}
                         </td>
 
-                        <td className="p-4 border-r border-gray-100">
-                          <div className="font-bold text-gray-800">
+                        <td
+                          onClick={() => setSelectedInvoice(tx)}
+                          className="p-4 border-r border-gray-100 cursor-pointer hover:bg-[#E9FAFA]/50 transition-colors"
+                          title="Click to view detailed invoice"
+                        >
+                          <div className="font-bold text-gray-800 hover:text-[#1B9387] transition-colors">
                             {tx.patientName || tx.payeeName || 'Unknown Patient'}
                           </div>
 
@@ -404,6 +528,15 @@ export function CashierHistoryView({ userId }: { userId: string }) {
                         </td>
 
                         <td className="p-4 text-center space-x-2 whitespace-nowrap flex items-center justify-center h-full">
+                          {/* VIEW INVOICE DETAIL BUTTON */}
+                          <button
+                            title="View Detailed Invoice"
+                            onClick={() => setSelectedInvoice(tx)}
+                            className="text-gray-600 hover:text-[#1B9387] transition px-2 py-1.5 rounded bg-white hover:bg-[#E9FAFA] border border-gray-200 hover:border-[#B0DCDA] shadow-sm flex items-center gap-1 cursor-pointer text-xs font-bold"
+                          >
+                            📋 View
+                          </button>
+
                           {/* PRINTER BUTTON */}
                           <button
                             title="Export to PDF"
@@ -427,7 +560,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
 
                       {showVoidId === tx.id && (
                         <tr className="bg-[#FBF8F8] border-b border-[#B0DCDA] shadow-inner">
-                          <td colSpan={7} className="p-5 border-l-4 border-l-red-400">
+                          <td colSpan={isSelectionMode ? 8 : 7} className="p-5 border-l-4 border-l-red-400">
                             <div className="flex items-center space-x-4 max-w-3xl mx-auto bg-white p-4 rounded-lg border border-red-200 shadow-sm">
                               <span className="text-2xl">⚠️</span>
                               <div className="flex-1">
@@ -559,7 +692,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
             <div className="mb-8">
               <p className="text-sm font-bold mb-1">Payment / Description:</p>
               <p className="text-sm uppercase">
-                {getPaymentMethod(receiptToPrint)} - {receiptToPrint.description}
+                {getPaymentMethod(receiptToPrint)} - {cleanDescription(receiptToPrint.description)}
               </p>
             </div>
 
@@ -578,6 +711,18 @@ export function CashierHistoryView({ userId }: { userId: string }) {
         </>
       )}
       {/* ----------------------------------------- */}
+      <PatientInvoiceModal
+        isOpen={selectedInvoice !== null}
+        onClose={() => setSelectedInvoice(null)}
+        transaction={selectedInvoice}
+        patientName={selectedInvoice?.patientName || selectedInvoice?.payeeName || ''}
+      />
+      <PatientInvoiceModal
+        isOpen={bulkInvoicesToPrint !== null}
+        onClose={() => setBulkInvoicesToPrint(null)}
+        transactions={bulkInvoicesToPrint || []}
+        autoPrint={true}
+      />
     </div> // <-- This is the final closing div of your component
   )
 }

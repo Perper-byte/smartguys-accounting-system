@@ -6,31 +6,31 @@
  */
 export const IPC_CHANNELS = {
   AUTH: {
-    LOGIN: 'auth:login',
+    LOGIN: 'auth:login'
   },
   LEDGER: {
     GET_ACCOUNTS: 'ledger:getAccounts',
     SUBMIT_ENTRY: 'ledger:submitEntry',
-    GET_LEDGER: 'ledger:getAccountLedger',
+    GET_LEDGER: 'ledger:getAccountLedger'
   },
   REPORTS: {
     TRIAL_BALANCE: 'reports:getTrialBalance',
     INCOME_STATEMENT: 'reports:getIncomeStatement',
-    BALANCE_SHEET: 'reports:getBalanceSheet',
+    BALANCE_SHEET: 'reports:getBalanceSheet'
   },
   TAX: {
     GENERATE_2550Q: 'tax:generate2550Q',
-    GENERATE_RELIEF: 'tax:generateRelief',
+    GENERATE_RELIEF: 'tax:generateRelief'
   },
   ANALYTICS: {
-    GET_METRICS: 'analytics:getMetrics',
+    GET_METRICS: 'analytics:getMetrics'
   },
   BACKUP: {
     TRIGGER: 'backup:triggerBackup',
-    RESTORE: 'backup:restore',
+    RESTORE: 'backup:restore'
   },
   EXPORT: {
     TRIAL_BALANCE_EXCEL: 'export:trialBalanceExcel',
-    PRINT_PDF: 'export:printToPDF',
-  },
-} as const;
+    PRINT_PDF: 'export:printToPDF'
+  }
+} as const

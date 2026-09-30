@@ -1,445 +1,653 @@
 // src/renderer/src/components/InventoryView.tsx
-import * as React from 'react';
-import { useState, useEffect } from 'react';
+import * as React from 'react'
+import { useState, useEffect } from 'react'
 import {
-    Search, Plus, X, ClipboardList,
-    ArrowDownToLine, ArrowUpFromLine,
-    CheckCircle, AlertTriangle, Edit, Trash2, Save
-} from 'lucide-react';
+  Search,
+  Plus,
+  X,
+  ClipboardList,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  CheckCircle,
+  AlertTriangle,
+  Edit,
+  Trash2,
+  Save
+} from 'lucide-react'
 
-export function InventoryView({ userId, role }: { userId: string, role: string }) {
-    const [items, setItems] = useState<any[]>([]);
-    const [logs, setLogs] = useState<any[]>([]);
-    const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
-    const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
+export function InventoryView({ userId, role }: { userId: string; role: string }) {
+  const [items, setItems] = useState<any[]>([])
+  const [logs, setLogs] = useState<any[]>([])
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusMessage, setStatusMessage] = useState<{
+    type: 'success' | 'error'
+    msg: string
+  } | null>(null)
 
-    const [showNewItem, setShowNewItem] = useState(false);
-    const [newItem, setNewItem] = useState({ code: '', name: '', location: '', uom: 'Pieces' });
+  const [showNewItem, setShowNewItem] = useState(false)
+  const [newItem, setNewItem] = useState({ code: '', name: '', location: '', uom: 'Pieces' })
 
-    // 🔥 NEW: States for Editing an Item
-    const [isEditing, setIsEditing] = useState(false);
-    const [editItem, setEditItem] = useState({ id: '', code: '', name: '', location: '', uom: 'Pieces' });
+  // 🔥 NEW: States for Editing an Item
+  const [isEditing, setIsEditing] = useState(false)
+  const [editItem, setEditItem] = useState({
+    id: '',
+    code: '',
+    name: '',
+    location: '',
+    uom: 'Pieces'
+  })
 
-    const [logType, setLogType] = useState<'IN' | 'OUT'>('OUT');
-    const [logQty, setLogQty] = useState<number | ''>('');
-    const [logRemarks, setLogRemarks] = useState('');
-    const [logExpiry, setLogExpiry] = useState('');
+  const [logType, setLogType] = useState<'IN' | 'OUT'>('OUT')
+  const [logQty, setLogQty] = useState<number | ''>('')
+  const [logRemarks, setLogRemarks] = useState('')
+  const [logExpiry, setLogExpiry] = useState('')
 
-    useEffect(() => {
-        let timeoutId: NodeJS.Timeout;
-        if (statusMessage) {
-            timeoutId = setTimeout(() => setStatusMessage(null), 3000);
-        }
-        return () => clearTimeout(timeoutId);
-    }, [statusMessage]);
+  useEffect(() => {
+    let timeoutId: NodeJS.Timeout
+    if (statusMessage) {
+      timeoutId = setTimeout(() => setStatusMessage(null), 3000)
+    }
+    return () => clearTimeout(timeoutId)
+  }, [statusMessage])
 
-    const fetchItems = async () => {
-        setLoading(true);
-        try {
-            const api = (window as any).api || (window as any).electronAPI;
-            const data = await api.getInventoryItems();
-            setItems(Array.isArray(data) ? data : []);
-        } catch (e) {
-            console.error(e);
-            setItems([]);
-        } finally {
-            setLoading(false);
-        }
-    };
+  const fetchItems = async () => {
+    setLoading(true)
+    try {
+      const api = (window as any).api || (window as any).electronAPI
+      const data = await api.getInventoryItems()
+      setItems(Array.isArray(data) ? data : [])
+    } catch (e) {
+      console.error(e)
+      setItems([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
-    const fetchLogs = async (itemId: string) => {
-        const api = (window as any).api || (window as any).electronAPI;
-        const data = await api.getInventoryLogs(itemId);
-        setLogs(Array.isArray(data) ? data : []);
-    };
+  const fetchLogs = async (itemId: string) => {
+    const api = (window as any).api || (window as any).electronAPI
+    const data = await api.getInventoryLogs(itemId)
+    setLogs(Array.isArray(data) ? data : [])
+  }
 
-    useEffect(() => { fetchItems(); }, []);
+  useEffect(() => {
+    fetchItems()
+  }, [])
 
-    useEffect(() => { 
-        if (selectedItemId) {
-            fetchLogs(selectedItemId);
-            setIsEditing(false); // Reset edit state when switching items
-        } 
-    }, [selectedItemId]);
+  useEffect(() => {
+    if (selectedItemId) {
+      fetchLogs(selectedItemId)
+      setIsEditing(false) // Reset edit state when switching items
+    }
+  }, [selectedItemId])
 
-    const handleCreateItem = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const api = (window as any).api || (window as any).electronAPI;
-        const res = await api.createInventoryItem(newItem);
-        if (res && res.success) {
-            setStatusMessage({ type: 'success', msg: 'Product added successfully!' });
-            setNewItem({ code: '', name: '', location: '', uom: 'Pieces' });
-            setShowNewItem(false);
-            fetchItems();
-        } else {
-            setStatusMessage({ type: 'error', msg: res?.error || 'Failed to create item' });
-        }
-    };
+  const handleCreateItem = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const api = (window as any).api || (window as any).electronAPI
+    const res = await api.createInventoryItem(newItem)
+    if (res && res.success) {
+      setStatusMessage({ type: 'success', msg: 'Product added successfully!' })
+      setNewItem({ code: '', name: '', location: '', uom: 'Pieces' })
+      setShowNewItem(false)
+      fetchItems()
+    } else {
+      setStatusMessage({ type: 'error', msg: res?.error || 'Failed to create item' })
+    }
+  }
 
-    // 🔥 NEW: Handle Updating Item
-    const handleUpdateItem = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const api = (window as any).api || (window as any).electronAPI;
-        const res = await api.updateInventoryItem(editItem.id, editItem);
-        if (res && res.success) {
-            setStatusMessage({ type: 'success', msg: 'Product updated successfully!' });
-            setIsEditing(false);
-            fetchItems();
-        } else {
-            setStatusMessage({ type: 'error', msg: res?.error || 'Failed to update item' });
-        }
-    };
+  // 🔥 NEW: Handle Updating Item
+  const handleUpdateItem = async (e: React.FormEvent) => {
+    e.preventDefault()
+    const api = (window as any).api || (window as any).electronAPI
+    const res = await api.updateInventoryItem(editItem.id, editItem)
+    if (res && res.success) {
+      setStatusMessage({ type: 'success', msg: 'Product updated successfully!' })
+      setIsEditing(false)
+      fetchItems()
+    } else {
+      setStatusMessage({ type: 'error', msg: res?.error || 'Failed to update item' })
+    }
+  }
 
-    // 🔥 NEW: Handle Deleting Item
-    const handleDeleteItem = async () => {
-        if (!window.confirm("Are you sure you want to delete this product? All of its stock history will also be permanently deleted. This cannot be undone.")) return;
-        
-        const api = (window as any).api || (window as any).electronAPI;
-        const res = await api.deleteInventoryItem(selectedItemId);
-        
-        if (res && res.success) {
-            setStatusMessage({ type: 'success', msg: 'Product deleted successfully.' });
-            setSelectedItemId(null);
-            fetchItems();
-        } else {
-            setStatusMessage({ type: 'error', msg: res?.error || 'Failed to delete item' });
-        }
-    };
+  // 🔥 NEW: Handle Deleting Item
+  const handleDeleteItem = async () => {
+    if (
+      !window.confirm(
+        'Are you sure you want to delete this product? All of its stock history will also be permanently deleted. This cannot be undone.'
+      )
+    )
+      return
 
-    const handleAddLog = async (e: React.FormEvent) => {
-        e.preventDefault();
-        if (!selectedItemId || !logQty) return;
+    const api = (window as any).api || (window as any).electronAPI
+    const res = await api.deleteInventoryItem(selectedItemId)
 
-        const inQty = logType === 'IN' ? Number(logQty) : 0;
-        const outQty = logType === 'OUT' ? Number(logQty) : 0;
+    if (res && res.success) {
+      setStatusMessage({ type: 'success', msg: 'Product deleted successfully.' })
+      setSelectedItemId(null)
+      fetchItems()
+    } else {
+      setStatusMessage({ type: 'error', msg: res?.error || 'Failed to delete item' })
+    }
+  }
 
-        const api = (window as any).api || (window as any).electronAPI;
-        const res = await api.addInventoryLog({
-            itemId: selectedItemId,
-            userId,
-            inQty,
-            outQty,
-            remarks: logRemarks,
-            expiryDate: (logType === 'IN' && logExpiry) ? logExpiry : undefined
-        });
+  const handleAddLog = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedItemId || !logQty) return
 
-        if (res && res.success) {
-            setLogQty(''); setLogRemarks(''); setLogExpiry('');
-            fetchLogs(selectedItemId);
-            fetchItems();
-        } else {
-            setStatusMessage({ type: 'error', msg: res?.error || 'Transaction failed' });
-        }
-    };
+    const inQty = logType === 'IN' ? Number(logQty) : 0
+    const outQty = logType === 'OUT' ? Number(logQty) : 0
 
-    const selectedItem = items.find(i => i.id === selectedItemId);
-    const filteredItems = items.filter(i =>
-        (i.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (i.code || '').toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    const api = (window as any).api || (window as any).electronAPI
+    const res = await api.addInventoryLog({
+      itemId: selectedItemId,
+      userId,
+      inQty,
+      outQty,
+      remarks: logRemarks,
+      expiryDate: logType === 'IN' && logExpiry ? logExpiry : undefined
+    })
 
-    const startEditing = () => {
-        if (selectedItem) {
-            setEditItem({
-                id: selectedItem.id,
-                code: selectedItem.code || '',
-                name: selectedItem.name || '',
-                location: selectedItem.location || '',
-                uom: selectedItem.uom || 'Pieces'
-            });
-            setIsEditing(true);
-        }
-    };
+    if (res && res.success) {
+      setLogQty('')
+      setLogRemarks('')
+      setLogExpiry('')
+      fetchLogs(selectedItemId)
+      fetchItems()
+    } else {
+      setStatusMessage({ type: 'error', msg: res?.error || 'Transaction failed' })
+    }
+  }
 
-    return (
-        <div className="max-w-7xl mx-auto h-full flex flex-col text-gray-800 font-sans animate-in fade-in duration-300">
-            <div className="flex justify-between items-end mb-6 border-b border-[#B0DCDA] pb-4">
-                <div>
-                    <h2 className="text-2xl font-extrabold text-gray-800 tracking-wide">Stock & Inventory</h2>
-                    <p className="text-sm text-gray-500 mt-1 font-medium">Track clinic supplies, medicine logs, and stock balances.</p>
-                </div>
-            </div>
+  const selectedItem = items.find((i) => i.id === selectedItemId)
+  const filteredItems = items.filter(
+    (i) =>
+      (i.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (i.code || '').toLowerCase().includes(searchQuery.toLowerCase())
+  )
 
-            {statusMessage && (
-                <div className={`mb-6 p-4 rounded-md text-sm font-bold shadow-sm border flex items-center gap-2 ${statusMessage.type === 'success'
-                        ? 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]'
-                        : 'bg-red-50 text-red-600 border-red-200'
-                    }`}>
-                    {statusMessage.type === 'success' ? <CheckCircle size={18} /> : <AlertTriangle size={18} />}
-                    {statusMessage.msg}
-                </div>
-            )}
+  const startEditing = () => {
+    if (selectedItem) {
+      setEditItem({
+        id: selectedItem.id,
+        code: selectedItem.code || '',
+        name: selectedItem.name || '',
+        location: selectedItem.location || '',
+        uom: selectedItem.uom || 'Pieces'
+      })
+      setIsEditing(true)
+    }
+  }
 
-            <div className="flex-1 flex gap-8 min-h-0">
-                {/* LEFT PANE */}
-                <div className="w-1/3 bg-white border border-[#B0DCDA] rounded-xl shadow-sm flex flex-col overflow-hidden">
-                    <div className="p-4 bg-[#FBF8F8] border-b border-[#B0DCDA] space-y-3">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
-                            <input
-                                type="text"
-                                placeholder="Search product or code..."
-                                value={searchQuery}
-                                onChange={e => setSearchQuery(e.target.value)}
-                                className="w-full pl-9 bg-white border border-[#B0DCDA] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] transition"
-                            />
-                        </div>
-                        <button
-                            onClick={() => setShowNewItem(!showNewItem)}
-                            className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-extrabold tracking-wider uppercase transition shadow-sm cursor-pointer border ${showNewItem
-                                    ? 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
-                                    : 'bg-white border-[#B0DCDA] text-[#1B9387] hover:bg-[#E9FAFA]'
-                                }`}
-                        >
-                            {showNewItem ? <><X size={14} /> Cancel</> : <><Plus size={14} /> New Product</>}
-                        </button>
-                    </div>
-
-                    {showNewItem && (
-                        <form onSubmit={handleCreateItem} className="p-4 bg-[#E9FAFA] border-b border-[#B0DCDA] shadow-inner space-y-3">
-                            <div className="grid grid-cols-2 gap-3">
-                                <div className="col-span-2">
-                                    <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">Product Name</label>
-                                    <input required value={newItem.name} onChange={e => setNewItem({ ...newItem, name: e.target.value })} placeholder="e.g. Biogesic 500mg" className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition" />
-                                </div>
-                                
-                                <div>
-                                    <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">Item Code</label>
-                                    <input required value={newItem.code} onChange={e => setNewItem({ ...newItem, code: e.target.value })} placeholder="e.g. MED-001" className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition" />
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">Unit / UOM</label>
-                                    <select value={newItem.uom} onChange={e => setNewItem({ ...newItem, uom: e.target.value })} className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition cursor-pointer font-medium text-gray-700">
-                                        <option value="Pieces">Pieces (pcs)</option>
-                                        <option value="Boxes">Boxes (box)</option>
-                                        <option value="Vials">Vials (vial)</option>
-                                        <option value="Bottles">Bottles (btl)</option>
-                                        <option value="Packs">Packs (pack)</option>
-                                        <option value="Tablets">Tablets (tab)</option>
-                                        <option value="Capsules">Capsules (cap)</option>
-                                        <option value="Kits">Kits</option>
-                                    </select>
-                                </div>
-
-                                <div className="col-span-2">
-                                    <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">Location (Optional)</label>
-                                    <input value={newItem.location} onChange={e => setNewItem({ ...newItem, location: e.target.value })} placeholder="e.g. Cabinet A" className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition" />
-                                </div>
-                            </div>
-                            <button className="w-full bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-bold py-2 rounded shadow-sm cursor-pointer transition uppercase tracking-wider mt-2">
-                                Save Product
-                            </button>
-                        </form>
-                    )}
-
-                    <div className="flex-1 overflow-auto divide-y divide-gray-100">
-                        {loading ? (
-                            <div className="p-8 text-center text-[#1B9387] font-bold animate-pulse">Loading Database...</div>
-                        ) : filteredItems.length === 0 ? (
-                            <div className="p-8 text-center text-gray-400 text-sm font-medium">
-                                No products found. <br /> Try adjusting your search.
-                            </div>
-                        ) : (
-                            filteredItems.map(item => (
-                                <div key={item.id} onClick={() => setSelectedItemId(item.id)} className={`p-4 cursor-pointer transition ${selectedItemId === item.id ? 'bg-[#E9FAFA] border-l-4 border-[#1B9387]' : 'hover:bg-gray-50 border-l-4 border-transparent'}`}>
-                                    <div className="flex justify-between items-start">
-                                        <span className="font-extrabold text-gray-800 text-sm truncate pr-2">{item.name}</span>
-                                        <div className={`flex items-baseline gap-1 ${item.stock <= 5 ? 'text-red-500' : 'text-[#1B9387]'}`}>
-                                            <span className="font-mono font-extrabold text-sm">{item.stock}</span>
-                                            <span className="text-[9px] font-sans font-bold uppercase tracking-wider opacity-70">{item.uom || 'PCS'}</span>
-                                        </div>
-                                    </div>
-                                    <div className="flex justify-between mt-1">
-                                        <span className="text-[10px] text-gray-400 font-mono font-bold">{item.code}</span>
-                                        <span className="text-[10px] text-gray-400 uppercase font-bold">{item.location || 'No Loc'}</span>
-                                    </div>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </div>
-
-                {/* RIGHT PANE: DIGITAL LOGBOOK */}
-                <div className="w-2/3 bg-white border border-[#B0DCDA] rounded-xl shadow-sm flex flex-col overflow-hidden relative">
-                    {!selectedItem ? (
-                        <div className="flex-1 flex flex-col justify-center items-center text-center p-12 bg-[#FBF8F8]">
-                            <ClipboardList className="text-gray-300 w-16 h-16 mb-4" strokeWidth={1.5} />
-                            <p className="text-gray-800 font-extrabold text-xl">Select a product to view logbook</p>
-                            <p className="text-gray-500 font-medium text-sm mt-2 max-w-md">Click any item on the left to record incoming deliveries or outgoing usage.</p>
-                        </div>
-                    ) : (
-                        <>
-                            {/* HEADER - DISPLAY OR EDIT MODE */}
-                            <div className={`p-6 border-b-2 border-gray-800 shrink-0 ${isEditing ? 'bg-[#FBF8F8]' : 'bg-white'}`}>
-                                {isEditing ? (
-                                    <form onSubmit={handleUpdateItem} className="space-y-4 animate-in fade-in duration-200">
-                                        <div className="flex justify-between items-center mb-2">
-                                            <h3 className="text-lg font-black text-gray-800 uppercase tracking-widest flex items-center gap-2">
-                                                <Edit size={18} className="text-[#1B9387]" /> Edit Product Details
-                                            </h3>
-                                        </div>
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div>
-                                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Product Name</label>
-                                                <input required value={editItem.name} onChange={e => setEditItem({ ...editItem, name: e.target.value })} className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Item Code</label>
-                                                <input required value={editItem.code} onChange={e => setEditItem({ ...editItem, code: e.target.value })} className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm font-mono text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30" />
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Unit of Measure (UOM)</label>
-                                                <select value={editItem.uom} onChange={e => setEditItem({ ...editItem, uom: e.target.value })} className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30">
-                                                    <option value="Pieces">Pieces (pcs)</option>
-                                                    <option value="Boxes">Boxes (box)</option>
-                                                    <option value="Vials">Vials (vial)</option>
-                                                    <option value="Bottles">Bottles (btl)</option>
-                                                    <option value="Packs">Packs (pack)</option>
-                                                    <option value="Tablets">Tablets (tab)</option>
-                                                    <option value="Capsules">Capsules (cap)</option>
-                                                    <option value="Kits">Kits</option>
-                                                </select>
-                                            </div>
-                                            <div>
-                                                <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">Location</label>
-                                                <input value={editItem.location} onChange={e => setEditItem({ ...editItem, location: e.target.value })} placeholder="Optional" className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30" />
-                                            </div>
-                                        </div>
-                                        <div className="flex justify-end gap-3 pt-2">
-                                            <button type="button" onClick={() => setIsEditing(false)} className="px-4 py-2 bg-white border border-gray-300 rounded-md text-xs font-bold text-gray-600 hover:bg-gray-50 transition cursor-pointer">
-                                                Cancel
-                                            </button>
-                                            <button type="submit" className="px-5 py-2 bg-[#1B9387] rounded-md text-xs font-bold text-white hover:bg-[#15796f] transition flex items-center gap-2 shadow-sm cursor-pointer">
-                                                <Save size={14} /> Save Changes
-                                            </button>
-                                        </div>
-                                    </form>
-                                ) : (
-                                    <div className="flex justify-between items-start animate-in fade-in duration-200">
-                                        <div>
-                                            <div className="flex items-center space-x-4 mb-2">
-                                                <h3 className="text-2xl font-extrabold text-gray-800 tracking-tight">{selectedItem.name}</h3>
-                                                <span className={`px-3 py-1 rounded-full text-xs font-black font-mono shadow-sm border flex gap-1.5 items-center ${selectedItem.stock <= 5 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]'}`}>
-                                                    <span>STOCK: {selectedItem.stock}</span>
-                                                    <span className="text-[10px] font-sans opacity-70 uppercase tracking-widest">{selectedItem.uom || 'PCS'}</span>
-                                                </span>
-                                            </div>
-                                            <div className="flex space-x-8 mt-4 text-sm font-bold text-gray-600 uppercase tracking-wider">
-                                                <p>PRODUCT CODE: <span className="font-mono text-gray-800 ml-2">{selectedItem.code}</span></p>
-                                                <p>LOCATION: <span className="text-gray-800 ml-2">{selectedItem.location || '—'}</span></p>
-                                            </div>
-                                        </div>
-                                        {/* EDIT / DELETE BUTTONS */}
-                                        <div className="flex items-center gap-2">
-                                            <button onClick={startEditing} title="Edit Product" className="p-2 bg-white border border-gray-200 text-gray-500 rounded-md hover:bg-gray-50 hover:text-[#1B9387] transition shadow-sm cursor-pointer">
-                                                <Edit size={16} />
-                                            </button>
-                                            <button onClick={handleDeleteItem} title="Delete Product" className="p-2 bg-white border border-gray-200 text-gray-500 rounded-md hover:bg-red-50 hover:border-red-200 hover:text-red-500 transition shadow-sm cursor-pointer">
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* LOGBOOK ENTRY FORM */}
-                            <form onSubmit={handleAddLog} className={`p-4 border-b border-[#B0DCDA] flex flex-col gap-3 shadow-inner shrink-0 ${isEditing ? 'opacity-50 pointer-events-none bg-gray-50' : 'bg-[#FBF8F8]'}`}>
-                                <div className="flex flex-wrap gap-3 items-center w-full">
-                                    <div className="relative w-36">
-                                        <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                                            {logType === 'IN' ? <ArrowDownToLine size={14} className="text-emerald-600" /> : <ArrowUpFromLine size={14} className="text-orange-600" />}
-                                        </div>
-                                        <select
-                                            value={logType}
-                                            onChange={e => setLogType(e.target.value as any)}
-                                            className={`w-full pl-9 font-extrabold text-xs uppercase tracking-wider border rounded-md py-2.5 outline-none cursor-pointer appearance-none ${logType === 'IN' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-orange-50 text-orange-700 border-orange-200'
-                                                }`}
-                                        >
-                                            <option value="IN">IN (Add)</option>
-                                            <option value="OUT">OUT (Use)</option>
-                                        </select>
-                                    </div>
-
-                                    <div className="relative flex items-center">
-                                        <input
-                                            type="number"
-                                            min="1"
-                                            step="1"
-                                            required
-                                            placeholder="Qty"
-                                            value={logQty}
-                                            onChange={e => setLogQty(Number(e.target.value))}
-                                            className="w-32 bg-white border border-[#B0DCDA] rounded-md px-3 py-2 pr-12 text-sm font-mono font-bold outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] transition"
-                                        />
-                                        <span className="absolute right-3 text-[10px] text-gray-400 font-bold uppercase pointer-events-none">
-                                            {selectedItem.uom === 'Pieces' ? 'PCS' : selectedItem.uom === 'Boxes' ? 'BOX' : selectedItem.uom?.substring(0,3) || 'PCS'}
-                                        </span>
-                                    </div>
-
-                                    {logType === 'IN' && (
-                                        <input
-                                            type="date"
-                                            title="Expiration Date"
-                                            value={logExpiry}
-                                            onChange={e => setLogExpiry(e.target.value)}
-                                            className="w-36 bg-white border border-[#B0DCDA] rounded-md px-3 py-2 text-xs text-gray-600 font-bold outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] transition"
-                                        />
-                                    )}
-
-                                    <input
-                                        type="text"
-                                        placeholder="Remarks / Ref No..."
-                                        value={logRemarks}
-                                        onChange={e => setLogRemarks(e.target.value)}
-                                        className="flex-1 min-w-[150px] bg-white border border-[#B0DCDA] rounded-md px-3 py-2 text-sm font-medium outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] transition"
-                                    />
-
-                                    <button className="bg-[#1B9387] hover:bg-[#28958B] text-white px-6 py-2 rounded-md text-sm font-bold shadow-sm uppercase tracking-wider transition cursor-pointer">
-                                        Save
-                                    </button>
-                                </div>
-                            </form>
-
-                            {/* LOGBOOK TABLE */}
-                            <div className={`flex-1 overflow-auto ${isEditing ? 'opacity-50 pointer-events-none bg-gray-50' : 'bg-white'}`}>
-                                <table className="w-full text-left text-sm">
-                                    <thead className="bg-[#FBF8F8] sticky top-0 border-b border-[#B0DCDA] shadow-sm z-10">
-                                        <tr className="text-gray-500 uppercase tracking-wider text-xs font-extrabold">
-                                            <th className="p-3 border-r border-gray-200 pl-6 w-32">Date</th>
-                                            <th className="p-3 border-r border-gray-200 text-center text-emerald-600 w-16">IN</th>
-                                            <th className="p-3 border-r border-gray-200 text-center text-orange-600 w-16">OUT</th>
-                                            <th className="p-3 border-r border-gray-200 text-center text-[#1B9387] w-24">Balance</th>
-                                            <th className="p-3 border-r border-gray-200 w-28">Exp Date</th>
-                                            <th className="p-3 border-r border-gray-200">Remarks</th>
-                                            <th className="p-3 text-center w-32 pr-6">Counted By</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-100">
-                                        {logs.length === 0 ? (
-                                            <tr><td colSpan={7} className="p-12 text-center text-gray-400 italic font-medium">No movement recorded yet.</td></tr>
-                                        ) : (
-                                            logs.map((log: any) => (
-                                                <tr key={log.id} className="hover:bg-gray-50 transition-colors even:bg-gray-50/50 odd:bg-white">
-                                                    <td className="p-3 pl-6 font-mono text-xs text-gray-500 border-r border-gray-100">{new Date(log.date).toLocaleDateString()}</td>
-                                                    <td className="p-3 text-center font-mono font-bold text-emerald-600 bg-emerald-50/30 border-r border-gray-100">{log.in_qty > 0 ? `+${log.in_qty}` : '-'}</td>
-                                                    <td className="p-3 text-center font-mono font-bold text-orange-500 bg-orange-50/30 border-r border-gray-100">{log.out_qty > 0 ? `-${log.out_qty}` : '-'}</td>
-                                                    <td className="p-3 text-center font-mono font-black text-[#1B9387] bg-[#E9FAFA]/50 border-r border-gray-100">{log.balance}</td>
-                                                    <td className="p-3 border-r border-gray-100 text-xs font-mono font-bold text-rose-500">{log.expiry_date ? new Date(log.expiry_date).toLocaleDateString() : '—'}</td>
-                                                    <td className="p-3 text-gray-700 text-xs border-r border-gray-100 font-medium truncate max-w-[150px]" title={log.remarks}>{log.remarks || '—'}</td>
-                                                    <td className="p-3 pr-6 text-center text-[10px] font-bold uppercase tracking-wider text-gray-400">{log.user?.username || 'SYSTEM'}</td>
-                                                </tr>
-                                            ))
-                                        )}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </>
-                    )}
-                </div>
-            </div>
+  return (
+    <div className="max-w-7xl mx-auto h-full flex flex-col text-gray-800 font-sans animate-in fade-in duration-300">
+      <div className="flex justify-between items-end mb-6 border-b border-[#B0DCDA] pb-4">
+        <div>
+          <h2 className="text-2xl font-extrabold text-gray-800 tracking-wide">Stock & Inventory</h2>
+          <p className="text-sm text-gray-500 mt-1 font-medium">
+            Track clinic supplies, medicine logs, and stock balances.
+          </p>
         </div>
-    );
+      </div>
+
+      {statusMessage && (
+        <div
+          className={`mb-6 p-4 rounded-md text-sm font-bold shadow-sm border flex items-center gap-2 ${
+            statusMessage.type === 'success'
+              ? 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]'
+              : 'bg-red-50 text-red-600 border-red-200'
+          }`}
+        >
+          {statusMessage.type === 'success' ? (
+            <CheckCircle size={18} />
+          ) : (
+            <AlertTriangle size={18} />
+          )}
+          {statusMessage.msg}
+        </div>
+      )}
+
+      <div className="flex-1 flex gap-8 min-h-0">
+        {/* LEFT PANE */}
+        <div className="w-1/3 bg-white border border-[#B0DCDA] rounded-xl shadow-sm flex flex-col overflow-hidden">
+          <div className="p-4 bg-[#FBF8F8] border-b border-[#B0DCDA] space-y-3">
+            <div className="relative">
+              <Search
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+                size={16}
+              />
+              <input
+                type="text"
+                placeholder="Search product or code..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 bg-white border border-[#B0DCDA] rounded-md px-3 py-2 text-sm focus:outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] transition"
+              />
+            </div>
+            <button
+              onClick={() => setShowNewItem(!showNewItem)}
+              className={`w-full flex items-center justify-center gap-2 px-3 py-2 rounded-md text-xs font-extrabold tracking-wider uppercase transition shadow-sm cursor-pointer border ${
+                showNewItem
+                  ? 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                  : 'bg-white border-[#B0DCDA] text-[#1B9387] hover:bg-[#E9FAFA]'
+              }`}
+            >
+              {showNewItem ? (
+                <>
+                  <X size={14} /> Cancel
+                </>
+              ) : (
+                <>
+                  <Plus size={14} /> New Product
+                </>
+              )}
+            </button>
+          </div>
+
+          {showNewItem && (
+            <form
+              onSubmit={handleCreateItem}
+              className="p-4 bg-[#E9FAFA] border-b border-[#B0DCDA] shadow-inner space-y-3"
+            >
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">
+                    Product Name
+                  </label>
+                  <input
+                    required
+                    value={newItem.name}
+                    onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                    placeholder="e.g. Biogesic 500mg"
+                    className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">
+                    Item Code
+                  </label>
+                  <input
+                    required
+                    value={newItem.code}
+                    onChange={(e) => setNewItem({ ...newItem, code: e.target.value })}
+                    placeholder="e.g. MED-001"
+                    className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">
+                    Unit / UOM
+                  </label>
+                  <select
+                    value={newItem.uom}
+                    onChange={(e) => setNewItem({ ...newItem, uom: e.target.value })}
+                    className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition cursor-pointer font-medium text-gray-700"
+                  >
+                    <option value="Pieces">Pieces (pcs)</option>
+                    <option value="Boxes">Boxes (box)</option>
+                    <option value="Vials">Vials (vial)</option>
+                    <option value="Bottles">Bottles (btl)</option>
+                    <option value="Packs">Packs (pack)</option>
+                    <option value="Tablets">Tablets (tab)</option>
+                    <option value="Capsules">Capsules (cap)</option>
+                    <option value="Kits">Kits</option>
+                  </select>
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">
+                    Location (Optional)
+                  </label>
+                  <input
+                    value={newItem.location}
+                    onChange={(e) => setNewItem({ ...newItem, location: e.target.value })}
+                    placeholder="e.g. Cabinet A"
+                    className="w-full bg-white border border-[#B0DCDA] rounded p-2 text-sm outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-white/50 transition"
+                  />
+                </div>
+              </div>
+              <button className="w-full bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-bold py-2 rounded shadow-sm cursor-pointer transition uppercase tracking-wider mt-2">
+                Save Product
+              </button>
+            </form>
+          )}
+
+          <div className="flex-1 overflow-auto divide-y divide-gray-100">
+            {loading ? (
+              <div className="p-8 text-center text-[#1B9387] font-bold animate-pulse">
+                Loading Database...
+              </div>
+            ) : filteredItems.length === 0 ? (
+              <div className="p-8 text-center text-gray-400 text-sm font-medium">
+                No products found. <br /> Try adjusting your search.
+              </div>
+            ) : (
+              filteredItems.map((item) => (
+                <div
+                  key={item.id}
+                  onClick={() => setSelectedItemId(item.id)}
+                  className={`p-4 cursor-pointer transition ${selectedItemId === item.id ? 'bg-[#E9FAFA] border-l-4 border-[#1B9387]' : 'hover:bg-gray-50 border-l-4 border-transparent'}`}
+                >
+                  <div className="flex justify-between items-start">
+                    <span className="font-extrabold text-gray-800 text-sm truncate pr-2">
+                      {item.name}
+                    </span>
+                    <div
+                      className={`flex items-baseline gap-1 ${item.stock <= 5 ? 'text-red-500' : 'text-[#1B9387]'}`}
+                    >
+                      <span className="font-mono font-extrabold text-sm">{item.stock}</span>
+                      <span className="text-[9px] font-sans font-bold uppercase tracking-wider opacity-70">
+                        {item.uom || 'PCS'}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex justify-between mt-1">
+                    <span className="text-[10px] text-gray-400 font-mono font-bold">
+                      {item.code}
+                    </span>
+                    <span className="text-[10px] text-gray-400 uppercase font-bold">
+                      {item.location || 'No Loc'}
+                    </span>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* RIGHT PANE: DIGITAL LOGBOOK */}
+        <div className="w-2/3 bg-white border border-[#B0DCDA] rounded-xl shadow-sm flex flex-col overflow-hidden relative">
+          {!selectedItem ? (
+            <div className="flex-1 flex flex-col justify-center items-center text-center p-12 bg-[#FBF8F8]">
+              <ClipboardList className="text-gray-300 w-16 h-16 mb-4" strokeWidth={1.5} />
+              <p className="text-gray-800 font-extrabold text-xl">
+                Select a product to view logbook
+              </p>
+              <p className="text-gray-500 font-medium text-sm mt-2 max-w-md">
+                Click any item on the left to record incoming deliveries or outgoing usage.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* HEADER - DISPLAY OR EDIT MODE */}
+              <div
+                className={`p-6 border-b-2 border-gray-800 shrink-0 ${isEditing ? 'bg-[#FBF8F8]' : 'bg-white'}`}
+              >
+                {isEditing ? (
+                  <form
+                    onSubmit={handleUpdateItem}
+                    className="space-y-4 animate-in fade-in duration-200"
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <h3 className="text-lg font-black text-gray-800 uppercase tracking-widest flex items-center gap-2">
+                        <Edit size={18} className="text-[#1B9387]" /> Edit Product Details
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                          Product Name
+                        </label>
+                        <input
+                          required
+                          value={editItem.name}
+                          onChange={(e) => setEditItem({ ...editItem, name: e.target.value })}
+                          className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                          Item Code
+                        </label>
+                        <input
+                          required
+                          value={editItem.code}
+                          onChange={(e) => setEditItem({ ...editItem, code: e.target.value })}
+                          className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm font-mono text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                          Unit of Measure (UOM)
+                        </label>
+                        <select
+                          value={editItem.uom}
+                          onChange={(e) => setEditItem({ ...editItem, uom: e.target.value })}
+                          className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm font-bold text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30"
+                        >
+                          <option value="Pieces">Pieces (pcs)</option>
+                          <option value="Boxes">Boxes (box)</option>
+                          <option value="Vials">Vials (vial)</option>
+                          <option value="Bottles">Bottles (btl)</option>
+                          <option value="Packs">Packs (pack)</option>
+                          <option value="Tablets">Tablets (tab)</option>
+                          <option value="Capsules">Capsules (cap)</option>
+                          <option value="Kits">Kits</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
+                          Location
+                        </label>
+                        <input
+                          value={editItem.location}
+                          onChange={(e) => setEditItem({ ...editItem, location: e.target.value })}
+                          placeholder="Optional"
+                          className="w-full bg-white border border-[#B0DCDA] rounded-md p-2 text-sm text-gray-800 outline-none focus:ring-2 focus:ring-[#1B9387]/30"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-3 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsEditing(false)}
+                        className="px-4 py-2 bg-white border border-gray-300 rounded-md text-xs font-bold text-gray-600 hover:bg-gray-50 transition cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="px-5 py-2 bg-[#1B9387] rounded-md text-xs font-bold text-white hover:bg-[#15796f] transition flex items-center gap-2 shadow-sm cursor-pointer"
+                      >
+                        <Save size={14} /> Save Changes
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <div className="flex justify-between items-start animate-in fade-in duration-200">
+                    <div>
+                      <div className="flex items-center space-x-4 mb-2">
+                        <h3 className="text-2xl font-extrabold text-gray-800 tracking-tight">
+                          {selectedItem.name}
+                        </h3>
+                        <span
+                          className={`px-3 py-1 rounded-full text-xs font-black font-mono shadow-sm border flex gap-1.5 items-center ${selectedItem.stock <= 5 ? 'bg-red-50 text-red-600 border-red-200' : 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]'}`}
+                        >
+                          <span>STOCK: {selectedItem.stock}</span>
+                          <span className="text-[10px] font-sans opacity-70 uppercase tracking-widest">
+                            {selectedItem.uom || 'PCS'}
+                          </span>
+                        </span>
+                      </div>
+                      <div className="flex space-x-8 mt-4 text-sm font-bold text-gray-600 uppercase tracking-wider">
+                        <p>
+                          PRODUCT CODE:{' '}
+                          <span className="font-mono text-gray-800 ml-2">{selectedItem.code}</span>
+                        </p>
+                        <p>
+                          LOCATION:{' '}
+                          <span className="text-gray-800 ml-2">{selectedItem.location || '—'}</span>
+                        </p>
+                      </div>
+                    </div>
+                    {/* EDIT / DELETE BUTTONS */}
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={startEditing}
+                        title="Edit Product"
+                        className="p-2 bg-white border border-gray-200 text-gray-500 rounded-md hover:bg-gray-50 hover:text-[#1B9387] transition shadow-sm cursor-pointer"
+                      >
+                        <Edit size={16} />
+                      </button>
+                      <button
+                        onClick={handleDeleteItem}
+                        title="Delete Product"
+                        className="p-2 bg-white border border-gray-200 text-gray-500 rounded-md hover:bg-red-50 hover:border-red-200 hover:text-red-500 transition shadow-sm cursor-pointer"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* LOGBOOK ENTRY FORM */}
+              <form
+                onSubmit={handleAddLog}
+                className={`p-4 border-b border-[#B0DCDA] flex flex-col gap-3 shadow-inner shrink-0 ${isEditing ? 'opacity-50 pointer-events-none bg-gray-50' : 'bg-[#FBF8F8]'}`}
+              >
+                <div className="flex flex-wrap gap-3 items-center w-full">
+                  <div className="relative w-36">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
+                      {logType === 'IN' ? (
+                        <ArrowDownToLine size={14} className="text-emerald-600" />
+                      ) : (
+                        <ArrowUpFromLine size={14} className="text-orange-600" />
+                      )}
+                    </div>
+                    <select
+                      value={logType}
+                      onChange={(e) => setLogType(e.target.value as any)}
+                      className={`w-full pl-9 font-extrabold text-xs uppercase tracking-wider border rounded-md py-2.5 outline-none cursor-pointer appearance-none ${
+                        logType === 'IN'
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                          : 'bg-orange-50 text-orange-700 border-orange-200'
+                      }`}
+                    >
+                      <option value="IN">IN (Add)</option>
+                      <option value="OUT">OUT (Use)</option>
+                    </select>
+                  </div>
+
+                  <div className="relative flex items-center">
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      required
+                      placeholder="Qty"
+                      value={logQty}
+                      onChange={(e) => setLogQty(Number(e.target.value))}
+                      className="w-32 bg-white border border-[#B0DCDA] rounded-md px-3 py-2 pr-12 text-sm font-mono font-bold outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] transition"
+                    />
+                    <span className="absolute right-3 text-[10px] text-gray-400 font-bold uppercase pointer-events-none">
+                      {selectedItem.uom === 'Pieces'
+                        ? 'PCS'
+                        : selectedItem.uom === 'Boxes'
+                          ? 'BOX'
+                          : selectedItem.uom?.substring(0, 3) || 'PCS'}
+                    </span>
+                  </div>
+
+                  {logType === 'IN' && (
+                    <input
+                      type="date"
+                      title="Expiration Date"
+                      value={logExpiry}
+                      onChange={(e) => setLogExpiry(e.target.value)}
+                      className="w-36 bg-white border border-[#B0DCDA] rounded-md px-3 py-2 text-xs text-gray-600 font-bold outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] transition"
+                    />
+                  )}
+
+                  <input
+                    type="text"
+                    placeholder="Remarks / Ref No..."
+                    value={logRemarks}
+                    onChange={(e) => setLogRemarks(e.target.value)}
+                    className="flex-1 min-w-[150px] bg-white border border-[#B0DCDA] rounded-md px-3 py-2 text-sm font-medium outline-none focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] transition"
+                  />
+
+                  <button className="bg-[#1B9387] hover:bg-[#28958B] text-white px-6 py-2 rounded-md text-sm font-bold shadow-sm uppercase tracking-wider transition cursor-pointer">
+                    Save
+                  </button>
+                </div>
+              </form>
+
+              {/* LOGBOOK TABLE */}
+              <div
+                className={`flex-1 overflow-auto ${isEditing ? 'opacity-50 pointer-events-none bg-gray-50' : 'bg-white'}`}
+              >
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-[#FBF8F8] sticky top-0 border-b border-[#B0DCDA] shadow-sm z-10">
+                    <tr className="text-gray-500 uppercase tracking-wider text-xs font-extrabold">
+                      <th className="p-3 border-r border-gray-200 pl-6 w-32">Date</th>
+                      <th className="p-3 border-r border-gray-200 text-center text-emerald-600 w-16">
+                        IN
+                      </th>
+                      <th className="p-3 border-r border-gray-200 text-center text-orange-600 w-16">
+                        OUT
+                      </th>
+                      <th className="p-3 border-r border-gray-200 text-center text-[#1B9387] w-24">
+                        Balance
+                      </th>
+                      <th className="p-3 border-r border-gray-200 w-28">Exp Date</th>
+                      <th className="p-3 border-r border-gray-200">Remarks</th>
+                      <th className="p-3 text-center w-32 pr-6">Counted By</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {logs.length === 0 ? (
+                      <tr>
+                        <td
+                          colSpan={7}
+                          className="p-12 text-center text-gray-400 italic font-medium"
+                        >
+                          No movement recorded yet.
+                        </td>
+                      </tr>
+                    ) : (
+                      logs.map((log: any) => (
+                        <tr
+                          key={log.id}
+                          className="hover:bg-gray-50 transition-colors even:bg-gray-50/50 odd:bg-white"
+                        >
+                          <td className="p-3 pl-6 font-mono text-xs text-gray-500 border-r border-gray-100">
+                            {new Date(log.date).toLocaleDateString()}
+                          </td>
+                          <td className="p-3 text-center font-mono font-bold text-emerald-600 bg-emerald-50/30 border-r border-gray-100">
+                            {log.in_qty > 0 ? `+${log.in_qty}` : '-'}
+                          </td>
+                          <td className="p-3 text-center font-mono font-bold text-orange-500 bg-orange-50/30 border-r border-gray-100">
+                            {log.out_qty > 0 ? `-${log.out_qty}` : '-'}
+                          </td>
+                          <td className="p-3 text-center font-mono font-black text-[#1B9387] bg-[#E9FAFA]/50 border-r border-gray-100">
+                            {log.balance}
+                          </td>
+                          <td className="p-3 border-r border-gray-100 text-xs font-mono font-bold text-rose-500">
+                            {log.expiry_date ? new Date(log.expiry_date).toLocaleDateString() : '—'}
+                          </td>
+                          <td
+                            className="p-3 text-gray-700 text-xs border-r border-gray-100 font-medium truncate max-w-[150px]"
+                            title={log.remarks}
+                          >
+                            {log.remarks || '—'}
+                          </td>
+                          <td className="p-3 pr-6 text-center text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                            {log.user?.username || 'SYSTEM'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }

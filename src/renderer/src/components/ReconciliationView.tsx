@@ -1,6 +1,7 @@
 // src/renderer/src/components/ReconciliationView.tsx
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
+import { cleanDescription } from '../utils/formatters'
 
 type BankAccount = {
   id: string
@@ -445,8 +446,8 @@ export function ReconciliationView({ userId }: { userId: string }) {
         const isDeposit = tx.amount >= 0
         runningBal += tx.amount
         const desc = tx.reference_no
-          ? `${tx.description} (Ref: ${tx.reference_no})`
-          : tx.description
+          ? `${cleanDescription(tx.description)} (Ref: ${tx.reference_no})`
+          : cleanDescription(tx.description)
         const notes = tx.status === 'MATCHED' ? 'Records match' : 'Mismatch. Please check'
         aoaData.push([
           new Date(tx.transaction_date).toLocaleDateString(),
@@ -473,7 +474,7 @@ export function ReconciliationView({ userId }: { userId: string }) {
       const wsUnclearedLedger = XLSX.utils.json_to_sheet(
         entries.map((e) => ({
           Date: new Date(e.date).toLocaleDateString(),
-          Description: e.description,
+          Description: cleanDescription(e.description),
           'Reference No': e.referenceNo,
           Amount: e.amount
         }))
@@ -869,7 +870,7 @@ export function ReconciliationView({ userId }: { userId: string }) {
                           <p
                             className={`text-sm mt-1.5 font-bold ${isSelected ? 'text-gray-900' : 'text-gray-700'}`}
                           >
-                            {transaction.description}
+                            {cleanDescription(transaction.description)}
                           </p>
 
                           <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100/50">
@@ -1022,7 +1023,7 @@ export function ReconciliationView({ userId }: { userId: string }) {
                                 </span>
                               </p>
                               <p className="text-sm text-gray-800 font-bold mt-1.5 truncate">
-                                {entry.description}
+                                {cleanDescription(entry.description)}
                               </p>
                             </div>
                           </div>
