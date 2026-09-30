@@ -140,6 +140,57 @@ export const PayrollService = {
     };
   },
 
+  async updatePayrollSettings(multipliers: Partial<Record<string, number>>) {
+    try {
+      const settings = await prisma.systemSetting.findFirst();
+      if (!settings) {
+        await prisma.systemSetting.create({
+          data: multipliers as any
+        });
+      } else {
+        await prisma.systemSetting.update({
+          where: { id: settings.id },
+          data: multipliers as any
+        });
+      }
+      return { success: true };
+    } catch (error: any) {
+      console.error(error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  async batchCalculatePayroll(employeeInputs: any[]) {
+    try {
+      const results = [];
+      for (const input of employeeInputs) {
+        const allowances = await prisma.employeeAllowance.findMany({
+          where: { employee_id: Number(input.employeeId), is_active: true }
+        });
+        const loans = await prisma.employeeLoan.findMany({
+          where: { employee_id: Number(input.employeeId), is_active: true }
+        });
+        
+        const payrollResult = await this.calculateEmployeePayroll(
+          Number(input.monthlySalary),
+          input.hours,
+          input.demerits,
+          allowances,
+          loans
+        );
+        
+        results.push({
+          employeeId: input.employeeId,
+          ...payrollResult
+        });
+      }
+      return { success: true, data: results };
+    } catch (error: any) {
+      console.error(error);
+      return { success: false, error: error.message };
+    }
+  },
+
   async getEmployees() {
     const employees = await prisma.employee.findMany({
       orderBy: { first_name: 'asc' }

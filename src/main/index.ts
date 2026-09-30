@@ -7,6 +7,7 @@ import path from 'path'
 import * as fs from 'fs'
 import cron from 'node-cron'
 import net from 'net'
+import bcrypt from 'bcrypt'
 const OFFLINE_QUEUE_PATH = path.join(app.getPath('userData'), 'offline-transactions.json')
 const CACHE_ACCOUNTS_PATH = path.join(app.getPath('userData'), 'cache-accounts.json')
 const CACHE_PAYEES_PATH = path.join(app.getPath('userData'), 'cache-payees.json')
@@ -24,6 +25,7 @@ import { UserService } from './services/user.service'
 import { AuditService } from './services/audit.service'
 import { PayrollService } from './services/payroll.service'
 import { InventoryService } from './services/inventory.service'
+import { cleanDescription as cleanDescHelper } from '../shared/formatters'
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -49,6 +51,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow()
+  prisma.$executeRawUnsafe("SET GLOBAL max_allowed_packet = 67108864;").catch(() => {})
 
   // Auth & Users
   ipcMain.handle('auth:login', async (e, username, password) => {
@@ -61,10 +64,16 @@ app.whenReady().then(() => {
         // 2. Update Local Cache for Offline Login capability
         let offlineUsers: any = {};
         if (fs.existsSync(CACHE_USERS_PATH)) {
-          offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'));
+          try {
+            offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'));
+          } catch {
+            offlineUsers = {};
+          }
         }
-        offlineUsers[username] = { password: password, data: result };
-        fs.writeFileSync(CACHE_USERS_PATH, JSON.stringify(offlineUsers));
+        // Securely hash with bcrypt - never store plaintext passwords
+        const passwordHash = await bcrypt.hash(password, 12);
+        offlineUsers[username] = { passwordHash, data: result };
+        fs.writeFileSync(CACHE_USERS_PATH, JSON.stringify(offlineUsers, null, 2));
       }
       return { success: true, data: result }
 
@@ -73,14 +82,34 @@ app.whenReady().then(() => {
       const isOffline = err.message.includes("Can't reach") || err.message.includes("P1001") || err.message.includes("timeout") || err.message.includes("network");
 
       if (isOffline && fs.existsSync(CACHE_USERS_PATH)) {
-        const offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'));
-        // Check if they have logged in before on this computer
-        if (offlineUsers[username] && offlineUsers[username].password === password) {
-          console.log(`[OFFLINE MODE] User ${username} logged in via local cache.`);
-          return { success: true, data: offlineUsers[username].data, offline: true }
-        } else {
-          return { success: false, error: "Network offline. This user has not been cached locally yet." }
+        let offlineUsers: any = {};
+        try {
+          offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'));
+        } catch {
+          offlineUsers = {};
         }
+
+        const cached = offlineUsers[username];
+        if (cached) {
+          let match = false;
+          if (cached.passwordHash) {
+            match = await bcrypt.compare(password, cached.passwordHash);
+          } else if (cached.password) {
+            // Legacy plaintext fallback - immediately migrate to bcrypt hash
+            match = (cached.password === password);
+            if (match) {
+              cached.passwordHash = await bcrypt.hash(password, 12);
+              delete cached.password;
+              fs.writeFileSync(CACHE_USERS_PATH, JSON.stringify(offlineUsers, null, 2));
+            }
+          }
+
+          if (match) {
+            console.log(`[OFFLINE MODE] User ${username} logged in via local cache.`);
+            return { success: true, data: cached.data, offline: true };
+          }
+        }
+        return { success: false, error: "Network offline. Invalid credentials or user not cached locally." };
       }
       return { success: false, error: err.message }
     }
@@ -427,6 +456,24 @@ app.whenReady().then(() => {
       return []
     }
   })
+  ipcMain.handle('get-cashier-disbursements', async (e, limit = 100) => {
+    try {
+      return typeof LedgerService.getCashierDisbursements === 'function'
+        ? await LedgerService.getCashierDisbursements(limit)
+        : []
+    } catch (err) {
+      return []
+    }
+  })
+  ipcMain.handle('get-recent-disbursements', async (e, limit = 20) => {
+    try {
+      return typeof LedgerService.getRecentDisbursements === 'function'
+        ? await LedgerService.getRecentDisbursements(limit)
+        : []
+    } catch (err) {
+      return []
+    }
+  })
   ipcMain.handle('get-full-ledger-report', async (e, startDate, endDate) => {
     try {
       return await LedgerService.getFullLedgerReport(startDate, endDate)
@@ -717,6 +764,20 @@ app.whenReady().then(() => {
   })
 
   // Payroll
+  ipcMain.handle('payroll:getSettings', async () => {
+    return await PayrollService.getPayrollSettings()
+  })
+  ipcMain.handle('payroll:updateSettings', async (e, multipliers) => {
+    const result = await PayrollService.updatePayrollSettings(multipliers)
+    if (result.success) await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Updated payroll settings`)
+    return result
+  })
+  ipcMain.handle('payroll:calculateEmployee', async (e, monthlySalary, hours, demerits, allowances, loans) => {
+    return await PayrollService.calculateEmployeePayroll(monthlySalary, hours, demerits, allowances, loans)
+  })
+  ipcMain.handle('payroll:batchCalculate', async (e, employeeInputs) => {
+    return await PayrollService.batchCalculatePayroll(employeeInputs)
+  })
   ipcMain.handle('get-employees', async () => {
     try {
       return typeof PayrollService.getEmployees === 'function'
@@ -935,6 +996,276 @@ app.whenReady().then(() => {
       return await AnalyticsService.getRecentTransactions()
     } catch (err) {
       return []
+    }
+  })
+
+  ipcMain.handle('get-journal-entry', async (e, id) => {
+    try {
+      return await prisma.journalEntry.findUnique({
+        where: { id },
+        include: {
+          payee: true,
+          lines: { include: { account: true } }
+        }
+      })
+    } catch (err) {
+      console.error(err)
+      return null
+    }
+  })
+
+  ipcMain.handle('get-patient-transactions', async (e, args: any) => {
+    try {
+      const patientId = typeof args === 'string' ? args : (args?.patientId || '')
+      let patientName = typeof args === 'object' ? (args?.patientName || '') : ''
+
+      if (!patientName && patientId) {
+        const payeeRecord = await prisma.payee.findUnique({ where: { id: patientId } }).catch(() => null)
+        if (payeeRecord) {
+          patientName = payeeRecord.name
+        } else {
+          // If not UUID/payee, identifier might be a raw patient name
+          patientName = patientId
+        }
+      }
+
+      const orConditions: any[] = []
+      if (patientId && patientId.length > 20) {
+        orConditions.push({ payee_id: patientId })
+      }
+      if (patientName && patientName.trim()) {
+        const clean = patientName.trim()
+        orConditions.push({ description: { contains: `Patient: ${clean}` } })
+        orConditions.push({ description: { contains: clean } })
+      }
+
+      if (orConditions.length === 0) {
+        return []
+      }
+
+      const entries = await prisma.journalEntry.findMany({
+        where: {
+          AND: [
+            {
+              NOT: [
+                { reference_no: { startsWith: 'JV' } },
+                { reference_no: { startsWith: 'ADJ' } },
+                { reference_no: { startsWith: 'PJ' } },
+                { reference_no: { startsWith: 'PY' } }
+              ]
+            },
+            {
+              OR: orConditions
+            }
+          ]
+        },
+        orderBy: [
+          { date: 'desc' },
+          { created_at: 'desc' }
+        ],
+        include: {
+          lines: { include: { account: true } },
+          payee: true,
+          attachments: true
+        }
+      })
+      
+      // Serialize Decimal types to Numbers to avoid IPC cloning errors
+      return entries
+        .filter((entry) => {
+          const ref = (entry.reference_no || '').trim().toUpperCase()
+          return !ref.startsWith('JV') && !ref.startsWith('ADJ') && !ref.startsWith('PJ') && !ref.startsWith('PY')
+        })
+        .map((entry) => {
+          let cleanDesc = cleanDescHelper(entry.description)
+          let remarks = ''
+          const remMatch = cleanDesc.match(/(?:\n|^)Remarks:\s*([\s\S]*?)(?=\nDiagnostic Test|$)/)
+          if (remMatch) remarks = remMatch[1].trim()
+          return {
+            ...entry,
+            description: cleanDesc,
+            rawDescription: entry.description,
+            remarks,
+            payeeName: entry.payee?.name || '',
+          attachments: (entry.attachments || []).map(a => ({
+            id: a.id,
+            name: a.fileName,
+            type: a.fileType,
+            data: a.fileData
+          })),
+          lines: entry.lines.map(line => ({
+            ...line,
+            debit: Number(line.debit),
+            credit: Number(line.credit)
+          }))
+        }
+      })
+    } catch (err) {
+      console.error(err)
+      return []
+    }
+  })
+
+  ipcMain.handle('update-pos-transaction', async (e, entryData) => {
+    try {
+      const result = await LedgerService.updateJournalEntry(entryData.id, entryData)
+      if (result && (result as any).success === false) {
+        return result
+      }
+      return {
+        success: true,
+        referenceNo: (result as any)?.referenceNo || (result as any)?.reference_no || entryData.referenceNo,
+        entryId: (result as any)?.entryId || (result as any)?.id || entryData.id
+      }
+    } catch (err: any) {
+      return { success: false, error: err?.message || String(err) }
+    }
+  })
+
+  ipcMain.handle('verify-manager-pin', async (e, pin: string) => {
+    try {
+      return await LedgerService.verifyManagerPin(pin)
+    } catch (err) {
+      return { success: false, error: String(err) }
+    }
+  })
+
+  ipcMain.handle('get-all-recent-transactions', async () => {
+    try {
+      // Returns all POS transactions (or at least a large recent chunk for the client to filter)
+      const entries = await prisma.journalEntry.findMany({
+        where: {
+          NOT: [
+            { reference_no: { startsWith: 'JV' } },
+            { reference_no: { startsWith: 'ADJ' } },
+            { reference_no: { startsWith: 'PJ' } },
+            { reference_no: { startsWith: 'PY' } }
+          ]
+        },
+        orderBy: [
+          { date: 'desc' },
+          { created_at: 'desc' }
+        ],
+        take: 2000,
+        include: {
+          payee: true,
+          lines: { include: { account: { include: { account_type: true } } } },
+          attachments: true
+        }
+      })
+
+      // Exclude manual journal entries
+      const posEntries = entries.filter((e) => {
+        const ref = (e.reference_no || '').trim().toUpperCase()
+        return !ref.startsWith('JV') && !ref.startsWith('ADJ') && !ref.startsWith('PJ') && !ref.startsWith('PY')
+      })
+
+      // Format exactly like AnalyticsService.getRecentTransactions
+      return posEntries.map((e) => {
+        const arLine = e.lines.find((l) => l.account.code === '1200')
+        const cashLine = e.lines.find((l) => l.account.code === '1020')
+        const gcashLine = e.lines.find((l) => l.account.code === '1010')
+
+        let method = ''
+        if (cashLine && !gcashLine) method = 'CASH'
+        else if (!cashLine && gcashLine) method = 'GCASH'
+        else if (cashLine && gcashLine) method = 'SPLIT'
+        else method = 'CHARGE'
+
+        let clientType = 'WALKIN'
+        let examType = 'STANDARD'
+        
+        const metaMatch = e.description.match(/\[META:([^:]+):([^\]]+)\]/)
+        if (metaMatch) {
+          clientType = metaMatch[1]
+          examType = metaMatch[2]
+        }
+
+        let parsedItems: any[] | null = null
+        const itemsMatch = e.description.match(/\[ITEMS:([\s\S]*?)\]/)
+        if (itemsMatch) {
+          try {
+            parsedItems = JSON.parse(itemsMatch[1])
+          } catch {
+            try {
+              parsedItems = JSON.parse(decodeURIComponent(itemsMatch[1]))
+            } catch {}
+          }
+        }
+
+        let cleanDescription = cleanDescHelper(e.description)
+
+        let remarks = ''
+        const remarksMatch = cleanDescription.match(/\nRemarks:\s*([\s\S]*?)(?=\nDiagnostic Test|$)/)
+        if (remarksMatch) {
+          remarks = remarksMatch[1].trim()
+          cleanDescription = cleanDescription.replace(/\nRemarks:\s*[\s\S]*?(?=\nDiagnostic Test|$)/, '').trim()
+        }
+
+        let patientName = e.payee?.name || 'Walk-in'
+        const nameMatch = cleanDescription.match(/Patient:\s*(.*?)(?=\s*(?:\| A\/R:|\| Pt\. Paid:|\n|$))/)
+        if (nameMatch) {
+          patientName = nameMatch[1].trim()
+        }
+
+        // For legacy diagnostic tests parsing
+        const diagMatch = cleanDescription.match(/Diagnostic Test\s*\((.*?)(?:\s*-\s*[^)]*)?\)/)
+        const parsedLegacyTests: string[] = []
+        if (diagMatch && diagMatch[1]) {
+          diagMatch[1].split(',').map((s: string) => s.trim()).filter(Boolean).forEach(t => parsedLegacyTests.push(t))
+        }
+
+        let legacyTestIdx = 0
+        const mappedRawLines = e.lines.map(l => {
+          let lineDesc = ''
+          if (l.account.code === '4020' && legacyTestIdx < parsedLegacyTests.length) {
+            lineDesc = parsedLegacyTests[legacyTestIdx++]
+          }
+          return {
+            id: l.id,
+            accountId: l.account_id,
+            accountCode: l.account.code,
+            description: lineDesc,
+            debit: Number(l.debit),
+            credit: Number(l.credit)
+          }
+        })
+
+        return {
+          id: e.id,
+          date: e.date,
+          createdAt: e.created_at,
+          referenceNo: e.reference_no,
+          description: cleanDescription,
+          rawDescription: e.description,
+          items: parsedItems,
+          remarks: remarks,
+          attachments: (e.attachments || []).map((a) => ({
+            id: a.id,
+            name: a.fileName,
+            type: a.fileType,
+            data: a.fileData
+          })),
+          clientType,
+          examType,
+          amount: Number(
+            e.lines.filter((l) => Number(l.credit) > 0).reduce((sum, l) => sum + Number(l.credit), 0)
+          ),
+          totalAmount: Number(
+            e.lines.filter((l) => Number(l.credit) > 0).reduce((sum, l) => sum + Number(l.credit), 0)
+          ),
+          method: method,
+          patientName: patientName,
+          billedEntity: e.payee?.type === 'HMO' || e.payee?.type === 'CORPORATE' ? e.payee.name : '',
+          billedEntityType: e.payee?.type,
+          payeeId: e.payee_id,
+          vatType: e.vat_type,
+          rawLines: mappedRawLines
+        }
+      })
+    } catch (err) {
+      console.error(err)
+      return { success: false, error: String(err) }
     }
   })
 
