@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx'
 import { PayrollDirectoryTab } from './payroll/PayrollDirectoryTab'
 import { PayrollHistoryTab } from './payroll/PayrollHistoryTab'
 import { PayrollGridTab } from './payroll/PayrollGridTab'
+import { PayrollSettingsTab } from './payroll/PayrollSettingsTab'
 
 export function PayrollView({ userId }: { userId: string }) {
   const [view, setView] = useState<'GRID' | 'SETTINGS' | 'IMPORT' | 'HISTORY' | 'DIRECTORY'>('GRID')
@@ -600,6 +601,9 @@ export function PayrollView({ userId }: { userId: string }) {
             </div>
           </div>
         )}
+
+         {/* SETTINGS TAB */}
+        {view === 'SETTINGS' && <PayrollSettingsTab />}
 
          {/* HISTORY TAB */}
         {view === 'HISTORY' && <PayrollHistoryTab payrollHistory={payrollHistory} />}
