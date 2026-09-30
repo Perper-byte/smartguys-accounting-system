@@ -5,7 +5,7 @@
 
 ## Must-Haves (from SPEC)
 - [x] Configurable DOLE rate multipliers in database settings
-- [ ] Gross-to-Net payroll service with statutory contributions & tax computation
+- [x] Gross-to-Net payroll service with statutory contributions & tax computation
 - [ ] Interactive multi-tab Payroll Overhaul UI grid matching clinic sheets
 - [ ] PDF payslip generator & auto-posted GL journal entries
 
@@ -17,7 +17,7 @@
 **Requirements**: REQ-01, REQ-03
 
 ### Phase 2: Gross-to-Net Payroll Computation Service
-**Status**: ⬜ Not Started
+**Status**: ✅ Complete
 **Objective**: Build main process service for calculating attendance demerits, premium rate breakdowns, SSS, PhilHealth, Pag-IBIG, BIR tax, loans, and net pay.
 **Requirements**: REQ-02, REQ-04, REQ-05
 
@@ -30,4 +30,5 @@
 **Status**: ⬜ Not Started
 **Objective**: Implement PDF payslip export for employees and automated GL journal entry posting upon payroll run approval.
 **Requirements**: REQ-07, REQ-08
+
 
