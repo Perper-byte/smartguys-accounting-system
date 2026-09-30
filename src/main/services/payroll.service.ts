@@ -189,23 +189,53 @@ export const PayrollService = {
     try {
       return await prisma.$transaction(async (tx) => {
         let totalGross = 0
-        let totalDeductionsAndTax = 0
+        let totalSSS = 0
+        let totalPhilhealth = 0
+        let totalPagibig = 0
+        let totalTax = 0
+        let totalOtherDeductions = 0
         let totalNet = 0
 
-        data.employees.forEach((emp: any) => {
-          totalGross += Number(emp.gross)
-          totalDeductionsAndTax += Number(emp.deductions) + Number(emp.tax)
-          totalNet += Number(emp.net)
-        })
+        for (const emp of data.employees) {
+          totalGross += Number(emp.gross_pay || 0)
+          totalSSS += Number(emp.sss || 0)
+          totalPhilhealth += Number(emp.philhealth || 0)
+          totalPagibig += Number(emp.pagibig || 0)
+          totalTax += Number(emp.tax_withheld || 0)
+          totalOtherDeductions += Number(emp.cash_advance || 0) + Number(emp.other_deductions || 0) + Number(emp.license_fee || 0)
+          totalNet += Number(emp.net_pay || 0)
+
+          if (emp.processedLoans) {
+            for (const pl of emp.processedLoans) {
+              const loan = await tx.employeeLoan.findUnique({ where: { id: pl.id } })
+              if (loan) {
+                const newBalance = Number(loan.balance) - Number(pl.deduction)
+                await tx.employeeLoan.update({
+                  where: { id: pl.id },
+                  data: {
+                    balance: newBalance,
+                    is_active: newBalance > 0
+                  }
+                })
+              }
+            }
+          }
+        }
 
         const lines: any[] = []
 
         // 1. DEBIT: Total Salaries and Wages Expense (5100)
         lines.push({ account_id: '5100', debit: totalGross, credit: 0 })
 
-        // 2. CREDIT: Total Deductions & Withholding Taxes
-        if (totalDeductionsAndTax > 0) {
-          lines.push({ account_id: '2040', debit: 0, credit: totalDeductionsAndTax })
+        // 2. CREDIT: Statutory Payables and other deductions (2040)
+        const totalStatutoryAndOther = totalSSS + totalPhilhealth + totalPagibig + totalOtherDeductions
+        if (totalStatutoryAndOther > 0) {
+          lines.push({ account_id: '2040', debit: 0, credit: totalStatutoryAndOther })
+        }
+
+        // CREDIT: Withholding Tax Payable (2050)
+        if (totalTax > 0) {
+          lines.push({ account_id: '2050', debit: 0, credit: totalTax })
         }
 
         // 3. CREDIT: Cash in Bank (1010)
@@ -230,20 +260,20 @@ export const PayrollService = {
           journal_entry_id: entry.id,
           date: new Date(data.date),
           reference_no: `${data.referenceNo}-${emp.id}`,
-          base_pay: emp.basePay || 0,
+          base_pay: emp.base_pay || 0,
           overtime: emp.overtime || 0,
-          night_diff: emp.nightDiff || 0,
-          other_earnings: emp.otherEarnings || 0,
-          gross_pay: emp.gross || 0,
+          night_diff: emp.night_diff || 0,
+          other_earnings: emp.other_earnings || 0,
+          gross_pay: emp.gross_pay || 0,
           sss: emp.sss || 0,
           philhealth: emp.philhealth || 0,
           pagibig: emp.pagibig || 0,
-          cash_advance: emp.cashAdvance || 0,
-          license_fee: emp.licenseFee || 0,
-          other_deductions: emp.otherDeductions || 0,
-          total_deductions: emp.deductions || 0,
-          tax_withheld: emp.tax || 0,
-          net_pay: emp.net || 0
+          cash_advance: emp.cash_advance || 0,
+          license_fee: emp.license_fee || 0,
+          other_deductions: emp.other_deductions || 0,
+          total_deductions: emp.total_deductions || 0,
+          tax_withheld: emp.tax_withheld || 0,
+          net_pay: emp.net_pay || 0
         }))
 
         await tx.payslip.createMany({ data: payslipsData })
