@@ -98,3 +98,138 @@ export function calculateStatutoryDeductions(monthlySalary: number, rateTables: 
 
   return { sss, philhealth, pagibig };
 }
+
+export interface AttendanceDemerits {
+  late_minutes: number;
+  undertime_hours: number;
+  undertime_minutes: number;
+  absence_days: number;
+}
+
+export interface DemeritBreakdown {
+  late_deduction: number;
+  undertime_deduction: number;
+  absence_deduction: number;
+  total_demerits: number;
+}
+
+export interface SSSContributionResult {
+  regular_ee: number;
+  regular_er: number;
+  wisp_ee: number;
+  wisp_er: number;
+  ec: number;
+  total_ee: number;
+  total_er: number;
+}
+
+export interface PhilHealthResult {
+  totalPremium: number;
+  eeShare: number;
+  erShare: number;
+}
+
+export interface PagIbigResult {
+  totalPremium: number;
+  eeShare: number;
+  erShare: number;
+}
+
+export interface StatutoryResult {
+  sss: SSSContributionResult;
+  philhealth: PhilHealthResult;
+  pagibig: PagIbigResult;
+}
+
+export function calculateAttendanceDemerits(hourlyRate: number, demerits: AttendanceDemerits): DemeritBreakdown {
+  const minuteRate = hourlyRate / 60;
+  const dailyRate = hourlyRate * 8;
+
+  const late_deduction = (demerits.late_minutes || 0) * minuteRate;
+  const undertime_deduction = ((demerits.undertime_hours || 0) * hourlyRate) + ((demerits.undertime_minutes || 0) * minuteRate);
+  const absence_deduction = (demerits.absence_days || 0) * dailyRate;
+
+  const total_demerits = late_deduction + undertime_deduction + absence_deduction;
+
+  return {
+    late_deduction,
+    undertime_deduction,
+    absence_deduction,
+    total_demerits
+  };
+}
+
+export function getSSSMonthlySalaryCredit(compensation: number): number {
+  if (compensation < 5250) return 5000;
+  if (compensation >= 34750) return 35000;
+  return Math.min(35000, Math.floor((compensation - 5250) / 500) * 500 + 5500);
+}
+
+export function calculateSSSContribution(monthlySalary: number): SSSContributionResult {
+  const msc = getSSSMonthlySalaryCredit(monthlySalary);
+  
+  let regular_msc = msc;
+  let wisp_msc = 0;
+  
+  if (msc > 20000) {
+    regular_msc = 20000;
+    wisp_msc = Math.min(15000, Math.max(0, msc - 20000));
+  }
+  
+  const regular_ee = regular_msc * 0.05;
+  const regular_er = regular_msc * 0.10;
+  
+  const wisp_ee = wisp_msc * 0.05;
+  const wisp_er = wisp_msc * 0.10;
+  
+  const ec = msc >= 20000 ? 30 : 10;
+  
+  const total_ee = regular_ee + wisp_ee;
+  const total_er = regular_er + wisp_er + ec;
+  
+  return {
+    regular_ee,
+    regular_er,
+    wisp_ee,
+    wisp_er,
+    ec,
+    total_ee,
+    total_er
+  };
+}
+
+export function calculatePhilHealthContribution(monthlySalary: number): PhilHealthResult {
+  const clamped = Math.min(100000, Math.max(10000, monthlySalary));
+  const totalPremium = Math.round(clamped * 0.05 * 100) / 100;
+  const eeShare = Math.round((totalPremium / 2) * 100) / 100;
+  const erShare = Math.round((totalPremium - eeShare) * 100) / 100;
+  
+  return {
+    totalPremium,
+    eeShare,
+    erShare
+  };
+}
+
+export function calculatePagIbigContribution(monthlySalary: number): PagIbigResult {
+  const mfs = Math.min(10000, monthlySalary);
+  let eeShare = 0;
+  let erShare = 0;
+  
+  if (monthlySalary <= 1500) {
+    eeShare = mfs * 0.01;
+    erShare = mfs * 0.02;
+  } else {
+    eeShare = mfs * 0.02;
+    erShare = mfs * 0.02;
+  }
+  
+  eeShare = Math.min(200, eeShare);
+  erShare = Math.min(200, erShare);
+  
+  return {
+    totalPremium: eeShare + erShare,
+    eeShare,
+    erShare
+  };
+}
