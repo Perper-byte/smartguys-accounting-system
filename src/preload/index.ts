@@ -103,6 +103,8 @@ export const api = {
   exportTrialBalanceExcel: (year?: number, month?: number) => ipcRenderer.invoke('export:trialBalanceExcel', year, month),
   exportPDF: (filename: string) => ipcRenderer.invoke('export:printToPDF', filename),
   exportAgedReceivablesToExcel: (data, totals) => ipcRenderer.invoke('export-aged-receivables', data, totals),
+  exportHtmlToPDF: (html: string, filename: string) =>
+    ipcRenderer.invoke('export:htmlToPDF', html, filename),
 
   // Employees & Payroll
   getEmployees: () => ipcRenderer.invoke('get-employees'),

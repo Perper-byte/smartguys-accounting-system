@@ -28,6 +28,79 @@ const atcForTx = (tx: any) => {
 
 // Effective withholding rate of a past payout, e.g. 5 or 0
 const txRate = (tx: any) => (tx.gross > 0 ? Math.round((tx.tax / tx.gross) * 100) : 0)
+const escapeHtml = (s: string) =>
+  String(s ?? '').replace(
+    /[&<>"']/g,
+    (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string
+  )
+
+// Standalone HTML for the certificate (rendered by the hidden PDF window)
+const build2307Html = (cert: any) => {
+  const money = (n: number) =>
+    `₱ ${Number(n || 0).toLocaleString('en-US', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    })}`
+  const rate = cert.gross > 0 ? Math.round((cert.tax / cert.gross) * 100) : 0
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>BIR Form 2307</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #000; font-size: 13px; margin: 0; }
+  .box { border: 3px solid #000; padding: 16px; }
+  .head { text-align: center; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 12px; }
+  .head h1 { font-size: 18px; text-transform: uppercase; margin: 0 0 4px; }
+  .head p { font-size: 13px; font-weight: bold; margin: 0; }
+  .parties { display: flex; gap: 16px; border-bottom: 2px solid #000; padding-bottom: 12px; margin-bottom: 12px; }
+  .parties > div { flex: 1; }
+  .parties p { margin: 0 0 3px; }
+  .label { font-size: 10px; font-weight: bold; text-transform: uppercase; color: #555; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #000; padding: 6px 8px; text-align: left; }
+  th { background: #eee; }
+  .r { text-align: right; }
+  .c { text-align: center; }
+  .mono { font-family: 'Courier New', monospace; }
+</style></head>
+<body>
+  <div class="box">
+    <div class="head">
+      <h1>Certificate of Creditable Tax Withheld at Source</h1>
+      <p>(BIR Form No. 2307 Equivalent)</p>
+    </div>
+    <div class="parties">
+      <div>
+        <p class="label">Payee (Landlord / Lessor):</p>
+        <p><strong>${escapeHtml(cert.payee?.name || '')}</strong></p>
+        <p>TIN: ${escapeHtml(cert.payee?.tin || 'Not Provided')}</p>
+      </div>
+      <div>
+        <p class="label">Payor (Tenant):</p>
+        <p><strong>SMARTGUYS CLINIC INC.</strong></p>
+        <p>Date: ${escapeHtml(cert.date.toLocaleDateString())}</p>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Income Payment</th>
+          <th class="c">ATC</th>
+          <th class="r">Gross Rent</th>
+          <th class="r">Tax Withheld (${rate}%)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>${escapeHtml(cert.atc.desc)}</td>
+          <td class="c"><strong>${escapeHtml(cert.atc.code)}</strong></td>
+          <td class="r mono">${money(cert.gross)}</td>
+          <td class="r mono"><strong>${money(cert.tax)}</strong></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</body></html>`
+}
 
 export function EWTPayoutView({ userId }: { userId: string }) {
   const [historyData, setHistoryData] = useState<any[]>([])
@@ -74,6 +147,10 @@ export function EWTPayoutView({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
   const [generated2307, setGenerated2307] = useState<any | null>(null)
+  const [exporting, setExporting] = useState(false)
+  const [exportMsg, setExportMsg] = useState<{ type: 'success' | 'error'; msg: string } | null>(
+    null
+  )
   const [showConfirmModal, setShowConfirmModal] = useState(false)
   const [showAllHistoryModal, setShowAllHistoryModal] = useState(false)
   const [historySearchQuery, setHistorySearchQuery] = useState('')
@@ -307,6 +384,37 @@ export function EWTPayoutView({ userId }: { userId: string }) {
   const filteredPayees = payees.filter((p) =>
     p.name.toLowerCase().includes(payeeSearchQuery.toLowerCase())
   )
+
+  const handleExportPDF = async () => {
+    if (!generated2307) return
+    const api = (window as any).api || (window as any).electronAPI
+    if (!api?.exportHtmlToPDF) {
+      setExportMsg({ type: 'error', msg: 'Export is unavailable. Restart the app.' })
+      return
+    }
+    setExporting(true)
+    setExportMsg(null)
+    try {
+      const safeName = (generated2307.payee?.name || 'Landlord')
+        .replace(/[^\w\- ]+/g, '')
+        .trim()
+        .replace(/\s+/g, '_')
+      const stamp = generated2307.date.toLocaleDateString('en-CA') // YYYY-MM-DD
+      const res = await api.exportHtmlToPDF(
+        build2307Html(generated2307),
+        `BIR-2307_${safeName}_${stamp}.pdf`
+      )
+      if (res?.success) {
+        setExportMsg({ type: 'success', msg: 'PDF saved.' })
+      } else if (res?.error && res.error !== 'Export cancelled') {
+        setExportMsg({ type: 'error', msg: res.error })
+      }
+    } catch (error: any) {
+      setExportMsg({ type: 'error', msg: error.message || 'Export failed.' })
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div className="w-full h-full px-8 py-6 flex flex-col font-sans text-gray-800 animate-in fade-in duration-300">
@@ -922,25 +1030,40 @@ export function EWTPayoutView({ userId }: { userId: string }) {
         </div>
       )}
 
-      {/* PRINT MODAL (BIR 2307) */}
+      {/* 2307 CERTIFICATE MODAL */}
       {generated2307 && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/80 backdrop-blur-sm print:bg-white print:block print:relative print:inset-auto print:z-0">
-          <div className="bg-white text-black p-8 rounded-lg shadow-2xl w-[800px] max-h-[90vh] overflow-y-auto print:w-full print:h-full print:max-h-full print:shadow-none print:p-0">
-            <div className="flex justify-end space-x-4 mb-4 print:hidden border-b pb-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-gray-900/80 backdrop-blur-sm">
+          <div className="bg-white text-black p-8 rounded-lg shadow-2xl w-[800px] max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-end items-center space-x-4 mb-4 border-b pb-4">
+              {exportMsg && (
+                <span
+                  className={`text-xs font-bold mr-auto ${
+                    exportMsg.type === 'success' ? 'text-[#1B9387]' : 'text-red-600'
+                  }`}
+                >
+                  {exportMsg.type === 'success' ? '✅ ' : '⚠️ '}
+                  {exportMsg.msg}
+                </span>
+              )}
               <button
-                onClick={() => setGenerated2307(null)}
+                onClick={() => {
+                  setGenerated2307(null)
+                  setExportMsg(null)
+                }}
                 className="px-4 py-2 text-sm text-gray-500 hover:text-black font-bold transition cursor-pointer"
               >
                 Close
               </button>
               <button
-                onClick={() => window.print()}
-                className="px-4 py-2 bg-[#1B9387] hover:bg-[#28958B] text-white rounded text-sm font-bold transition shadow cursor-pointer"
+                onClick={handleExportPDF}
+                disabled={exporting}
+                className="px-4 py-2 bg-[#1B9387] hover:bg-[#28958B] disabled:bg-gray-300 text-white rounded text-sm font-bold transition shadow cursor-pointer"
               >
-                🖨️ Print Form 2307
+                {exporting ? 'Exporting...' : '📄 Export PDF'}
               </button>
             </div>
             <div className="border-4 border-black p-4">
+              {/* certificate body stays exactly as it is now */}
               <div className="text-center border-b-2 border-black pb-4 mb-4">
                 <h1 className="font-bold text-xl uppercase">
                   Certificate of Creditable Tax Withheld at Source

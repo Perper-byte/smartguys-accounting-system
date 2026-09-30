@@ -30,7 +30,6 @@ function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    autoHideMenuBar: true,
     title: 'SmartGuys Clinic',
     icon: logoImage,
     webPreferences: {
@@ -46,6 +45,7 @@ function createWindow() {
   const devServerUrl = process.env['ELECTRON_RENDERER_URL']
   if (devServerUrl) mainWindow.loadURL(devServerUrl)
   else mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+  mainWindow.webContents.openDevTools({ mode: 'detach' })
 
   mainWindow.once('ready-to-show', () => mainWindow.show())
 }
@@ -852,6 +852,40 @@ app.whenReady().then(() => {
       return { success: false, error: error.message }
     }
   })
+
+  ipcMain.handle('export:htmlToPDF', async (event, html: string, filename: string) => {
+    const parent = BrowserWindow.fromWebContents(event.sender)
+    const saveOptions = {
+      title: 'Save PDF',
+      defaultPath: filename,
+      filters: [{ name: 'PDF Documents', extensions: ['pdf'] }]
+    }
+    const { filePath } = parent
+      ? await dialog.showSaveDialog(parent, saveOptions)
+      : await dialog.showSaveDialog(saveOptions)
+    if (!filePath) return { success: false, error: 'Export cancelled' }
+
+    const win = new BrowserWindow({
+      show: false,
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false }
+    })
+    try {
+      await win.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html))
+      const data = await win.webContents.printToPDF({
+        pageSize: 'A4',
+        printBackground: true,
+        margins: { top: 0.4, bottom: 0.4, left: 0.4, right: 0.4 }
+      })
+      fs.writeFileSync(filePath, data)
+      await AuditService.logAction('SYSTEM', 'REPORT GENERATED', `Exported PDF: ${path.basename(filePath)}`)
+      return { success: true, filePath }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    } finally {
+      win.destroy()
+    }
+  })
+
   ipcMain.handle('export-aged-receivables', async (_, data, totals) => {
     return await ExportService.exportAgedReceivablesToExcel(data, totals);
   });
