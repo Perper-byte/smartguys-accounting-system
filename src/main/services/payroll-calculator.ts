@@ -233,3 +233,21 @@ export function calculatePagIbigContribution(monthlySalary: number): PagIbigResu
     erShare
   };
 }
+
+export function calculateWithholdingTax(taxableIncome: number, period: 'SEMI_MONTHLY' | 'MONTHLY'): number {
+  if (period === 'SEMI_MONTHLY') {
+    if (taxableIncome <= 10417) return 0;
+    if (taxableIncome <= 16666) return 0 + ((taxableIncome - 10417) * 0.15);
+    if (taxableIncome <= 33332) return 937.50 + ((taxableIncome - 16667) * 0.20);
+    if (taxableIncome <= 83332) return 4270.70 + ((taxableIncome - 33333) * 0.25);
+    if (taxableIncome <= 333332) return 16770.70 + ((taxableIncome - 83333) * 0.30);
+    return 91770.70 + ((taxableIncome - 333333) * 0.35);
+  } else {
+    if (taxableIncome <= 20833) return 0;
+    if (taxableIncome <= 33332) return 0 + ((taxableIncome - 20833) * 0.15);
+    if (taxableIncome <= 66666) return 1875.00 + ((taxableIncome - 33333) * 0.20);
+    if (taxableIncome <= 166666) return 8541.80 + ((taxableIncome - 66667) * 0.25);
+    if (taxableIncome <= 666666) return 33541.80 + ((taxableIncome - 166667) * 0.30);
+    return 183541.80 + ((taxableIncome - 666667) * 0.35);
+  }
+}
