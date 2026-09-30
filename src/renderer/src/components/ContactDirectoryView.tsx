@@ -11,6 +11,9 @@ export function ContactDirectoryView({
   const [contacts, setContacts] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
+  // State for populating the HMO dropdowns in the Edit modal
+  const [hmoList, setHmoList] = useState<any[]>([])
+
   // FULL EDIT CONTACT STATE
   const [editingContact, setEditingContact] = useState<any>(null)
   const [editForm, setEditForm] = useState({
@@ -27,7 +30,7 @@ export function ContactDirectoryView({
 
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<
-    'ALL' | 'PATIENT' | 'DOCTOR' | 'HMO_CORP' | 'SUPPLIER'
+    'ALL' | 'PATIENT' | 'DOCTOR' | 'HMO_CORP' | 'SUPPLIER' | 'OTHER' | 'ARCHIVED'
   >('ALL')
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null)
   const [actionMenuId, setActionMenuId] = useState<string | null>(null)
@@ -47,7 +50,8 @@ export function ContactDirectoryView({
 
       const enrichedData = (data || []).map((c: any) => ({
         ...c,
-        status: c.status || 'ACTIVE'
+        // Detect archived status via database is_active flag
+        status: c.is_active === false ? 'ARCHIVED' : c.status || 'ACTIVE'
       }))
 
       setContacts(enrichedData)
@@ -58,24 +62,44 @@ export function ContactDirectoryView({
     }
   }
 
+  const fetchHMOs = async () => {
+    try {
+      const api = (window as any).api || (window as any).electronAPI
+      if (api && api.getPayees) {
+        const data = await api.getPayees('HMO,CORPORATE')
+        setHmoList(data || [])
+      }
+    } catch (error) {
+      console.error('Failed to fetch HMO list', error)
+    }
+  }
+
   useEffect(() => {
     fetchContacts()
+    fetchHMOs()
   }, [])
 
   useEffect(() => {
     setCurrentPage(1)
   }, [searchQuery, filterType])
 
-  const counts = useMemo(
-    () => ({
-      ALL: contacts.length,
-      PATIENT: contacts.filter((c) => c.type === 'PATIENT').length,
-      DOCTOR: contacts.filter((c) => c.type === 'DOCTOR').length,
-      HMO_CORP: contacts.filter((c) => c.type === 'HMO' || c.type === 'CORPORATE').length,
-      SUPPLIER: contacts.filter((c) => c.type === 'SUPPLIER').length
-    }),
-    [contacts]
-  )
+  const counts = useMemo(() => {
+    // Separate active and archived for tab counts
+    const activeContacts = contacts.filter((c) => c.status !== 'ARCHIVED')
+    const archivedContacts = contacts.filter((c) => c.status === 'ARCHIVED')
+
+    return {
+      ALL: activeContacts.length,
+      PATIENT: activeContacts.filter((c) => c.type === 'PATIENT').length,
+      DOCTOR: activeContacts.filter((c) => c.type === 'DOCTOR').length,
+      HMO_CORP: activeContacts.filter((c) => c.type === 'HMO' || c.type === 'CORPORATE').length,
+      SUPPLIER: activeContacts.filter((c) => c.type === 'SUPPLIER').length,
+      OTHER: activeContacts.filter(
+        (c) => !['PATIENT', 'DOCTOR', 'HMO', 'CORPORATE', 'SUPPLIER'].includes(c.type)
+      ).length,
+      ARCHIVED: archivedContacts.length
+    }
+  }, [contacts])
 
   const filteredContacts = useMemo(() => {
     return contacts.filter((c) => {
@@ -84,11 +108,21 @@ export function ContactDirectoryView({
         (c.tin && c.tin.includes(searchQuery)) ||
         (c.hmo_affiliation && c.hmo_affiliation.toLowerCase().includes(searchQuery.toLowerCase()))
 
+      // Archive tab ONLY shows archived contacts.
+      // All other tabs explicitly hide archived contacts.
+      if (filterType === 'ARCHIVED') {
+        return c.status === 'ARCHIVED' && matchesSearch
+      }
+
+      if (c.status === 'ARCHIVED') return false
+
       const matchesType =
         filterType === 'ALL' ||
         (filterType === 'HMO_CORP'
           ? c.type === 'HMO' || c.type === 'CORPORATE'
-          : c.type === filterType)
+          : filterType === 'OTHER'
+            ? !['PATIENT', 'DOCTOR', 'HMO', 'CORPORATE', 'SUPPLIER'].includes(c.type)
+            : c.type === filterType)
 
       return matchesSearch && matchesType
     })
@@ -110,6 +144,12 @@ export function ContactDirectoryView({
       case 'HMO':
       case 'CORPORATE':
         return 'text-[#1B9387] bg-[#E9FAFA] border-[#B0DCDA]'
+      case 'LANDLORD':
+        return 'text-amber-600 bg-amber-50 border-amber-200'
+      case 'EMPLOYEE':
+        return 'text-indigo-600 bg-indigo-50 border-indigo-200'
+      case 'GOVERNMENT':
+        return 'text-cyan-600 bg-cyan-50 border-cyan-200'
       default:
         return 'text-gray-500 bg-gray-50 border-gray-200'
     }
@@ -158,7 +198,16 @@ export function ContactDirectoryView({
         const rows = XLSX.utils.sheet_to_json<any>(worksheet, { defval: '', raw: false })
         if (rows.length === 0) throw new Error('The selected file contains no contacts.')
 
-        const allowedTypes = ['PATIENT', 'DOCTOR', 'HMO', 'CORPORATE', 'SUPPLIER']
+        const allowedTypes = [
+          'PATIENT',
+          'DOCTOR',
+          'HMO',
+          'CORPORATE',
+          'SUPPLIER',
+          'LANDLORD',
+          'EMPLOYEE',
+          'GOVERNMENT'
+        ]
         const importedContacts: any[] = []
 
         for (let i = 0; i < rows.length; i++) {
@@ -179,7 +228,7 @@ export function ContactDirectoryView({
 
           if (!allowedTypes.includes(type)) {
             throw new Error(
-              `Row ${excelRow}: Invalid Type "${type}".\nAllowed values:\nPATIENT\nDOCTOR\nHMO\nCORPORATE\nSUPPLIER`
+              `Row ${excelRow}: Invalid Type "${type}".\nAllowed values:\nPATIENT\nDOCTOR\nHMO\nCORPORATE\nSUPPLIER\nLANDLORD\nEMPLOYEE\nGOVERNMENT`
             )
           }
 
@@ -298,7 +347,7 @@ export function ContactDirectoryView({
   const handleArchive = async (contact: any) => {
     setActionMenuId(null)
     const confirmed = window.confirm(
-      `Are you sure you want to archive ${contact.name}?\n\nThey will be hidden from dropdown menus, but their historical transactions will remain intact.`
+      `Are you sure you want to archive ${contact.name}?\n\nThey will be hidden from the active contacts list, but their historical transactions will remain intact.`
     )
 
     if (confirmed) {
@@ -341,7 +390,7 @@ export function ContactDirectoryView({
       name: contact.name || '',
       type: contact.type || 'PATIENT',
       email: contact.email || '',
-      phone: contact.phone || '',
+      phone: contact.phone_number || contact.phone || '',
       tin: contact.tin || '',
       address: contact.address || '',
       hmo: contact.hmo_affiliation || '',
@@ -359,7 +408,24 @@ export function ContactDirectoryView({
         return
       }
 
-      const result = await api.updatePayee(editingContact.id, editForm)
+      // Fix: Safely mapping to EXACT Database Schema Columns
+      // Prevents Prisma from crashing when date/string fields are cleared as empty strings ""
+      const safeUpdatePayload = {
+        name: editForm.name,
+        type: editForm.type,
+        tin: editForm.tin || null,
+        email: editForm.email || null,
+        phone_number: editForm.phone || null,
+        address: editForm.address || null,
+        hmo_affiliation: editForm.type === 'PATIENT' ? editForm.hmo || null : null,
+        hmo_card_no: editForm.type === 'PATIENT' ? editForm.hmoCardNo || null : null,
+        hmo_expiry_date:
+          editForm.type === 'PATIENT' && editForm.hmoExpiryDate
+            ? new Date(editForm.hmoExpiryDate).toISOString()
+            : null
+      }
+
+      const result = await api.updatePayee(editingContact.id, safeUpdatePayload)
       if (result.success) {
         fetchContacts()
         setEditingContact(null)
@@ -391,26 +457,35 @@ export function ContactDirectoryView({
         </p>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+      {/* FILTER CARDS (Adjusted for Archive Section) */}
+      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
         {[
           { label: 'All Contacts', type: 'ALL', count: counts.ALL },
           { label: 'Patients', type: 'PATIENT', count: counts.PATIENT },
           { label: 'Doctors', type: 'DOCTOR', count: counts.DOCTOR },
           { label: 'HMOs / Corp', type: 'HMO_CORP', count: counts.HMO_CORP },
-          { label: 'Suppliers', type: 'SUPPLIER', count: counts.SUPPLIER }
+          { label: 'Suppliers', type: 'SUPPLIER', count: counts.SUPPLIER },
+          { label: 'Others', type: 'OTHER', count: counts.OTHER },
+          { label: 'Archived', type: 'ARCHIVED', count: counts.ARCHIVED }
         ].map((card) => (
           <div
             key={card.type}
             onClick={() => setFilterType(card.type as any)}
-            className={`p-4 rounded-xl border cursor-pointer transition shadow-sm text-center ${
+            className={`p-4 rounded-xl border cursor-pointer transition shadow-sm text-center flex flex-col justify-center ${
               filterType === card.type
-                ? 'bg-[#1B9387] border-[#1B9387] text-white'
+                ? card.type === 'ARCHIVED'
+                  ? 'bg-gray-600 border-gray-600 text-white'
+                  : 'bg-[#1B9387] border-[#1B9387] text-white'
                 : 'bg-white border-[#B0DCDA] hover:bg-[#E9FAFA] text-gray-600'
             }`}
           >
             <p
               className={`text-[10px] font-extrabold uppercase tracking-wider mb-1 ${
-                filterType === card.type ? 'text-[#E9FAFA]' : 'text-gray-500'
+                filterType === card.type
+                  ? card.type === 'ARCHIVED'
+                    ? 'text-gray-200'
+                    : 'text-[#E9FAFA]'
+                  : 'text-gray-500'
               }`}
             >
               {card.label}
@@ -457,7 +532,7 @@ export function ContactDirectoryView({
             </button>
 
             {isNewContactMenuOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white border border-[#B0DCDA] rounded-lg shadow-xl overflow-hidden py-1 z-50">
+              <div className="absolute right-0 mt-2 w-48 bg-white border border-[#B0DCDA] rounded-lg shadow-xl overflow-y-auto max-h-[300px] py-1 z-50">
                 <div className="px-3 py-2 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">
                   What Type?
                 </div>
@@ -491,6 +566,25 @@ export function ContactDirectoryView({
                 >
                   📦 Supplier
                 </button>
+                <div className="border-t border-gray-100 my-1"></div>
+                <button
+                  onClick={() => openNewContactModal('LANDLORD')}
+                  className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
+                >
+                  🔑 Landlord
+                </button>
+                <button
+                  onClick={() => openNewContactModal('EMPLOYEE')}
+                  className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
+                >
+                  💼 Employee
+                </button>
+                <button
+                  onClick={() => openNewContactModal('GOVERNMENT')}
+                  className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
+                >
+                  🏛️ Government
+                </button>
               </div>
             )}
           </div>
@@ -498,11 +592,9 @@ export function ContactDirectoryView({
       </div>
 
       {/* TABLE */}
-      {/* 🔥 ADDED: flex-1, flex-col, overflow-hidden, and min-h-0 so it stretches to the bottom */}
       <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-sm mb-4 flex-1 flex flex-col overflow-hidden min-h-0">
         <div className="flex-1 overflow-auto relative">
           <table className="w-full text-left text-sm">
-            {/* 🔥 ADDED: sticky top-0 and z-10 so headers stay visible when scrolling */}
             <thead className="bg-[#FBF8F8] border-b border-[#B0DCDA] sticky top-0 z-10 shadow-sm">
               <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold">
                 <th className="p-4 pl-6">Contact</th>
@@ -571,8 +663,8 @@ export function ContactDirectoryView({
                         <td className="p-4 text-xs text-gray-500 font-medium">
                           {c.email ? (
                             c.email
-                          ) : c.phone ? (
-                            c.phone
+                          ) : c.phone || c.phone_number ? (
+                            c.phone || c.phone_number
                           ) : (
                             <span className="italic text-gray-400">Missing info</span>
                           )}
@@ -698,7 +790,7 @@ export function ContactDirectoryView({
                                     <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
                                       Phone:
                                     </span>{' '}
-                                    {c.phone || (
+                                    {c.phone || c.phone_number || (
                                       <span className="italic text-gray-400 font-normal">
                                         Missing info
                                       </span>
@@ -867,7 +959,7 @@ export function ContactDirectoryView({
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto space-y-4">
+            <div className="p-6 overflow-y-auto space-y-4 custom-scrollbar">
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1">
@@ -885,13 +977,16 @@ export function ContactDirectoryView({
                   <select
                     value={editForm.type}
                     onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] bg-white"
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] bg-white cursor-pointer"
                   >
                     <option value="PATIENT">Patient</option>
                     <option value="DOCTOR">Doctor</option>
                     <option value="HMO">HMO</option>
                     <option value="CORPORATE">Corporate</option>
                     <option value="SUPPLIER">Supplier</option>
+                    <option value="LANDLORD">Landlord</option>
+                    <option value="EMPLOYEE">Employee</option>
+                    <option value="GOVERNMENT">Government</option>
                   </select>
                 </div>
               </div>
@@ -951,18 +1046,31 @@ export function ContactDirectoryView({
                     HMO / Insurance Details
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {/* 🔥 MOVED HMO TO A DROPDOWN AS REQUESTED */}
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-1">
                         Provider Name
                       </label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Maxicare"
+                      <select
                         value={editForm.hmo}
-                        onChange={(e) => setEditForm({ ...editForm, hmo: e.target.value })}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-[#1B9387]"
-                      />
+                        onChange={(e) => {
+                          setEditForm({ ...editForm, hmo: e.target.value })
+                          if (!e.target.value) {
+                            // Clear related fields if unselected
+                            setEditForm((prev) => ({ ...prev, hmoCardNo: '', hmoExpiryDate: '' }))
+                          }
+                        }}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] bg-white cursor-pointer"
+                      >
+                        <option value="">-- No HMO / Private Pay --</option>
+                        {hmoList.map((hmo) => (
+                          <option key={hmo.id} value={hmo.name}>
+                            {hmo.name}
+                          </option>
+                        ))}
+                      </select>
                     </div>
+
                     <div>
                       <label className="block text-xs font-bold text-gray-700 mb-1">
                         Card / Policy Number
@@ -971,7 +1079,8 @@ export function ContactDirectoryView({
                         type="text"
                         value={editForm.hmoCardNo}
                         onChange={(e) => setEditForm({ ...editForm, hmoCardNo: e.target.value })}
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-[#1B9387]"
+                        disabled={!editForm.hmo}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-[#1B9387] disabled:bg-gray-50"
                       />
                     </div>
                     <div>
@@ -984,7 +1093,8 @@ export function ContactDirectoryView({
                         onChange={(e) =>
                           setEditForm({ ...editForm, hmoExpiryDate: e.target.value })
                         }
-                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-[#1B9387]"
+                        disabled={!editForm.hmo}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-[#1B9387] cursor-pointer disabled:bg-gray-50"
                       />
                     </div>
                   </div>

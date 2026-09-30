@@ -132,7 +132,7 @@ export const DashboardView: React.FC = () => {
         <div className="absolute -left-6 -top-6 w-24 h-24 bg-[#1B9387]/10 rounded-full blur-2xl"></div>
         <div className="absolute -right-6 -bottom-6 w-24 h-24 bg-blue-500/10 rounded-full blur-2xl"></div>
         <h3 className="text-[11px] font-black text-[#1B9387] uppercase tracking-widest mb-2 flex items-center justify-center relative z-10">
-          <span className="mr-2 text-base">✨</span> AI Financial Insight
+          <span className="mr-2 text-base">✨</span> Financial Insight
         </h3>
         <p className="text-gray-700 text-sm leading-relaxed font-bold max-w-4xl mx-auto relative z-10">
           {data.narrative || 'No data available to generate insights for this period.'}

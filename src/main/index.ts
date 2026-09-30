@@ -25,6 +25,7 @@ import { AuditService } from './services/audit.service'
 import { PayrollService } from './services/payroll.service'
 import { InventoryService } from './services/inventory.service'
 import logoImage from "../renderer/src/assets/smartguys_logo.jpg"
+import { updatePayee } from './services/ledger.service' // Adjust path if needed
 
 function createWindow() {
   const mainWindow = new BrowserWindow({

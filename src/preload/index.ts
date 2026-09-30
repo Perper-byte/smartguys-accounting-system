@@ -59,6 +59,7 @@ export const api = {
   archivePayee: (payeeId: string) => ipcRenderer.invoke('archive-payee', payeeId),
   getPayeeBalance: (payeeId: string) => ipcRenderer.invoke('get-payee-balance', payeeId),
   updatePayeeTin: (payeeId: string, tin: string) => ipcRenderer.invoke('update-payee-tin', payeeId, tin),
+  updatePayee: (id: string, data: any) => ipcRenderer.invoke('update-payee', id, data),
   getContactsWithBalances: () => ipcRenderer.invoke('get-contacts-with-balances'),
 
   // Services & Procedures (POS Items)

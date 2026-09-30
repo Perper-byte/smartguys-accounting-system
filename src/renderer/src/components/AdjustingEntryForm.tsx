@@ -560,7 +560,7 @@ export const AdjustingEntryForm: React.FC<{
 
   return (
     <div className="w-full min-h-[calc(100vh-64px)] p-6 lg:p-8 bg-[#f9fafb] animate-in fade-in duration-300">
-      <div className="max-w-[1400px] mx-auto flex flex-col xl:flex-row items-start gap-6">
+      <div className="w-full flex flex-col xl:flex-row items-start gap-6">
         {/* ============================ LEFT: FORM ============================ */}
         <div className="flex-1 min-w-0 w-full bg-white border border-[#B0DCDA] rounded-xl shadow-sm">
           <div className="flex justify-between items-center px-6 lg:px-8 py-5 border-b border-[#B0DCDA]">
@@ -1088,7 +1088,7 @@ export const AdjustingEntryForm: React.FC<{
         </div>
 
         {/* ========================= RIGHT: STICKY PANEL ======================== */}
-        <aside className="w-full xl:w-96 xl:sticky xl:top-6 flex flex-col gap-4">
+        <aside className="w-full xl:w-96 2xl:w-[26rem] xl:sticky xl:top-6 flex flex-col gap-4">
           {correctsEntry && (
             <section className="bg-white border border-[#B0DCDA] rounded-xl shadow-sm p-5">
               <div className="flex justify-between items-baseline mb-1">

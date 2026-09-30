@@ -331,6 +331,8 @@ export const LedgerService = {
         }
     },
 
+
+
     async updatePayeeTin(payeeId: string, tin: string) {
         return await prisma.payee.update({
             where: { id: payeeId },
@@ -631,7 +633,7 @@ export const LedgerService = {
             }
         })
         return rows.map(r => ({ ...r, lines: r.lines.map(l => ({ ...l, debit: Number(l.debit), credit: Number(l.credit) })) }))
-    }
+    },
 
     async getAllJournalEntries() {
         const entries = await prisma.journalEntry.findMany({

@@ -12,6 +12,11 @@ const getLocalDateString = () =>
 const fmt = (n: number) =>
   n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+// Amounts are kept as strings while typing so "1." and "0." survive.
+type JLine = { accountId: string; debit: string; credit: string }
+const blank = (): JLine => ({ accountId: '', debit: '', credit: '' })
+const toCents = (s: string) => Math.round((parseFloat(s) || 0) * 100)
+
 export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean }> = ({
   userId
 }) => {
@@ -36,10 +41,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
   const [payeeBalance, setPayeeBalance] = useState<{ receivable: number; payable: number } | null>(
     null
   )
-  const [lines, setLines] = useState([
-    { accountId: '', debit: 0, credit: 0 },
-    { accountId: '', debit: 0, credit: 0 }
-  ])
+  const [lines, setLines] = useState<JLine[]>([blank(), blank()])
 
   const [attachments, setAttachments] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
@@ -67,7 +69,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     try {
       const api = (window as any).api || (window as any).electronAPI
       const nextSeq = await api.getNextSequence(refPrefix)
-      setRefSequence(nextSeq)
+      setRefSequence(String(nextSeq))
     } catch (error) {
       console.error('Failed to fetch next sequence', error)
     }
@@ -92,32 +94,56 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     fetchBalance()
   }, [payeeId])
 
-  const handleContactSaved = async (newId: string, newName: string) => {
+  // newId / newName may be undefined if the modal could not find the new record
+  const handleContactSaved = async (newId?: string, newName?: string) => {
     const api = (window as any).electronAPI || (window as any).api
     if (api?.getPayees) {
       const updatedPayees = await api.getPayees()
       setPayees(Array.isArray(updatedPayees) ? updatedPayees : [])
     }
-    setPayeeId(newId)
+    if (newId) setPayeeId(newId)
     setIsNewContactModalOpen(false)
-    setStatus({ type: 'success', msg: `${newName} was added and selected.` })
+    setStatus({
+      type: 'success',
+      msg: newName ? `${newName} was added and selected.` : 'Contact added.'
+    })
     setTimeout(() => setStatus(null), 3000)
   }
 
-  const addLine = () => setLines([...lines, { accountId: '', debit: 0, credit: 0 }])
+  /* ------------------------------ line actions ------------------------------ */
 
-  const updateLine = (index: number, field: string, value: any) => {
-    const newLines = [...lines]
-    newLines[index][field as keyof (typeof newLines)[0]] = value
-    if (field === 'debit' && value > 0) newLines[index].credit = 0
-    if (field === 'credit' && value > 0) newLines[index].debit = 0
-    setLines(newLines)
+  const addLine = () => setLines((p) => [...p, blank()])
+
+  const setAccount = (i: number, accountId: string) =>
+    setLines((p) => p.map((l, idx) => (idx === i ? { ...l, accountId } : l)))
+
+  const setAmount = (i: number, field: 'debit' | 'credit', raw: string) => {
+    // digits with an optional decimal point and at most 2 decimals
+    if (!/^\d*\.?\d{0,2}$/.test(raw)) return
+    const other = field === 'debit' ? 'credit' : 'debit'
+    setLines((p) =>
+      p.map((l, idx) =>
+        idx === i ? { ...l, [field]: raw, ...(toCents(raw) > 0 ? { [other]: '' } : {}) } : l
+      )
+    )
   }
+
+  // Tidy the number (e.g. "5" -> "5.00") when the field loses focus
+  const formatAmount = (i: number, field: 'debit' | 'credit') =>
+    setLines((p) =>
+      p.map((l, idx) => {
+        if (idx !== i || l[field] === '') return l
+        const n = parseFloat(l[field])
+        return { ...l, [field]: n > 0 ? n.toFixed(2) : '' }
+      })
+    )
 
   const removeLine = (index: number) => {
     if (lines.length <= 2) return
-    setLines(lines.filter((_, i) => i !== index))
+    setLines((p) => p.filter((_, i) => i !== index))
   }
+
+  /* ------------------------------ attachments ------------------------------ */
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) handleFilesAdded(Array.from(e.target.files))
@@ -174,13 +200,22 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     )
   }
 
-  const totalDebit = lines.reduce((sum, ln) => sum + (Number(ln.debit) || 0), 0)
-  const totalCredit = lines.reduce((sum, ln) => sum + (Number(ln.credit) || 0), 0)
-  const isBalanced = totalDebit > 0 && totalDebit.toFixed(2) === totalCredit.toFixed(2)
-  const difference = Math.abs(totalDebit - totalCredit)
+  /* -------------------------------- totals -------------------------------- */
+
+  // Work in whole cents so floating-point error can never unbalance an entry
+  const debitCents = lines.reduce((s, l) => s + toCents(l.debit), 0)
+  const creditCents = lines.reduce((s, l) => s + toCents(l.credit), 0)
+  const totalDebit = debitCents / 100
+  const totalCredit = creditCents / 100
+  const isBalanced = debitCents > 0 && debitCents === creditCents
+  const difference = Math.abs(debitCents - creditCents) / 100
 
   // AR (1200) / AP (2010) lines normally need a contact so the subsidiary balance is right
   const usesArAp = lines.some((l) => l.accountId === '1200' || l.accountId === '2010')
+
+  const canPost = isBalanced && !!refSequence && !loading
+
+  /* -------------------------------- submit -------------------------------- */
 
   const handleSubmit = async () => {
     setStatus(null)
@@ -189,7 +224,14 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     try {
       if (!refSequence.trim()) throw new Error('Please enter a Sequence Number for the Reference.')
 
-      const validLines = lines.filter((l) => l.accountId !== '' && (l.debit > 0 || l.credit > 0))
+      const validLines = lines
+        .filter((l) => l.accountId && (toCents(l.debit) > 0 || toCents(l.credit) > 0))
+        .map((l) => ({
+          accountId: l.accountId,
+          debit: toCents(l.debit) / 100,
+          credit: toCents(l.credit) / 100
+        }))
+
       const api = (window as any).electronAPI || (window as any).api
 
       const paddedSequence = refSequence.padStart(3, '0')
@@ -214,10 +256,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         setVatType('VATABLE')
         setPayeeId('')
         setPayeeSearchQuery('')
-        setLines([
-          { accountId: '', debit: 0, credit: 0 },
-          { accountId: '', debit: 0, credit: 0 }
-        ])
+        setLines([blank(), blank()])
         setAttachments([])
       } else {
         setStatus({ type: 'error', msg: result.error })
@@ -242,7 +281,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
   // Post button text explains WHY it's disabled
   const postLabel = () => {
     if (loading) return 'Processing...'
-    if (totalDebit === 0 && totalCredit === 0) return 'Enter debit and credit amounts'
+    if (debitCents === 0 && creditCents === 0) return 'Enter debit and credit amounts'
     if (!isBalanced) return `Out of balance by ₱ ${fmt(difference)}`
     if (!refSequence) return 'Enter a reference number'
     return 'Post Journal Entry'
@@ -262,7 +301,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
 
         {status && (
           <div
-            className={`mb-6 p-4 rounded-md text-sm font-bold ${status.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border border-[#B0DCDA]' : 'bg-red-50 text-red-600 border border-red-200'}`}
+            className={`mb-6 p-4 rounded-md text-sm font-bold ${status.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border border-[#B0DCDA]' : 'bg-red-50 text-red-700 border border-red-200'}`}
           >
             {status.type === 'success' ? '✅ ' : '⚠️ '}
             {status.msg}
@@ -308,6 +347,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 onClick={fetchNextSequence}
                 className="px-3 text-gray-400 hover:text-[#1B9387] bg-white border-l border-[#B0DCDA] rounded-r-md transition cursor-pointer"
                 title="Auto-Generate Next Sequence"
+                aria-label="Auto-generate next sequence"
               >
                 <RefreshCw size={14} />
               </button>
@@ -425,7 +465,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
             </div>
 
             {usesArAp && !payeeId && (
-              <p className="mt-2 text-xs font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-1.5">
+              <p className="mt-2 text-xs font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-1.5">
                 ⚠️ This entry uses Accounts Receivable / Payable. Tag a contact so their balance
                 stays accurate.
               </p>
@@ -434,7 +474,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
             {payeeBalance && (
               <div className="mt-3 flex flex-wrap gap-3 text-xs">
                 {payeeBalance.receivable > 0 && (
-                  <span className="text-red-600 font-bold bg-red-50 px-3 py-1.5 rounded border border-red-200">
+                  <span className="text-red-700 font-bold bg-red-50 px-3 py-1.5 rounded border border-red-200">
                     ⚠️ They owe clinic: ₱
                     {payeeBalance.receivable.toLocaleString(undefined, {
                       minimumFractionDigits: 2
@@ -442,7 +482,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                   </span>
                 )}
                 {payeeBalance.payable > 0 && (
-                  <span className="text-amber-600 font-bold bg-amber-50 px-3 py-1.5 rounded border border-amber-200">
+                  <span className="text-amber-800 font-bold bg-amber-50 px-3 py-1.5 rounded border border-amber-200">
                     ⚠️ Clinic owes them: ₱
                     {payeeBalance.payable.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </span>
@@ -485,6 +525,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                   key={idx}
                   className="even:bg-gray-50 odd:bg-white hover:bg-[#E9FAFA]/50 transition"
                 >
+                  {/* ACCOUNT CELL */}
                   <td className="p-0 border-r border-[#B0DCDA] relative align-top">
                     {activeAccountRow === idx ? (
                       <div className="absolute z-50 left-0 top-0 w-full min-w-[350px] bg-white border border-[#1B9387] shadow-xl rounded-md overflow-hidden">
@@ -513,7 +554,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                               <li
                                 key={acc.code}
                                 onMouseDown={() => {
-                                  updateLine(idx, 'accountId', acc.code)
+                                  setAccount(idx, acc.code)
                                   setActiveAccountRow(null)
                                 }}
                                 className="p-3 text-sm text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-b border-gray-50 last:border-0 flex items-center"
@@ -551,40 +592,49 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                       </div>
                     )}
                   </td>
+
+                  {/* DEBIT CELL */}
                   <td className="p-0 border-r border-[#B0DCDA] align-top">
                     <div className="relative flex items-center h-full">
                       <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
                       <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.debit === 0 ? '' : line.debit}
+                        type="text"
+                        inputMode="decimal"
+                        aria-label={`Debit amount, line ${idx + 1}`}
+                        value={line.debit}
                         placeholder="0.00"
-                        onChange={(e) => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)}
+                        onChange={(e) => setAmount(idx, 'debit', e.target.value)}
+                        onBlur={() => formatAmount(idx, 'debit')}
                         className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition"
                       />
                     </div>
                   </td>
+
+                  {/* CREDIT CELL */}
                   <td className="p-0 border-r border-[#B0DCDA] align-top">
                     <div className="relative flex items-center h-full">
                       <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
                       <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.credit === 0 ? '' : line.credit}
+                        type="text"
+                        inputMode="decimal"
+                        aria-label={`Credit amount, line ${idx + 1}`}
+                        value={line.credit}
                         placeholder="0.00"
-                        onChange={(e) => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)}
+                        onChange={(e) => setAmount(idx, 'credit', e.target.value)}
+                        onBlur={() => formatAmount(idx, 'credit')}
                         className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition"
                       />
                     </div>
                   </td>
+
+                  {/* REMOVE */}
                   <td className="p-2 text-center align-middle">
                     <button
                       type="button"
                       onClick={() => removeLine(idx)}
                       disabled={lines.length <= 2}
-                      className="text-red-400 hover:text-red-600 disabled:opacity-20 transition cursor-pointer font-bold"
+                      aria-label={`Remove line ${idx + 1}`}
+                      className="text-red-400 hover:text-red-700 disabled:opacity-20 transition cursor-pointer disabled:cursor-not-allowed font-bold"
                     >
                       ✕
                     </button>
@@ -668,7 +718,8 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                   <button
                     type="button"
                     onClick={() => removeAttachment(i)}
-                    className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-md transition cursor-pointer shrink-0"
+                    aria-label={`Remove ${file.name}`}
+                    className="p-1.5 text-gray-400 hover:text-red-700 hover:bg-red-50 rounded-md transition cursor-pointer shrink-0"
                   >
                     <X size={16} />
                   </button>
@@ -698,7 +749,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                 Difference
               </span>
               <span
-                className={`font-mono font-bold ${difference === 0 && totalDebit > 0 ? 'text-[#1B9387]' : 'text-red-500'}`}
+                className={`font-mono font-bold ${isBalanced ? 'text-[#1B9387]' : 'text-red-700'}`}
               >
                 ₱ {fmt(difference)}
               </span>
@@ -709,7 +760,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                   ✓ Balanced
                 </span>
               ) : (
-                <span className="text-red-500 text-xs font-extrabold uppercase tracking-widest">
+                <span className="text-red-700 text-xs font-extrabold uppercase tracking-widest">
                   ⚠️ Out of Balance
                 </span>
               )}
@@ -718,9 +769,13 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
 
           <button
             type="button"
-            disabled={!isBalanced || !refSequence || loading}
+            disabled={!canPost}
             onClick={handleSubmit}
-            className="lg:min-w-[320px] bg-[#1B9387] disabled:bg-gray-200 disabled:text-gray-500 disabled:shadow-none text-white font-bold py-3.5 px-8 rounded-md transition hover:bg-[#28958B] uppercase tracking-widest shadow-md flex justify-center items-center cursor-pointer disabled:cursor-not-allowed text-sm"
+            className={`lg:min-w-[320px] py-3.5 px-8 rounded-md font-bold text-sm uppercase tracking-widest transition flex justify-center items-center ${
+              canPost
+                ? 'bg-[#1B9387] hover:bg-[#28958B] text-white shadow-md cursor-pointer'
+                : 'bg-gray-200 text-gray-700 border border-gray-300 cursor-not-allowed'
+            }`}
           >
             {postLabel()}
           </button>
