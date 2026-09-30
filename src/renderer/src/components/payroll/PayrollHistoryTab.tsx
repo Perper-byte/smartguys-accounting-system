@@ -9,6 +9,31 @@ export function PayrollHistoryTab({
   const [histSearch, setHistSearch] = useState('')
   const [selectedPayslip, setSelectedPayslip] = useState<any | null>(null)
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null)
+  const [exportingId, setExportingId] = useState<string | null>(null)
+
+  const handleExportSingle = async (payslipId: string) => {
+    try {
+      setExportingId(payslipId)
+      const api = (window as any).api || (window as any).electronAPI
+      await api.exportPayslipPDF(payslipId)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setExportingId(null)
+    }
+  }
+
+  const handleExportBatch = async (runId: string) => {
+    try {
+      setExportingId(runId)
+      const api = (window as any).api || (window as any).electronAPI
+      await api.exportBatchPayslipsPDF(runId)
+    } catch (err) {
+      console.error(err)
+    } finally {
+      setExportingId(null)
+    }
+  }
 
   const formatCurrency = (val: number) =>
     `₱${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -100,7 +125,17 @@ export function PayrollHistoryTab({
                         </button>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <>
+                        <div className="flex justify-end mb-4">
+                          <button
+                            onClick={() => handleExportBatch(run.id)}
+                            disabled={exportingId === run.id}
+                            className="px-4 py-2 bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 text-xs font-bold rounded shadow-sm disabled:opacity-50 transition flex items-center gap-2 cursor-pointer"
+                          >
+                            {exportingId === run.id ? 'Exporting...' : '📄 Batch Export PDF'}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {run.payslips.map((payslip: any) => (
                           <div
                             key={payslip.id}
@@ -126,6 +161,7 @@ export function PayrollHistoryTab({
                           </div>
                         ))}
                       </div>
+                      </>
                     )}
                   </div>
                 )}
@@ -293,10 +329,11 @@ export function PayrollHistoryTab({
                 Close
               </button>
               <button
-                onClick={() => window.print()}
-                className="px-5 py-2.5 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-md text-sm font-bold transition cursor-pointer shadow-sm flex items-center gap-2"
+                onClick={() => handleExportSingle(selectedPayslip.id)}
+                disabled={exportingId === selectedPayslip.id}
+                className="px-5 py-2.5 bg-[#1B9387] hover:bg-[#28958B] disabled:bg-gray-400 disabled:opacity-50 text-white rounded-md text-sm font-bold transition cursor-pointer shadow-sm flex items-center gap-2"
               >
-                <span>🖨️</span> <span>Print Payslip</span>
+                <span>🖨️</span> <span>{exportingId === selectedPayslip.id ? 'Exporting...' : 'Export PDF'}</span>
               </button>
             </div>
           </div>
