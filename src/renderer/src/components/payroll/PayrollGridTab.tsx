@@ -16,6 +16,13 @@ export function PayrollGridTab({
   const [showDetailed, setShowDetailed] = useState(false)
   const [loading, setLoading] = useState(false)
 
+  const [lockDate, setLockDate] = useState<string | null>(null)
+  const [showPinModal, setShowPinModal] = useState(false)
+  const [overridePin, setOverridePin] = useState('')
+  const [pinError, setPinError] = useState('')
+
+  const isLocked = lockDate ? date <= lockDate : false
+
   // Map employeeId -> input values
   const [inputs, setInputs] = useState<Record<number, any>>({})
   // Map employeeId -> calculated result
@@ -33,6 +40,18 @@ export function PayrollGridTab({
 
   useEffect(() => {
     fetchNextSeq()
+    const fetchLockDate = async () => {
+      try {
+        const api = (window as any).api || (window as any).electronAPI
+        const lockSettings = await api.getLockDate()
+        if (lockSettings?.lockDate) {
+          setLockDate(lockSettings.lockDate.split('T')[0])
+        }
+      } catch (err) {
+        console.error('Failed to get lock date', err)
+      }
+    }
+    fetchLockDate()
   }, [])
 
   // Initialize inputs when employees load
@@ -87,8 +106,9 @@ export function PayrollGridTab({
     return () => clearTimeout(timeoutRef.current)
   }, [inputs, employees])
 
-  const handleProcessPayroll = async () => {
+  const confirmProcessPayroll = async (pin?: string) => {
     setStatus(null)
+    setPinError('')
     if (!refSequence) return setStatus({ type: 'error', msg: 'Sequence number required.' })
     const active = employees.filter((e) => e.is_active !== false)
     if (active.length === 0)
@@ -125,7 +145,8 @@ export function PayrollGridTab({
         referenceNo: `PY-${refSequence.padStart(3, '0')}`,
         description,
         userId,
-        employees: payrollItems
+        employees: payrollItems,
+        overridePin: pin
       }
       
       const response = await api.processPayroll(payload)
@@ -134,13 +155,36 @@ export function PayrollGridTab({
           type: 'success',
           msg: `Payroll ${payload.referenceNo} processed successfully!`
         })
+        setShowPinModal(false)
+        setOverridePin('')
         fetchNextSeq()
         setTimeout(() => setStatus(null), 5000)
-      } else setStatus({ type: 'error', msg: 'Database Error: ' + response.error })
-    } catch (error) {
-      setStatus({ type: 'error', msg: 'System Error.' })
+      } else {
+        if (response.error?.includes('PERIOD LOCKED') || response.error?.includes('PIN')) {
+          setPinError(response.error)
+          if (pin) return
+        } else {
+          setStatus({ type: 'error', msg: 'Database Error: ' + response.error })
+          setShowPinModal(false)
+        }
+      }
+    } catch (error: any) {
+      if (error.message?.includes('PERIOD LOCKED') || error.message?.includes('PIN')) {
+        setPinError(error.message)
+      } else {
+        setStatus({ type: 'error', msg: 'System Error: ' + error.message })
+        setShowPinModal(false)
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleProcessPayroll = () => {
+    if (isLocked) {
+      setShowPinModal(true)
+    } else {
+      confirmProcessPayroll()
     }
   }
 
@@ -156,6 +200,7 @@ export function PayrollGridTab({
   const activeEmployees = employees.filter(e => e.is_active !== false)
   const totalGross = activeEmployees.reduce((sum, e) => sum + (results[e.id]?.gross_pay || 0), 0)
   const totalDeductions = activeEmployees.reduce((sum, e) => sum + ((results[e.id]?.total_deductions || 0) + (results[e.id]?.tax_withheld || 0)), 0)
+  const totalTax = activeEmployees.reduce((sum, e) => sum + (results[e.id]?.tax_withheld || 0), 0)
   const totalNet = activeEmployees.reduce((sum, e) => sum + (results[e.id]?.net_pay || 0), 0)
 
   const handleDemeritChange = (empId: number, field: string, val: number) => {
@@ -224,6 +269,14 @@ export function PayrollGridTab({
 
   return (
     <div className="flex-1 flex flex-col animate-in fade-in duration-300 min-h-0 relative print:hidden">
+      {isLocked && (
+        <div className="mx-6 mt-4 p-3 bg-orange-50 border border-orange-200 text-orange-700 text-sm font-medium rounded-md flex items-center gap-2">
+          <svg className="w-5 h-5 text-orange-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+          Payroll cutoff date falls in a locked accounting period (on or before {lockDate}). Manager Override PIN required to approve and post.
+        </div>
+      )}
       <div className="px-6 mb-4 mt-4 shrink-0">
         <div className="grid grid-cols-4 gap-6">
           <div>
@@ -356,7 +409,7 @@ export function PayrollGridTab({
                       ))
                     ) : (
                       <td className="p-3 text-center border-r border-gray-200 text-gray-400 bg-gray-50 italic">
-                        {Object.values(inp.hours).reduce((a: any, b: any) => a + (b || 0), 0) > 0 ? 'Has premiums' : '-'}
+                        {(Object.values(inp.hours) as any[]).reduce((a: any, b: any) => a + (b || 0), 0) > 0 ? 'Has premiums' : '-'}
                       </td>
                     )}
 
@@ -417,6 +470,60 @@ export function PayrollGridTab({
           {loading ? <><span className="animate-spin text-lg">↻</span> Processing...</> : 'Post Payroll'}
         </button>
       </div>
+
+      {showPinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 print:hidden">
+          <div className="bg-white rounded-lg shadow-xl w-[400px] overflow-hidden flex flex-col">
+            <div className="bg-red-50 p-4 border-b border-red-100 flex items-center gap-3">
+              <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-4a2 2 0 00-2-2H6a2 2 0 00-2 2v4a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+              <h3 className="text-red-800 font-bold">Manager Override Required</h3>
+            </div>
+            <div className="p-6 flex flex-col gap-4">
+              <p className="text-sm text-gray-600">
+                You are attempting to post payroll to a locked period (on or before <span className="font-bold">{lockDate}</span>).
+              </p>
+              <div>
+                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Override PIN</label>
+                <input
+                  type="password"
+                  value={overridePin}
+                  onChange={(e) => setOverridePin(e.target.value)}
+                  className="w-full bg-white border border-gray-300 rounded-md p-3 text-lg tracking-widest text-center font-mono focus:border-red-500 focus:ring-2 focus:ring-red-50 outline-none transition"
+                  placeholder="••••"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') confirmProcessPayroll(overridePin)
+                    if (e.key === 'Escape') setShowPinModal(false)
+                  }}
+                />
+              </div>
+              {pinError && (
+                <div className="text-red-500 text-sm font-medium bg-red-50 p-2 rounded border border-red-100">
+                  {pinError}
+                </div>
+              )}
+            </div>
+            <div className="bg-gray-50 p-4 border-t flex justify-end gap-3">
+              <button
+                onClick={() => setShowPinModal(false)}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-md font-medium transition"
+                disabled={loading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => confirmProcessPayroll(overridePin)}
+                disabled={loading || !overridePin}
+                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-bold transition disabled:opacity-50"
+              >
+                {loading ? 'Verifying...' : 'Approve & Post'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
