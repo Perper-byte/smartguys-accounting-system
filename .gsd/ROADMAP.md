@@ -7,7 +7,7 @@
 - [x] Configurable DOLE rate multipliers in database settings
 - [x] Gross-to-Net payroll service with statutory contributions & tax computation
 - [x] Interactive multi-tab Payroll Overhaul UI grid matching clinic sheets
-- [ ] PDF payslip generator & auto-posted GL journal entries
+- [x] PDF payslip generator & auto-posted GL journal entries
 
 ## Phases
 
@@ -27,9 +27,10 @@
 **Requirements**: REQ-06
 
 ### Phase 4: Payslip PDF Generator & General Ledger Integration
-**Status**: ⬜ Not Started
+**Status**: ✅ Complete
 **Objective**: Implement PDF payslip export for employees and automated GL journal entry posting upon payroll run approval.
 **Requirements**: REQ-07, REQ-08
+
 
 
 

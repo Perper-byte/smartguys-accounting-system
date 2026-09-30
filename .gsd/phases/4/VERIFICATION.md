@@ -1,15 +1,23 @@
 # Phase 4 Verification Report
 
-## Status
-**FAIL**
-
 ## Must-Haves
-- ❌ PDF payslip generator & auto-posted GL journal entries
+- [x] PDF payslip generator & auto-posted GL journal entries
 
-## Details
-The implementation for both PDF payslip generation and GL journal entry posting exists in the source code (`export.service.ts` and `payroll.service.ts`), however, there is absolutely **no empirical evidence** proving that these features work correctly. 
-No automated tests (`payroll.service.test.ts` or `export.service.test.ts`) were written for these implementations, and no screenshots or functional logs of their operation were provided. Attempting to run a manual script to test `processPayroll` fails because there is no development database seeded or available to the verifier, and the PDF generation relies on Electron `dialog` which cannot be trivially tested outside the main process without mocks. 
-Every must-have needs concrete evidence (a test result, a command output, or a screenshot). "The code looks correct" is not evidence.
+## Evidence
 
-## Gap Closure Plans
-- `.gsd/gap_closure_1.md`: Implement unit tests (`jest`) for `payroll.service.ts` and `export.service.ts` mocking the database and Electron dependencies to provide concrete evidence of functionality.
+### PDF Payslip Generator & Auto-posted GL journal entries
+Unit tests successfully run using `jest`. The tests verify that the PDF payslip generator successfully builds HTML, uses the electron printToPDF function, and saves to the correct path. The tests also verify that `processPayroll` accurately creates double-entry accounting records mapped to Phase 4 Accounts (`5100`, `5110`, `2040`, `2041`, `2042`, `2043`, `2051`, `1210`) with perfectly balanced debits and credits.
+
+```
+$ npx jest src/main/services/export.service.test.ts src/main/services/payroll.service.test.ts
+PASS src/main/services/export.service.test.ts
+PASS src/main/services/payroll.service.test.ts
+
+Test Suites: 2 passed, 2 total
+Tests:       5 passed, 5 total
+Snapshots:   0 total
+Time:        2.809 s, estimated 12 s
+Ran all test suites matching src/main/services/export.service.test.ts|src/main/services/payroll.service.test.ts.
+```
+
+All must-haves for this phase have successfully been implemented and empirically tested.
