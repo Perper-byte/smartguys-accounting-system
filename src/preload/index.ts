@@ -43,10 +43,10 @@ export const api = {
   createPayee: (
     name: string,
     type: string,
-    tin: string,
-    email: string,
-    phone: string,
-    address: string,
+    tin?: string,
+    email?: string,
+    phone?: string,
+    address?: string,
     hmoAffiliation?: string,
     hmoCardNo?: string,
     hmoExpiry?: string
@@ -83,7 +83,7 @@ export const api = {
 
   // POS & Transactions
   getNextSequence: (prefix: string) => ipcRenderer.invoke('get-next-sequence', prefix),
-  getPayoutHistory: () => ipcRenderer.invoke('get-payout-history'),
+  getPayoutHistory: (typeFilter?: string) => ipcRenderer.invoke('get-payout-history', typeFilter),
   getAllRecentTransactions: () => ipcRenderer.invoke('get-all-recent-transactions'),
   getUserSalesHistory: (userId: string) => ipcRenderer.invoke('get-user-sales-history', userId),
   getShiftReport: (userId: string) => ipcRenderer.invoke('get-shift-report', userId),

@@ -8,10 +8,26 @@ const ATC_CODES = [
   { code: 'NONE', desc: 'Non-Withholding / Direct Rent (0%)', rate: 0 }
 ]
 
+// This screen only deals with landlords
+const RENT_PAYEE_TYPES = 'LANDLORD'
+
 const getLocalDateString = () =>
   new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
     .toISOString()
     .split('T')[0]
+
+// Guess the ATC of a past payout from its saved data.
+// (Heuristic: corporate landlords are detected by name. A proper fix is to store
+// the landlord classification on the payee record.)
+const atcForTx = (tx: any) => {
+  if (!(tx.tax > 0)) return ATC_CODES[3] // NONE
+  return /\b(corp|inc|co|ltd|company)\b/i.test(tx.payee?.name || '')
+    ? ATC_CODES[1] // WC100
+    : ATC_CODES[0] // WI100
+}
+
+// Effective withholding rate of a past payout, e.g. 5 or 0
+const txRate = (tx: any) => (tx.gross > 0 ? Math.round((tx.tax / tx.gross) * 100) : 0)
 
 export function EWTPayoutView({ userId }: { userId: string }) {
   const [historyData, setHistoryData] = useState<any[]>([])
@@ -63,15 +79,14 @@ export function EWTPayoutView({ userId }: { userId: string }) {
   const [historySearchQuery, setHistorySearchQuery] = useState('')
 
   const loadData = async () => {
+    const api = (window as any).api || (window as any).electronAPI
+    if (!api) return
     try {
-      const api = (window as any).api || (window as any).electronAPI
-      if (!api) return
+      // Landlords only
+      const fetchedPayees = await api.getPayees(RENT_PAYEE_TYPES)
+      setPayees(Array.isArray(fetchedPayees) ? fetchedPayees : [])
 
-      // 🔥 FIX 1: Explicitly request only these types so Patients are excluded automatically by the database.
-      const validEntities = await api.getPayees('LANDLORD,VENDOR,SUPPLIER,HMO,DOCTOR')
-      setPayees(validEntities || [])
-
-      // Fetch Cash & Bank Assets
+      // Cash & Bank assets
       const accData = await api.getAccounts()
       const assets = (accData || []).filter((acc: any) => acc.account_type?.name === 'Asset')
       setCashAccounts(assets)
@@ -79,19 +94,12 @@ export function EWTPayoutView({ userId }: { userId: string }) {
         setSourceAccount(assets.find((a: any) => a.code === '1010')?.code || assets[0].code)
       }
 
-      // Fetch Payout History
-      const hist = await api.getPayoutHistory()
-      if (Array.isArray(hist)) {
-        const landlordHist = hist.filter(
-          (tx: any) =>
-            tx.payee?.type === 'LANDLORD' ||
-            tx.description?.toLowerCase().includes('rent') ||
-            tx.description?.toLowerCase().includes('lease')
-        )
-        setHistoryData(landlordHist)
-      }
-    } catch (error) {
+      // Landlord payout history
+      const hist = await api.getPayoutHistory(RENT_PAYEE_TYPES)
+      setHistoryData(Array.isArray(hist) ? hist : [])
+    } catch (error: any) {
       console.error('Failed to load data:', error)
+      setStatus({ type: 'error', msg: `Could not load landlord data: ${error.message}` })
     }
   }
 
@@ -148,28 +156,26 @@ export function EWTPayoutView({ userId }: { userId: string }) {
     try {
       const api = (window as any).api || (window as any).electronAPI
 
-      // 🔥 FIX 2: Reverted to exactly 2 arguments. Empty strings caused database date validation to fail silently.
+      // Create the record in the database
       const response = await api.createPayee(newPayeeName.trim(), 'LANDLORD')
 
       if (response && response.success === false) {
         throw new Error(response.error || 'Failed to save record.')
       }
 
-      // Refresh the entire list immediately from the database
-      const updatedEntities = await api.getPayees('LANDLORD,VENDOR,SUPPLIER,HMO,DOCTOR')
-      setPayees(updatedEntities || [])
+      // Instantly inject the new landlord into the dropdown
+      if (response?.payee) {
+        setPayees((prev) => {
+          if (prev.some((p) => p.id === response.payee.id)) return prev
+          const newList = [...prev, response.payee]
+          return newList.sort((a, b) => a.name.localeCompare(b.name))
+        })
 
-      // Auto-select the newly created landlord
-      if (response?.payee?.id) {
+        // Auto-select the newly created landlord
         setPayeeId(response.payee.id)
-      } else {
-        const newRecord = (updatedEntities || []).find(
-          (p: any) => p.name.toLowerCase() === newPayeeName.trim().toLowerCase()
-        )
-        if (newRecord) setPayeeId(newRecord.id)
       }
 
-      // 🔥 FIX 3: Reset search query so the dropdown doesn't stay filtered out of view
+      // Clean up UI state
       setShowAddPayee(false)
       setNewPayeeName('')
       setPayeeSearchQuery('')
@@ -183,10 +189,10 @@ export function EWTPayoutView({ userId }: { userId: string }) {
     }
   }
 
-  // Live Calculations
-  const grossAmount = Math.abs(Number(amountToPay) || 0)
-  const ewtAmount = grossAmount * (selectedATC.rate / 100)
-  const netAmount = grossAmount - ewtAmount
+  // Live Calculations (rounded to centavos so journal lines always balance)
+  const grossAmount = Math.round(Math.abs(Number(amountToPay) || 0) * 100) / 100
+  const ewtAmount = Math.round(grossAmount * selectedATC.rate) / 100
+  const netAmount = Math.round((grossAmount - ewtAmount) * 100) / 100
   const formatCurrency = (val: number) =>
     `₱ ${Math.abs(val).toLocaleString('en-US', {
       minimumFractionDigits: 2,
@@ -228,14 +234,18 @@ export function EWTPayoutView({ userId }: { userId: string }) {
         type: 'success',
         msg: `Voucher ${fullReferenceNo} recorded! Net Rental Payout: ${formatCurrency(netAmount)}.`
       })
-      setGenerated2307({
-        payee: selectedPayee,
-        date: new Date(date),
-        gross: grossAmount,
-        tax: ewtAmount,
-        net: netAmount,
-        atc: selectedATC
-      })
+
+      // Only open a 2307 certificate if tax was actually withheld
+      if (ewtAmount > 0) {
+        setGenerated2307({
+          payee: selectedPayee,
+          date: new Date(date),
+          gross: grossAmount,
+          tax: ewtAmount,
+          net: netAmount,
+          atc: selectedATC
+        })
+      }
 
       // Reset Form
       setAmountToPay('')
@@ -261,7 +271,7 @@ export function EWTPayoutView({ userId }: { userId: string }) {
 
   const getButtonLabel = () => {
     if (loading) return 'Processing...'
-    if (!payeeId) return 'Select a Landlord / Vendor'
+    if (!payeeId) return 'Select a Landlord'
     if (!paymentMethod) return 'Select Payment Method'
     if (!sourceAccount) return 'Select Source of Funds'
     if (!refSequence) return 'Enter Reference / Voucher No.'
@@ -270,6 +280,20 @@ export function EWTPayoutView({ userId }: { userId: string }) {
   }
 
   const selectedPayee = payees.find((p) => p.id === payeeId)
+
+  // Opens the 2307 certificate for a past payout
+  const openReprint = (tx: any) => {
+    setGenerated2307({
+      payee: tx.payee,
+      date: new Date(tx.date),
+      gross: tx.gross,
+      tax: tx.tax,
+      net: tx.net,
+      atc: atcForTx(tx),
+      isReprint: true,
+      ref: tx.referenceNo
+    })
+  }
 
   const filteredHistory = historyData.filter((tx: any) => {
     const query = historySearchQuery.toLowerCase()
@@ -334,7 +358,7 @@ export function EWTPayoutView({ userId }: { userId: string }) {
               <div className="col-span-2 relative z-20">
                 <div className="flex justify-between items-end mb-1.5">
                   <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
-                    Search Landlord / Vendor
+                    Search Landlord
                   </label>
                   <button
                     type="button"
@@ -377,7 +401,7 @@ export function EWTPayoutView({ userId }: { userId: string }) {
                   <span
                     className={payeeId ? 'text-gray-800 font-bold' : 'text-gray-400 font-medium'}
                   >
-                    {selectedPayee?.name || '-- Select Landlord / Vendor --'}
+                    {selectedPayee?.name || '-- Select Landlord --'}
                   </span>
                   <span className="text-xs text-gray-400">▼</span>
                 </div>
@@ -388,7 +412,7 @@ export function EWTPayoutView({ userId }: { userId: string }) {
                       <input
                         type="text"
                         autoFocus
-                        placeholder="🔍 Search landlords or vendors..."
+                        placeholder="🔍 Search landlords..."
                         value={payeeSearchQuery}
                         onChange={(e) => setPayeeSearchQuery(e.target.value)}
                         className="w-full bg-white border border-gray-200 rounded p-2 text-sm text-gray-800 outline-none focus:border-[#1B9387]"
@@ -697,31 +721,26 @@ export function EWTPayoutView({ userId }: { userId: string }) {
                         <span>Gross Rent:</span> <span>{formatCurrency(tx.gross)}</span>
                       </div>
                       <div className="flex justify-between text-orange-500">
-                        <span>EWT (5%):</span> <span>- {formatCurrency(tx.tax)}</span>
+                        <span>EWT ({txRate(tx)}%):</span> <span>- {formatCurrency(tx.tax)}</span>
                       </div>
                       <div className="flex justify-between font-bold text-gray-800">
                         <span>Net Rent:</span> <span>{formatCurrency(tx.net)}</span>
                       </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setGenerated2307({
-                          payee: tx.payee,
-                          date: new Date(tx.date),
-                          gross: tx.gross,
-                          tax: tx.tax,
-                          net: tx.net,
-                          atc: ATC_CODES[0],
-                          isReprint: true,
-                          ref: tx.referenceNo
-                        })
-                      }}
-                      className="w-full py-1.5 bg-[#1B9387] hover:bg-[#28958B] text-white text-[10px] font-extrabold uppercase tracking-widest rounded shadow-sm transition cursor-pointer"
-                    >
-                      📄 Generate BIR Form 2307
-                    </button>
+                    {tx.tax > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => openReprint(tx)}
+                        className="w-full py-1.5 bg-[#1B9387] hover:bg-[#28958B] text-white text-[10px] font-extrabold uppercase tracking-widest rounded shadow-sm transition cursor-pointer"
+                      >
+                        📄 Generate BIR Form 2307
+                      </button>
+                    ) : (
+                      <p className="text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest">
+                        No tax withheld — no 2307
+                      </p>
+                    )}
                   </div>
                 ))
               )}
@@ -777,7 +796,7 @@ export function EWTPayoutView({ userId }: { userId: string }) {
                       <th className="py-2.5">Reference</th>
                       <th className="py-2.5">Landlord</th>
                       <th className="py-2.5 text-right">Gross Rent</th>
-                      <th className="py-2.5 text-right">EWT (5%)</th>
+                      <th className="py-2.5 text-right">EWT Withheld</th>
                       <th className="py-2.5 text-right">Net Paid</th>
                       <th className="py-2.5 text-center">Action</th>
                     </tr>
@@ -798,31 +817,26 @@ export function EWTPayoutView({ userId }: { userId: string }) {
                           {formatCurrency(tx.gross)}
                         </td>
                         <td className="py-3 font-mono text-right text-orange-500">
-                          {formatCurrency(tx.tax)}
+                          {formatCurrency(tx.tax)}{' '}
+                          <span className="text-[10px] text-gray-400">({txRate(tx)}%)</span>
                         </td>
                         <td className="py-3 font-mono font-bold text-right text-[#1B9387]">
                           {formatCurrency(tx.net)}
                         </td>
                         <td className="py-3 text-center">
-                          {/* 🔥 FIX 4: Solid button for absolute text visibility */}
-                          <button
-                            onClick={() => {
-                              setShowAllHistoryModal(false)
-                              setGenerated2307({
-                                payee: tx.payee,
-                                date: new Date(tx.date),
-                                gross: tx.gross,
-                                tax: tx.tax,
-                                net: tx.net,
-                                atc: ATC_CODES[0],
-                                isReprint: true,
-                                ref: tx.referenceNo
-                              })
-                            }}
-                            className="text-[10px] bg-[#1B9387] border border-[#1B9387] text-white font-extrabold uppercase tracking-widest px-3 py-1.5 rounded shadow-sm hover:bg-[#28958B] transition cursor-pointer"
-                          >
-                            Form 2307
-                          </button>
+                          {tx.tax > 0 ? (
+                            <button
+                              onClick={() => {
+                                setShowAllHistoryModal(false)
+                                openReprint(tx)
+                              }}
+                              className="text-[10px] bg-[#1B9387] border border-[#1B9387] text-white font-extrabold uppercase tracking-widest px-3 py-1.5 rounded shadow-sm hover:bg-[#28958B] transition cursor-pointer"
+                            >
+                              Form 2307
+                            </button>
+                          ) : (
+                            <span className="text-gray-300">—</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -953,7 +967,13 @@ export function EWTPayoutView({ userId }: { userId: string }) {
                     <th className="border border-black p-2">Income Payment</th>
                     <th className="border border-black p-2 text-center">ATC</th>
                     <th className="border border-black p-2 text-right">Gross Rent</th>
-                    <th className="border border-black p-2 text-right">Tax Withheld (5%)</th>
+                    <th className="border border-black p-2 text-right">
+                      Tax Withheld (
+                      {generated2307.gross > 0
+                        ? Math.round((generated2307.tax / generated2307.gross) * 100)
+                        : 0}
+                      %)
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

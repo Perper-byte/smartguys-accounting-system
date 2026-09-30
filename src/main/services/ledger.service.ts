@@ -530,7 +530,18 @@ export const LedgerService = {
         return (lastSeqNum + 1).toString().padStart(3, '0');
     },
 
-    async getPayoutHistory(payeeType: string = 'LANDLORD') {
+    // Replace your existing getPayoutHistory function inside LedgerService with this:
+
+    async getPayoutHistory(payeeType?: string) {
+        // 🔥 FIX: Support comma-separated types so Vendors/Suppliers show up in history
+        let typeCondition: any = {};
+        if (payeeType) {
+            const types = payeeType.split(',');
+            typeCondition = { payee: { type: { in: types } } };
+        } else {
+            typeCondition = { payee: { type: 'LANDLORD' } }; // Fallback
+        }
+
         const entries = await prisma.journalEntry.findMany({
             where: {
                 payee_id: { not: null },
@@ -540,7 +551,7 @@ export const LedgerService = {
                     { reference_no: { startsWith: 'REF-' } },
                     { reference_no: { startsWith: 'DV-' } }
                 ],
-                ...(payeeType ? { payee: { type: payeeType } } : {})
+                ...typeCondition
             },
             include: { payee: true, lines: true },
             orderBy: { date: 'desc' },

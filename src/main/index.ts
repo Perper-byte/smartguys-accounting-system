@@ -210,19 +210,33 @@ app.whenReady().then(() => {
   ipcMain.handle('get-payees', async (e, typeFilter) => {
     try {
       const payees = await LedgerService.getPayees(typeFilter)
-      // If successful, save a local copy for offline use
-      fs.writeFileSync(CACHE_PAYEES_PATH, JSON.stringify(payees))
+      // Only cache the full, unfiltered list
+      if (!typeFilter) {
+        try { fs.writeFileSync(CACHE_PAYEES_PATH, JSON.stringify(payees)) } catch { }
+      }
       return payees
-    } catch (err) {
-      // 🚨 IF OFFLINE: Read from the local cache!
+    } catch (err: any) {
+      console.error('[get-payees] FAILED:', err)
+      const msg = String(err?.message || '')
+      const isOffline =
+        msg.includes("Can't reach") || msg.includes('P1001') ||
+        msg.includes('timeout') || msg.includes('network')
+      if (!isOffline) throw err // surface real errors instead of serving stale data
+
       if (fs.existsSync(CACHE_PAYEES_PATH)) {
-        let cached = JSON.parse(fs.readFileSync(CACHE_PAYEES_PATH, 'utf-8'))
-        if (typeFilter) cached = cached.filter((p: any) => p.type === typeFilter)
-        return cached
+        try {
+          let cached = JSON.parse(fs.readFileSync(CACHE_PAYEES_PATH, 'utf-8'))
+          if (typeFilter) {
+            const types = typeFilter.split(',')
+            cached = cached.filter((p: any) => types.includes(p.type))
+          }
+          return cached
+        } catch { return [] }
       }
       return []
     }
   })
+
   ipcMain.handle(
     'create-payee',
     async (
@@ -423,9 +437,9 @@ app.whenReady().then(() => {
       return '001'
     }
   })
-  ipcMain.handle('get-payout-history', async () => {
+  ipcMain.handle('get-payout-history', async (e, typeFilter) => {
     try {
-      return await LedgerService.getPayoutHistory()
+      return await LedgerService.getPayoutHistory(typeFilter)
     } catch (err) {
       return []
     }
