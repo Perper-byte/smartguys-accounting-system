@@ -869,6 +869,27 @@ app.whenReady().then(() => {
       return { success: false, error: error.message }
     }
   })
+
+  ipcMain.handle('export:payslipPDF', async (event, payslipId: string) => {
+    try {
+      const result = await ExportService.generatePayslipPDF(payslipId)
+      await AuditService.logAction('SYSTEM', 'DATA EXPORT', `Exported Payslip PDF`)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('export:batchPayslipsPDF', async (event, journalEntryId: string) => {
+    try {
+      const result = await ExportService.generateBatchPayslipsPDF(journalEntryId)
+      await AuditService.logAction('SYSTEM', 'DATA EXPORT', `Exported Batch Payslips PDF`)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
   ipcMain.handle('export:printToPDF', async (event, filename: string) => {
     const win = BrowserWindow.fromWebContents(event.sender)
     if (!win) return { success: false, error: 'Window not found' }

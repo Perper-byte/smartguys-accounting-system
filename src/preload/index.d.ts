@@ -3,6 +3,10 @@ import { ElectronAPI } from '@electron-toolkit/preload'
 declare global {
   interface Window {
     electron: ElectronAPI
-    api: any
+    api: {
+      exportPayslipPDF: (payslipId: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
+      exportBatchPayslipsPDF: (journalEntryId: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
+      [key: string]: any
+    }
   }
 }

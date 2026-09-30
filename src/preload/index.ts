@@ -130,6 +130,8 @@ export const api = {
   // Exporters
   exportTrialBalanceExcel: (year?: number, month?: number) =>
     ipcRenderer.invoke('export:trialBalanceExcel', year, month),
+  exportPayslipPDF: (payslipId: string) => ipcRenderer.invoke('export:payslipPDF', payslipId),
+  exportBatchPayslipsPDF: (journalEntryId: string) => ipcRenderer.invoke('export:batchPayslipsPDF', journalEntryId),
   exportPDF: (filename: string) => ipcRenderer.invoke('export:printToPDF', filename),
 
   // Employees & Payroll
