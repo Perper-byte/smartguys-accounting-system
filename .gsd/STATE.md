@@ -3,17 +3,14 @@
 > **Last Updated**: 2026-09-30
 
 ## Current Position
-- **Phase**: 3 (Interactive Payroll Overhaul UI & DTR Import) — Complete ✅
-- **Task**: Verified
-- **Status**: Ready for Phase 4
+- **Phase**: 4 (Payslip PDF Generator & General Ledger Integration)
+- **Task**: Planning complete
+- **Status**: Ready for execution
 
-## Last Session Summary
-Phase 3 executed and verified successfully.
-- Connected IPC channels in main/index.ts and preload/index.ts (`payroll:getSettings`, `payroll:updateSettings`, `payroll:calculateEmployee`, `payroll:batchCalculate`).
-- Built DTR CSV parser and classifier matching 16 DOLE categories.
-- Overhauled PayrollView.tsx into 5-tab workspace with 16-column DOLE overtime & night diff grid.
-- Implemented Rate Multipliers Configuration Modal and DTR CSV Import Modal.
-- Verified by gsd-verifier (1/1 must-haves confirmed).
+## Phase 4 Plans Created
+- **1-PLAN.md** (Wave 1): Update Chart of Accounts & Overhaul Payroll GL Posting with Period Lock Security.
+- **2-PLAN.md** (Wave 2): Implement Headless Payslip PDF Export Service and Wire IPC Handlers.
+- **3-PLAN.md** (Wave 3): Update Payroll UI with Period Lock Validation and PDF Export Controls.
 
 ## Next Steps
-1. Run `/plan 4` to create execution plans for Phase 4: Payslip PDF Generator & General Ledger Integration.
+1. `/execute 4` — execute Phase 4 plans
