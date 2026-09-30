@@ -1,7 +1,28 @@
-// src/main/services/ledger.service.ts
 import { PrismaClient } from '@prisma/client';
+import crypto from 'crypto';
+import bcrypt from 'bcrypt';
+import { cleanDescription } from '../../shared/formatters';
 
 const prisma = new PrismaClient();
+
+function verifyPinMatch(inputPin?: string | null, storedPinOrHash?: string | null): boolean {
+    if (!inputPin || !storedPinOrHash) return false;
+    const cleanInput = inputPin.trim();
+    const cleanStored = storedPinOrHash.trim();
+    if (!cleanInput || !cleanStored) return false;
+
+    if (cleanStored.startsWith('$2')) {
+        try {
+            return bcrypt.compareSync(cleanInput, cleanStored);
+        } catch {
+            return false;
+        }
+    }
+
+    const hashA = crypto.createHash('sha256').update(cleanInput).digest();
+    const hashB = crypto.createHash('sha256').update(cleanStored).digest();
+    return crypto.timingSafeEqual(hashA, hashB);
+}
 
 export type JournalEntryInput = {
     date: Date;
@@ -11,7 +32,7 @@ export type JournalEntryInput = {
     payeeId?: string;
     vatType?: string;
     lines: Array<{ accountId: string; debit: number; credit: number }>;
-    attachments?: Array<{ name: string; type: string; size: number; data: string }>;
+    attachments?: Array<{ name?: string; type?: string; size?: number; data?: string; fileName?: string; fileType?: string; fileData?: string }>;
     overridePin?: string; // 🔥 NEW
 };
 
@@ -47,12 +68,24 @@ export const LedgerService = {
 
     async setLockDate(data: { lockDate: string | null, autoLockDay: number | null, overridePin: string | null }) {
         let setting = await prisma.systemSetting.findFirst();
+        let pinToStore = setting?.override_pin || null;
+
+        if (data.overridePin !== undefined) {
+            if (!data.overridePin || !data.overridePin.trim()) {
+                pinToStore = null;
+            } else if (data.overridePin.trim().startsWith('$2')) {
+                pinToStore = data.overridePin.trim();
+            } else {
+                pinToStore = await bcrypt.hash(data.overridePin.trim(), 10);
+            }
+        }
+
         if (!setting) {
             setting = await prisma.systemSetting.create({
                 data: {
                     lock_date: data.lockDate ? new Date(data.lockDate) : null,
                     auto_lock_day: data.autoLockDay,
-                    override_pin: data.overridePin || null
+                    override_pin: pinToStore
                 }
             });
         } else {
@@ -61,9 +94,26 @@ export const LedgerService = {
                 data: {
                     lock_date: data.lockDate ? new Date(data.lockDate) : null,
                     auto_lock_day: data.autoLockDay,
-                    override_pin: data.overridePin || null
+                    override_pin: pinToStore
                 }
             });
+        }
+        return { success: true };
+    },
+
+    async verifyManagerPin(pin: string) {
+        const setting = await prisma.systemSetting.findFirst();
+        if (!setting || !setting.override_pin) {
+            return {
+                success: false,
+                error: 'No Manager Override PIN has been set up in System Settings. Please configure it first under System Settings.'
+            };
+        }
+        if (!verifyPinMatch(pin, setting.override_pin)) {
+            return {
+                success: false,
+                error: 'Incorrect Manager Override PIN. Access denied.'
+            };
         }
         return { success: true };
     },
@@ -357,7 +407,7 @@ export const LedgerService = {
         // 1. Check Lock Date & PIN
         const setting = await prisma.systemSetting.findFirst();
         if (setting?.lock_date && entryDate <= setting.lock_date) {
-            if (!data.overridePin || data.overridePin !== setting.override_pin) {
+            if (!verifyPinMatch(data.overridePin, setting.override_pin)) {
                 throw new Error(`PERIOD LOCKED: You cannot post transactions on or before ${setting.lock_date.toISOString().split('T')[0]}. Invalid or missing Override PIN.`);
             }
         }
@@ -392,15 +442,80 @@ export const LedgerService = {
                 },
                 attachments: data.attachments && data.attachments.length > 0 ? {
                     create: data.attachments.map((att) => ({
-                        fileName: att.name,
-                        fileType: att.type,
-                        fileData: att.data
+                        fileName: att.fileName || att.name || 'Attachment',
+                        fileType: att.fileType || att.type || 'image/jpeg',
+                        fileData: att.fileData || att.data || ''
                     }))
                 } : undefined
             }
         });
 
         return { success: true, referenceNo: entry.reference_no, entryId: entry.id };
+    },
+
+    async updateJournalEntry(entryId: string, data: JournalEntryInput) {
+        try {
+            const setting = await prisma.systemSetting.findFirst();
+            const entryDate = new Date(data.date);
+            if (setting?.lock_date && entryDate <= setting.lock_date) {
+                if (!verifyPinMatch(data.overridePin, setting.override_pin)) {
+                    throw new Error(`PERIOD LOCKED: Transaction is from a locked period on or before ${setting.lock_date.toISOString().split('T')[0]}. Invalid or missing Override PIN.`);
+                }
+            }
+
+            return await prisma.$transaction(async (tx) => {
+                // Delete old lines
+                await tx.journalLine.deleteMany({ where: { entry_id: entryId } });
+
+                // Update attachments if provided
+                if (data.attachments !== undefined) {
+                    await tx.attachment.deleteMany({ where: { journalEntryId: entryId } });
+                    if (data.attachments && data.attachments.length > 0) {
+                        for (const att of data.attachments) {
+                            const fileData = att.data || att.fileData;
+                            if (fileData) {
+                                await tx.attachment.create({
+                                    data: {
+                                        journalEntryId: entryId,
+                                        fileName: att.name || att.fileName || 'Attachment',
+                                        fileType: att.type || att.fileType || 'image/jpeg',
+                                        fileData: fileData
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+
+                const updated = await tx.journalEntry.update({
+                    where: { id: entryId },
+                    data: {
+                        date: new Date(data.date),
+                        reference_no: data.referenceNo,
+                        description: data.description,
+                        user_id: data.userId,
+                        payee_id: data.payeeId || null,
+                        vat_type: data.vatType || 'EXEMPT',
+                        lines: {
+                            create: data.lines.map(l => ({
+                                account_id: l.accountId,
+                                debit: l.debit,
+                                credit: l.credit
+                            }))
+                        }
+                    }
+                });
+
+                return {
+                    success: true,
+                    referenceNo: updated.reference_no,
+                    entryId: updated.id
+                };
+            });
+        } catch (error: any) {
+            console.error(error);
+            return { success: false, error: error.message };
+        }
     },
 
     async getAccountLedger(accountId: string) {
@@ -420,7 +535,7 @@ export const LedgerService = {
             if (normalBalance === 'DEBIT') balance += (debit - credit); else balance += (credit - debit);
             return {
                 id: line.id, entryId: line.entry.id, date: line.entry.date, referenceNo: line.entry.reference_no,
-                description: line.entry.description, debit, credit, balance, status: line.entry.status, payee: line.entry.payee?.name || '-'
+                description: cleanDescription(line.entry.description), rawDescription: line.entry.description, debit, credit, balance, status: line.entry.status, payee: line.entry.payee?.name || '-'
             };
         });
         return { accountCode: account.code, accountName: account.name, normalBalance, transactions, currentBalance: balance };
@@ -433,6 +548,18 @@ export const LedgerService = {
             include: { entry: true }
         });
 
+        // Also query entries for HMO / Corporate payees to find patients and claims
+        const hmoEntries = await prisma.journalEntry.findMany({
+            where: {
+                status: 'ACTIVE',
+                payee: { type: { in: ['HMO', 'CORPORATE'] } }
+            },
+            include: {
+                lines: true
+            },
+            orderBy: { date: 'desc' }
+        });
+
         const balances: Record<string, { receivable: number, payable: number }> = {};
         for (const line of lines) {
             const pId = line.entry.payee_id as string;
@@ -442,22 +569,108 @@ export const LedgerService = {
             if (line.account_id === '2010') balances[pId].payable += (Number(line.credit) - Number(line.debit));
         }
 
-        return payees.map(p => ({
-            id: p.id,
-            name: p.name,
-            type: p.type,
-            email: p.email,
-            phone: p.phone_number,
-            tin: p.tin,
-            address: p.address,
-            hmo_affiliation: p.hmo_affiliation,
-            hmo_card_no: p.hmo_card_no,
-            hmo_expiry_date: p.hmo_expiry_date,
-            status: p.is_active ? 'ACTIVE' : 'ARCHIVED', // 🔥 Pass status to frontend
+        return payees.map(p => {
+            let affiliatedPatients: any[] = [];
 
-            youOwe: balances[p.id]?.payable || 0,
-            theyOwe: balances[p.id]?.receivable || 0
-        }));
+            if (p.type === 'HMO' || p.type === 'CORPORATE') {
+                const patientMap = new Map<string, any>();
+
+                // 1. Registered patients whose hmo_affiliation matches this HMO's name
+                const registered = payees.filter(pt =>
+                    pt.type === 'PATIENT' &&
+                    pt.hmo_affiliation &&
+                    pt.hmo_affiliation.trim().toLowerCase() === p.name.trim().toLowerCase()
+                );
+
+                for (const reg of registered) {
+                    const key = reg.name.toLowerCase().trim();
+                    patientMap.set(key, {
+                        id: reg.id,
+                        name: reg.name,
+                        cardNo: reg.hmo_card_no || '',
+                        expiryDate: reg.hmo_expiry_date || null,
+                        phone: reg.phone_number || '',
+                        email: reg.email || '',
+                        isRegistered: true,
+                        loaNumbers: [],
+                        transactionCount: 0,
+                        totalBilled: 0,
+                        lastVisit: null,
+                        recentRefNo: null
+                    });
+                }
+
+                // 2. Patients from journal entries billed to this HMO
+                const entries = hmoEntries.filter(e => e.payee_id === p.id);
+                for (const entry of entries) {
+                    const pMatch = entry.description.match(/Patient:\s*([^|\n[\]]+)/i);
+                    const pName = pMatch && pMatch[1] ? pMatch[1].trim() : '';
+                    if (!pName || pName.toLowerCase() === 'walk-in' || pName.toLowerCase() === 'walk-in / cash' || pName.toLowerCase() === 'unknown patient') continue;
+
+                    const key = pName.toLowerCase().trim();
+                    const loaMatch = entry.description.match(/LOA:\s*([^)\n]+)/i);
+                    const loa = loaMatch && loaMatch[1] ? loaMatch[1].trim() : '';
+
+                    const amt = entry.lines
+                        .filter(l => Number(l.credit) > 0 && l.account_id !== '2020')
+                        .reduce((s, l) => s + Number(l.credit), 0) ||
+                        entry.lines.filter(l => l.account_id === '1200').reduce((s, l) => s + Number(l.debit), 0);
+
+                    if (!patientMap.has(key)) {
+                        patientMap.set(key, {
+                            id: null,
+                            name: pName,
+                            cardNo: loa,
+                            expiryDate: null,
+                            phone: '',
+                            email: '',
+                            isRegistered: false,
+                            loaNumbers: loa ? [loa] : [],
+                            transactionCount: 1,
+                            totalBilled: amt,
+                            lastVisit: entry.date,
+                            recentRefNo: entry.reference_no
+                        });
+                    } else {
+                        const existing = patientMap.get(key);
+                        existing.transactionCount += 1;
+                        existing.totalBilled += amt;
+                        if (loa && !existing.loaNumbers.includes(loa)) {
+                            existing.loaNumbers.push(loa);
+                        }
+                        if (!existing.cardNo && loa) {
+                            existing.cardNo = loa;
+                        }
+                        if (!existing.lastVisit || new Date(entry.date) > new Date(existing.lastVisit)) {
+                            existing.lastVisit = entry.date;
+                            existing.recentRefNo = entry.reference_no;
+                        }
+                    }
+                }
+
+                affiliatedPatients = Array.from(patientMap.values());
+            }
+
+            return {
+                id: p.id,
+                name: p.name,
+                type: p.type,
+                email: p.email,
+                phone: p.phone_number,
+                tin: p.tin,
+                address: p.address,
+                hmo_affiliation: p.hmo_affiliation,
+                hmo_card_no: p.hmo_card_no,
+                hmo_expiry_date: p.hmo_expiry_date,
+                status: p.is_active ? 'ACTIVE' : 'ARCHIVED',
+
+                youOwe: balances[p.id]?.payable || 0,
+                theyOwe: balances[p.id]?.receivable || 0,
+
+                affiliatedPatients,
+                affiliatedPatientCount: affiliatedPatients.length
+            };
+        });
     },
 
     async getFullLedgerReport(startDateStr: string, endDateStr: string) {
@@ -502,7 +715,7 @@ export const LedgerService = {
 
                 return {
                     id: l.id, entryId: l.entry.id, date: l.entry.date, referenceNo: l.entry.reference_no,
-                    description: l.entry.description, payeeName: l.entry.payee?.name || '-',
+                    description: cleanDescription(l.entry.description), rawDescription: l.entry.description, payeeName: l.entry.payee?.name || '-',
                     debit: deb, credit: cred, balance: l.entry.status === 'ACTIVE' ? runningBalance : 0, status: l.entry.status
                 };
             });
@@ -532,18 +745,40 @@ export const LedgerService = {
 
     async getPayoutHistory() {
         const entries = await prisma.journalEntry.findMany({
-            where: { reference_no: { startsWith: 'CV-' }, payee_id: { not: null } },
-            include: { payee: true, lines: true }, orderBy: { date: 'desc' }
+            where: {
+                payee_id: { not: null },
+                lines: { some: { account_id: '2050' } }
+            },
+            include: { payee: true, lines: true },
+            orderBy: { date: 'desc' }
         });
         const history: any[] = [];
         entries.forEach(entry => {
             let gross = 0; let tax = 0; let net = 0;
             entry.lines.forEach(line => {
-                if (line.account_id === '2010' && Number(line.debit) > 0) gross += Number(line.debit);
-                if (line.account_id === '2050' && Number(line.credit) > 0) tax += Number(line.credit);
-                if (line.account_id === '1010' && Number(line.credit) > 0) net += Number(line.credit);
+                if ((line.account_id === '2010' || line.account_id === '5040') && Number(line.debit) > 0) {
+                    gross += Number(line.debit);
+                }
+                if (line.account_id === '2050' && Number(line.credit) > 0) {
+                    tax += Number(line.credit);
+                }
+                if (['1010', '1020', '1030'].includes(line.account_id) && Number(line.credit) > 0) {
+                    net += Number(line.credit);
+                }
             });
-            if (gross > 0) history.push({ id: entry.id, date: entry.date, referenceNo: entry.reference_no, payee: entry.payee, description: entry.description, gross, tax, net });
+            if (gross > 0 || tax > 0) {
+                history.push({
+                    id: entry.id,
+                    date: entry.date,
+                    referenceNo: entry.reference_no,
+                    payee: entry.payee,
+                    description: cleanDescription(entry.description),
+                    rawDescription: entry.description,
+                    gross: gross > 0 ? gross : (net + tax),
+                    tax,
+                    net: net > 0 ? net : (gross - tax)
+                });
+            }
         });
         return history;
     },
@@ -557,7 +792,7 @@ export const LedgerService = {
                     recentLines.push({
                         id: line.id, entryId: entry.id, date: entry.date, referenceNo: entry.reference_no,
                         accountCode: line.account.code, accountName: line.account.name,
-                        description: entry.description, debit: Number(line.debit), credit: Number(line.credit), status: entry.status
+                        description: cleanDescription(entry.description), rawDescription: entry.description, debit: Number(line.debit), credit: Number(line.credit), status: entry.status
                     });
                 });
             });
@@ -635,7 +870,7 @@ export const LedgerService = {
         // 🔥 SAFEGUARD 2: PERIOD LOCK
         const setting = await prisma.systemSetting.findFirst();
         if (setting?.lock_date && original.date <= setting.lock_date) {
-            if (!overridePin || overridePin !== setting.override_pin) {
+            if (!verifyPinMatch(overridePin, setting.override_pin)) {
                 throw new Error(`PERIOD LOCKED: Transaction is from a locked period. Invalid or missing Override PIN.`);
             }
         }
@@ -782,14 +1017,21 @@ export const LedgerService = {
 
             const entries = await prisma.journalEntry.findMany({
                 where: {
-                    // Filters currently commented out based on original file state
+                    NOT: [
+                        { reference_no: { startsWith: 'JV' } },
+                        { reference_no: { startsWith: 'ADJ' } },
+                        { reference_no: { startsWith: 'PJ' } },
+                        { reference_no: { startsWith: 'PY' } }
+                    ]
                 },
-                orderBy: {
-                    date: 'desc'
-                },
-                take: 100,
+                orderBy: [
+                    { date: 'desc' },
+                    { created_at: 'desc' }
+                ],
+                take: 200,
                 include: {
                     payee: true,
+                    attachments: true,
                     lines: {
                         include: {
                             account: true
@@ -800,41 +1042,166 @@ export const LedgerService = {
 
             console.log('[Transaction History] Found:', entries.length);
 
-            return entries.map((entry) => {
-                const totalAmount = entry.lines.reduce(
-                    (sum, line) => sum + Number(line.debit),
-                    0
-                );
+            return entries
+                .filter((entry) => {
+                    const ref = (entry.reference_no || '').trim().toUpperCase();
+                    return !ref.startsWith('JV') && !ref.startsWith('ADJ') && !ref.startsWith('PJ') && !ref.startsWith('PY');
+                })
+                .map((entry) => {
+                    const creditSum = entry.lines
+                        .filter((l) => Number(l.credit) > 0)
+                        .reduce((sum, line) => sum + Number(line.credit), 0);
+                    const debitSum = entry.lines.reduce(
+                        (sum, line) => sum + Number(line.debit),
+                        0
+                    );
+                    const totalAmount = creditSum > 0 ? creditSum : debitSum;
 
-                let patientName = entry.payee?.name || 'Walk-in / Cash';
-                const patientMatch = entry.description.match(/Patient:\s*(.*?)\s*\|/i);
+                    let patientName = entry.payee?.name || 'Walk-in / Cash';
+                    const patientMatch = entry.description.match(/Patient:\s*([^|\n[\]]+)/i);
 
-                if (patientMatch && patientMatch[1]) {
-                    patientName = patientMatch[1].trim();
-                }
+                    if (patientMatch && patientMatch[1]) {
+                        patientName = patientMatch[1].trim();
+                    }
 
-                return {
-                    id: entry.id,
-                    date: entry.date,
-                    referenceNo: entry.reference_no,
-                    description: entry.description,
-                    patientName,
-                    payeeName: patientName,
-                    billedEntity: entry.payee?.name || null,
-                    totalAmount,
-                    status: entry.status,
-                    lines: entry.lines.map((line) => ({
-                        accountCode: line.account.code,
-                        accountName: line.account.name,
-                        debit: Number(line.debit),
-                        credit: Number(line.credit)
-                    }))
-                };
-            });
+                    return {
+                        id: entry.id,
+                        date: entry.date,
+                        createdAt: entry.created_at,
+                        referenceNo: entry.reference_no,
+                        description: cleanDescription(entry.description),
+                        rawDescription: entry.description,
+                        patientName,
+                        payeeName: patientName,
+                        payeeId: entry.payee_id,
+                        billedEntity: entry.payee?.name || null,
+                        totalAmount,
+                        status: entry.status,
+                        attachments: (entry.attachments || []).map((a) => ({
+                            id: a.id,
+                            name: a.fileName,
+                            fileName: a.fileName,
+                            type: a.fileType,
+                            fileType: a.fileType,
+                            data: a.fileData,
+                            fileData: a.fileData
+                        })),
+                        lines: entry.lines.map((line) => ({
+                            accountCode: line.account.code,
+                            accountName: line.account.name,
+                            debit: Number(line.debit),
+                            credit: Number(line.credit)
+                        }))
+                    };
+                });
 
         } catch (error) {
             console.error('[Transaction History] Failed:', error);
             throw error;
+        }
+    },
+
+    async getCashierDisbursements(limit = 100) {
+        try {
+            const entries = await prisma.journalEntry.findMany({
+                where: {
+                    reference_no: { startsWith: 'PCV-' }
+                },
+                include: {
+                    payee: true,
+                    user: true,
+                    lines: {
+                        include: { account: true }
+                    },
+                    attachments: true
+                },
+                orderBy: [
+                    { date: 'desc' },
+                    { created_at: 'desc' }
+                ],
+                take: limit
+            });
+
+            return entries.map((entry) => {
+                const expenseLine = entry.lines.find(l => l.account.code.startsWith('5') || l.account.code.startsWith('6')) || entry.lines[0];
+                const cashLine = entry.lines.find(l => l.account.code.startsWith('10')) || entry.lines[1];
+                const amount = expenseLine ? Number(expenseLine.debit) : entry.lines.reduce((s, l) => s + Number(l.debit), 0);
+
+                return {
+                    id: entry.id,
+                    date: entry.date,
+                    createdAt: entry.created_at,
+                    referenceNo: entry.reference_no,
+                    payeeName: entry.payee?.name || '',
+                    payeeId: entry.payee_id,
+                    description: cleanDescription(entry.description),
+                    rawDescription: entry.description,
+                    expenseAccountCode: expenseLine?.account.code || '',
+                    expenseAccountName: expenseLine?.account.name || '',
+                    sourceAccountCode: cashLine?.account.code || '1020',
+                    sourceAccountName: cashLine?.account.name || 'Petty Cash Fund',
+                    amount: amount,
+                    cashierName: entry.user?.username || 'Cashier',
+                    status: entry.status,
+                    attachments: (entry.attachments || []).map((a) => ({
+                        id: a.id,
+                        name: a.fileName,
+                        type: a.fileType,
+                        data: a.fileData
+                    }))
+                };
+            });
+        } catch (error) {
+            console.error('[Cashier Disbursements] Failed:', error);
+            return [];
+        }
+    },
+
+    async getRecentDisbursements(limit = 20) {
+        try {
+            const entries = await prisma.journalEntry.findMany({
+                where: {
+                    OR: [
+                        { reference_no: { startsWith: 'CV-' } },
+                        { reference_no: { startsWith: 'DV-' } },
+                        { reference_no: { startsWith: 'REF-' } }
+                    ]
+                },
+                include: {
+                    payee: true,
+                    lines: { include: { account: true } },
+                    attachments: true
+                },
+                orderBy: [
+                    { date: 'desc' },
+                    { created_at: 'desc' }
+                ],
+                take: limit
+            });
+            return entries.map((entry) => {
+                const totalDebit = entry.lines.reduce((s, l) => s + Number(l.debit), 0);
+                return {
+                    id: entry.id,
+                    date: entry.date,
+                    referenceNo: entry.reference_no,
+                    payeeName: entry.payee?.name,
+                    amount: totalDebit,
+                    description: cleanDescription(entry.description),
+                    rawDescription: entry.description,
+                    attachments: (entry.attachments || []).map((a) => ({
+                        id: a.id,
+                        name: a.fileName,
+                        fileName: a.fileName,
+                        type: a.fileType,
+                        fileType: a.fileType,
+                        data: a.fileData,
+                        fileData: a.fileData
+                    }))
+                };
+            });
+        } catch (err) {
+            console.error('[Recent Disbursements] Failed:', err);
+            return [];
         }
     }
 };

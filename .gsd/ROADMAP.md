@@ -4,7 +4,7 @@
 > **Milestone**: v1.0 — DOLE-Compliant HR & Payroll System
 
 ## Must-Haves (from SPEC)
-- [ ] Configurable DOLE rate multipliers in database settings
+- [x] Configurable DOLE rate multipliers in database settings
 - [ ] Gross-to-Net payroll service with statutory contributions & tax computation
 - [ ] Interactive multi-tab Payroll Overhaul UI grid matching clinic sheets
 - [ ] PDF payslip generator & auto-posted GL journal entries
@@ -12,7 +12,7 @@
 ## Phases
 
 ### Phase 1: Database Schema & Dynamic Rate Multiplier Engine
-**Status**: ⬜ Not Started
+**Status**: ✅ Complete
 **Objective**: Update Prisma schema to store payroll rate settings, allowances, loans, and statutory contribution parameters. Implement rate calculation service.
 **Requirements**: REQ-01, REQ-03
 
@@ -30,3 +30,4 @@
 **Status**: ⬜ Not Started
 **Objective**: Implement PDF payslip export for employees and automated GL journal entry posting upon payroll run approval.
 **Requirements**: REQ-07, REQ-08
+

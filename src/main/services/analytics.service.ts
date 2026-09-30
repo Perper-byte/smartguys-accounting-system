@@ -290,11 +290,12 @@ export class AnalyticsService {
           ) || entry.lines[0]
 
         // Determine outflow logic to color red vs green
-        const isOutflow = entry.lines.some((l) =>
-          (l.account.account_type.name === 'Asset' && Number(l.credit) > 0) ||
-          (l.account.account_type.name === 'Expense' && Number(l.debit) > 0) ||
-          (l.account.account_type.name === 'Liability' && Number(l.debit) > 0)
-        );
+        const isOutflow = entry.lines.some(
+          (l) =>
+            (l.account.account_type.name === 'Asset' && Number(l.credit) > 0) ||
+            (l.account.account_type.name === 'Expense' && Number(l.debit) > 0) ||
+            (l.account.account_type.name === 'Liability' && Number(l.debit) > 0)
+        )
 
         const amount = Math.max(...entry.lines.map((l) => Number(l.debit)))
 
