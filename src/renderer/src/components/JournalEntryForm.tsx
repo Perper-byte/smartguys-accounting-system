@@ -1,8 +1,18 @@
 // src/renderer/src/components/JournalEntryForm.tsx
 import * as React from 'react'
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom' // 👈 Added for floating toast
 import { NewContactModal } from './NewContactModal'
-import { UploadCloud, File as FileIcon, X, Image as ImageIcon, RefreshCw } from 'lucide-react'
+import {
+  UploadCloud,
+  File as FileIcon,
+  X,
+  Image as ImageIcon,
+  RefreshCw,
+  AlertTriangle, // 👈 Added icons for toast
+  CheckCircle2,
+  Info
+} from 'lucide-react'
 
 const getLocalDateString = () =>
   new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
@@ -46,8 +56,18 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
   const [attachments, setAttachments] = useState<File[]>([])
   const [isDragging, setIsDragging] = useState(false)
 
-  const [status, setStatus] = useState<{ type: 'error' | 'success'; msg: string } | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // 👈 Upgraded TOAST STATE
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error' | 'info'
+  } | null>(null)
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 5000)
+  }
 
   useEffect(() => {
     const api = (window as any).electronAPI || (window as any).api
@@ -77,7 +97,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
 
   useEffect(() => {
     fetchNextSequence()
-  }, [refPrefix, status])
+  }, [refPrefix])
 
   useEffect(() => {
     if (!payeeId) {
@@ -103,11 +123,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
     }
     if (newId) setPayeeId(newId)
     setIsNewContactModalOpen(false)
-    setStatus({
-      type: 'success',
-      msg: newName ? `${newName} was added and selected.` : 'Contact added.'
-    })
-    setTimeout(() => setStatus(null), 3000)
+    showToast(newName ? `${newName} was added and selected.` : 'Contact added.', 'success')
   }
 
   /* ------------------------------ line actions ------------------------------ */
@@ -156,7 +172,11 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
   }
 
   const handleFilesAdded = (files: File[]) => {
-    const validFiles = files.filter((file) => {
+    const validFiles: File[] = []
+    let typeError = false
+    let sizeError = false
+
+    files.forEach((file) => {
       const isValidType = [
         'image/jpeg',
         'image/png',
@@ -165,15 +185,21 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
       ].includes(file.type)
       const isValidSize = file.size <= 10 * 1024 * 1024
-      if (!isValidType) alert(`${file.name} is not a supported file type.`)
-      if (!isValidSize) alert(`${file.name} exceeds the 10MB limit.`)
-      return isValidType && isValidSize
+
+      if (!isValidType) typeError = true
+      if (!isValidSize) sizeError = true
+      if (isValidType && isValidSize) validFiles.push(file)
     })
 
+    if (typeError)
+      showToast('Some files are not supported (JPG, PNG, PDF, ZIP, XLSX only).', 'error')
+    if (sizeError) showToast('Some files exceed the 10MB limit.', 'error')
+
     if (attachments.length + validFiles.length > 10) {
-      alert('You can only upload a maximum of 10 attachments per entry.')
+      showToast('You can only upload a maximum of 10 attachments per entry.', 'error')
       return
     }
+
     setAttachments((prev) => [...prev, ...validFiles])
   }
 
@@ -218,7 +244,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
   /* -------------------------------- submit -------------------------------- */
 
   const handleSubmit = async () => {
-    setStatus(null)
+    setToast(null)
     setLoading(true)
 
     try {
@@ -251,18 +277,19 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
       })
 
       if (result.success) {
-        setStatus({ type: 'success', msg: `Entry ${result.referenceNo} posted successfully!` })
+        showToast(`Entry ${result.referenceNo} posted successfully!`, 'success')
         setDescription('')
         setVatType('VATABLE')
         setPayeeId('')
         setPayeeSearchQuery('')
         setLines([blank(), blank()])
         setAttachments([])
+        fetchNextSequence() // Fetch the next available sequence automatically
       } else {
-        setStatus({ type: 'error', msg: result.error })
+        showToast(result.error, 'error')
       }
     } catch (err: any) {
-      setStatus({ type: 'error', msg: err.message || 'Failed to submit to database.' })
+      showToast(err.message || 'Failed to submit to database.', 'error')
     } finally {
       setLoading(false)
     }
@@ -288,7 +315,26 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
   }
 
   return (
-    <div className="w-full animate-in fade-in duration-300">
+    <div className="w-full animate-in fade-in duration-300 relative">
+      {/* 👈 FLOATING TOAST PROVIDER (Escapes CSS boundaries) */}
+      {toast &&
+        createPortal(
+          <div
+            className={`fixed bottom-8 right-8 px-5 py-4 rounded-xl shadow-2xl text-white z-[999999] flex items-start space-x-3 transition-all duration-300 animate-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-[#1B9387]' : toast.type === 'error' ? 'bg-red-600' : 'bg-gray-800'}`}
+            style={{ maxWidth: '420px' }}
+          >
+            <div className="mt-0.5 shrink-0">
+              {toast.type === 'error' && <AlertTriangle size={20} />}
+              {toast.type === 'success' && <CheckCircle2 size={20} />}
+              {toast.type === 'info' && <Info size={20} />}
+            </div>
+            <span className="whitespace-pre-line text-sm font-semibold leading-relaxed">
+              {toast.message}
+            </span>
+          </div>,
+          document.body
+        )}
+
       {/* FULL WIDTH: removed max-w-4xl + centering */}
       <div className="w-full bg-white border border-[#B0DCDA] rounded-xl px-6 lg:px-8 pt-6 lg:pt-8 shadow-sm">
         {/* HEADER */}
@@ -298,15 +344,6 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
             General Journal
           </span>
         </div>
-
-        {status && (
-          <div
-            className={`mb-6 p-4 rounded-md text-sm font-bold ${status.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border border-[#B0DCDA]' : 'bg-red-50 text-red-700 border border-red-200'}`}
-          >
-            {status.type === 'success' ? '✅ ' : '⚠️ '}
-            {status.msg}
-          </div>
-        )}
 
         {/* ROW 1: DATE / REFERENCE / VAT */}
         <div className="grid gap-6 mb-6 grid-cols-1 md:grid-cols-3">
@@ -540,7 +577,7 @@ export const JournalEntryForm: React.FC<{ userId: string; isAdjusting?: boolean 
                             className="w-full bg-transparent p-1.5 text-sm text-gray-800 outline-none font-medium"
                           />
                         </div>
-                        <ul className="max-h-48 overflow-y-auto bg-white">
+                        <ul className="max-h-48 overflow-y-auto bg-white custom-scrollbar">
                           {accounts
                             .filter(
                               (a) =>

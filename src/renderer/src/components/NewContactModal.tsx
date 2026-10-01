@@ -86,10 +86,6 @@ export function NewContactModal({
         return 'Corporate'
       case 'LANDLORD':
         return 'Landlord'
-      case 'EMPLOYEE':
-        return 'Employee'
-      case 'GOVERNMENT':
-        return 'Government Agency'
       default:
         return 'Contact'
     }
@@ -112,10 +108,6 @@ export function NewContactModal({
         return 'Corporate account information will be used for business transactions.'
       case 'LANDLORD':
         return 'Landlord information will be used for rent and lease payable transactions.'
-      case 'EMPLOYEE':
-        return 'Employee information will be used for payroll and cash advance transactions.'
-      case 'GOVERNMENT':
-        return 'Government agencies will be used for tax, SSS, PhilHealth, and Pag-IBIG remittances.'
       default:
         return 'Assigning the correct type ensures they appear in the right ledgers.'
     }
@@ -230,8 +222,6 @@ export function NewContactModal({
                 <option value="SUPPLIER">📦 Supplier</option>
                 <option value="CORPORATE">🏢 Corporate</option>
                 <option value="LANDLORD">🔑 Landlord</option>
-                <option value="EMPLOYEE">💼 Employee</option>
-                <option value="GOVERNMENT">🏛️ Government</option>
               </select>
             </div>
 
@@ -294,7 +284,7 @@ export function NewContactModal({
                       setHmoExpiry('')
                     }
                   }}
-                  className="w-full bg-white border border-blue-200 rounded-md p-3 text-sm text-gray-800 font-bold focus:border-[#1B9387] outline-none transition cursor-pointer shadow-sm"
+                  className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-bold focus:border-[#1B9387] outline-none transition cursor-pointer shadow-sm"
                 >
                   <option value="">-- No HMO / Private Pay --</option>
                   {hmoList.map((hmo) => (

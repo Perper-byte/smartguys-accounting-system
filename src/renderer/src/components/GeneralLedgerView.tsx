@@ -1,6 +1,8 @@
 // src/renderer/src/components/GeneralLedgerView.tsx
 import * as React from 'react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
+import { createPortal } from 'react-dom'
+import { AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 
 const getLocalDateString = (date: Date) => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0]
@@ -27,7 +29,17 @@ export const GeneralLedgerView: React.FC = () => {
   const [selectedTx, setSelectedTx] = useState<any | null>(null)
   const [showVoidInput, setShowVoidInput] = useState(false)
   const [voidReason, setVoidReason] = useState('')
-  const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+
+  // 🔥 FLOATING TOAST STATE
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error' | 'info'
+  } | null>(null)
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 5000)
+  }
 
   useEffect(() => {
     const api = (window as any).electronAPI || (window as any).api
@@ -173,7 +185,6 @@ export const GeneralLedgerView: React.FC = () => {
   }
 
   const formatDate = (dateString: string) => {
-    // Formats as "20 Aug 2026" exactly like the screenshot
     return new Date(dateString).toLocaleDateString('en-GB', {
       day: '2-digit',
       month: 'short',
@@ -190,26 +201,31 @@ export const GeneralLedgerView: React.FC = () => {
   }
 
   const submitVoidRequest = async () => {
-    setStatus(null)
-    if (!voidReason || !voidReason.trim())
-      return setStatus({ type: 'error', msg: 'Reason required.' })
+    setToast(null)
+    if (!voidReason || !voidReason.trim()) {
+      return showToast('Reason required.', 'error')
+    }
+
     try {
       const api = (window as any).api || (window as any).electronAPI
       const targetId = selectedTx.entryId || selectedTx.id
       const response = await api.requestVoid(targetId, voidReason)
+
       if (response.success || !response.error) {
-        setStatus({
-          type: 'success',
-          msg: `Void requested for ${selectedTx.referenceNo}! Manager approval needed.`
-        })
+        showToast(
+          `Void requested for ${selectedTx.referenceNo}! Manager approval needed.`,
+          'success'
+        )
         setSelectedTx(null)
         setShowVoidInput(false)
         setVoidReason('')
         if (selectedAccountId) fetchSingleLedger(selectedAccountId)
         else fetchFullReport()
-      } else setStatus({ type: 'error', msg: 'Failed: ' + response.error })
+      } else {
+        showToast('Failed: ' + response.error, 'error')
+      }
     } catch (error) {
-      setStatus({ type: 'error', msg: 'System Error.' })
+      showToast('System Error processing void request.', 'error')
     }
   }
 
@@ -231,7 +247,7 @@ export const GeneralLedgerView: React.FC = () => {
 
   const handleExportPDF = async () => {
     if (!singleLedgerData && fullLedgerReport.length === 0) {
-      alert('No ledger data available to export.')
+      showToast('No ledger data available to export.', 'error')
       return
     }
 
@@ -275,10 +291,11 @@ export const GeneralLedgerView: React.FC = () => {
 
       const result = await api.exportPDF(filename)
 
-      if (result && result.success) alert(`Ledger saved successfully to:\n${result.filePath}`)
-      else if (result && result.error) alert(`Export Failed: ${result.error}`)
+      if (result && result.success)
+        showToast(`Ledger saved successfully to:\n${result.filePath}`, 'success')
+      else if (result && result.error) showToast(`Export Failed: ${result.error}`, 'error')
     } catch (err: any) {
-      alert(`Export Error: ${err.message || 'Failed to generate PDF.'}`)
+      showToast(`Export Error: ${err.message || 'Failed to generate PDF.'}`, 'error')
     } finally {
       if (sidebar) sidebar.style.display = ''
       if (topHeader) topHeader.style.display = ''
@@ -305,8 +322,27 @@ export const GeneralLedgerView: React.FC = () => {
   return (
     <div
       id="ledger-card"
-      className="w-full bg-white border border-gray-200 rounded-xl p-8 shadow-sm min-h-[600px] font-sans text-gray-800 animate-in fade-in duration-300"
+      className="w-full bg-white border border-gray-200 rounded-xl p-8 shadow-sm min-h-[600px] font-sans text-gray-800 animate-in fade-in duration-300 relative"
     >
+      {/* 🚀 FLOATING TOAST PROVIDER */}
+      {toast &&
+        createPortal(
+          <div
+            className={`fixed bottom-8 right-8 px-5 py-4 rounded-xl shadow-2xl text-white z-[999999] flex items-start space-x-3 transition-all duration-300 animate-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-[#1B9387]' : toast.type === 'error' ? 'bg-red-600' : 'bg-gray-800'}`}
+            style={{ maxWidth: '420px' }}
+          >
+            <div className="mt-0.5 shrink-0">
+              {toast.type === 'error' && <AlertTriangle size={20} />}
+              {toast.type === 'success' && <CheckCircle2 size={20} />}
+              {toast.type === 'info' && <Info size={20} />}
+            </div>
+            <span className="whitespace-pre-line text-sm font-semibold leading-relaxed">
+              {toast.message}
+            </span>
+          </div>,
+          document.body
+        )}
+
       {/* 🔥 ADD THIS STYLE BLOCK FOR PERFECT PDF EXPORTS 🔥 */}
       <style>
         {`
@@ -322,6 +358,7 @@ export const GeneralLedgerView: React.FC = () => {
                 }
                 `}
       </style>
+
       {/* HEADER MATCHING THE SCREENSHOT */}
       <div className="flex justify-between items-start mb-6">
         <div>
@@ -342,16 +379,6 @@ export const GeneralLedgerView: React.FC = () => {
           </button>
         </div>
       </div>
-
-      {/* STATUS MESSAGE */}
-      {status && (
-        <div
-          className={`mb-6 p-4 rounded-md text-sm font-bold shadow-sm border print:hidden ${status.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]' : 'bg-red-50 text-red-500 border-red-200'}`}
-        >
-          {status.type === 'success' ? '✅ ' : '⚠️ '}
-          {status.msg}
-        </div>
-      )}
 
       {/* CONTROLS (Hidden during Print) */}
       <div

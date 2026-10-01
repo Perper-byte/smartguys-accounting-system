@@ -1,6 +1,7 @@
 // src/renderer/src/components/InvoiceTrackerView.tsx
 import * as React from 'react'
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom' // 👈 Added for floating toast
 import {
   Download,
   RefreshCw,
@@ -10,7 +11,10 @@ import {
   Clock,
   FileText,
   X,
-  Filter
+  Filter,
+  AlertTriangle, // 👈 Added icons for toast
+  CheckCircle2,
+  Info
 } from 'lucide-react'
 
 interface InvoiceTrackerProps {
@@ -49,9 +53,17 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
 
   // PDF export state
   const [exporting, setExporting] = useState(false)
-  const [exportMsg, setExportMsg] = useState<{ type: 'success' | 'error'; msg: string } | null>(
-    null
-  )
+
+  // 👈 Upgraded TOAST STATE
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error' | 'info'
+  } | null>(null)
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 5000)
+  }
 
   const fetchInvoices = async () => {
     setLoading(true)
@@ -115,6 +127,7 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
       setLastUpdated(new Date())
     } catch (error) {
       console.error('Failed to fetch invoice tracker:', error)
+      showToast('Failed to load invoices from the database.', 'error')
     } finally {
       setLoading(false)
     }
@@ -263,16 +276,16 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
 
   const handleExportPDF = async () => {
     if (filteredInvoices.length === 0) {
-      setExportMsg({ type: 'error', msg: 'There are no invoices to export.' })
+      showToast('There are no invoices to export.', 'error')
       return
     }
     const api = (window as any).api || (window as any).electronAPI
     if (!api?.exportHtmlToPDF) {
-      setExportMsg({ type: 'error', msg: 'Export is unavailable. Fully restart the app.' })
+      showToast('Export is unavailable. Fully restart the app.', 'error')
       return
     }
     setExporting(true)
-    setExportMsg(null)
+
     try {
       const stamp = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD
       const res = await api.exportHtmlToPDF(
@@ -280,14 +293,14 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
         `Invoice-Tracker_${stamp}.pdf`,
         { landscape: true }
       )
+
       if (res?.success) {
-        setExportMsg({ type: 'success', msg: 'PDF saved.' })
-        setTimeout(() => setExportMsg(null), 5000)
+        showToast('PDF exported successfully.', 'success')
       } else if (res?.error && res.error !== 'Export cancelled') {
-        setExportMsg({ type: 'error', msg: res.error })
+        showToast(res.error, 'error')
       }
     } catch (error: any) {
-      setExportMsg({ type: 'error', msg: error.message || 'Export failed.' })
+      showToast(error.message || 'Export failed.', 'error')
     } finally {
       setExporting(false)
     }
@@ -338,7 +351,26 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
   const filterOptions = ['All', 'Unpaid', 'Partially Paid', 'Fully Paid']
 
   return (
-    <div className="w-full min-h-full p-6 md:p-8">
+    <div className="w-full min-h-full p-6 md:p-8 relative">
+      {/* 👈 FLOATING TOAST PROVIDER (Escapes CSS boundaries) */}
+      {toast &&
+        createPortal(
+          <div
+            className={`fixed bottom-8 right-8 px-5 py-4 rounded-xl shadow-2xl text-white z-[999999] flex items-start space-x-3 transition-all duration-300 animate-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-[#1B9387]' : toast.type === 'error' ? 'bg-red-600' : 'bg-gray-800'}`}
+            style={{ maxWidth: '420px' }}
+          >
+            <div className="mt-0.5 shrink-0">
+              {toast.type === 'error' && <AlertTriangle size={20} />}
+              {toast.type === 'success' && <CheckCircle2 size={20} />}
+              {toast.type === 'info' && <Info size={20} />}
+            </div>
+            <span className="whitespace-pre-line text-sm font-semibold leading-relaxed">
+              {toast.message}
+            </span>
+          </div>,
+          document.body
+        )}
+
       {/* FULL WIDTH: removed max-w-7xl mx-auto */}
       <div className="w-full flex flex-col font-sans text-gray-800 animate-in fade-in duration-300 space-y-6">
         {/* HEADER */}
@@ -363,14 +395,6 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
             </div>
           </div>
           <div className="flex items-center space-x-3">
-            {exportMsg && (
-              <span
-                className={`text-xs font-bold ${exportMsg.type === 'success' ? 'text-[#1B9387]' : 'text-red-600'}`}
-              >
-                {exportMsg.type === 'success' ? '✅ ' : '⚠️ '}
-                {exportMsg.msg}
-              </span>
-            )}
             <button
               onClick={fetchInvoices}
               className="px-3 py-2 bg-white hover:bg-gray-50 border border-gray-200 text-gray-600 rounded-md transition flex items-center justify-center shadow-sm"
@@ -503,11 +527,11 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
 
         {/* TABLE (taller so it uses the extra screen height) */}
         <div className="bg-white border border-[#B0DCDA] rounded-xl flex flex-col shadow-sm overflow-hidden max-h-[calc(100vh-340px)] min-h-[320px]">
-          <div className="overflow-auto relative flex-1">
+          <div className="overflow-auto relative flex-1 custom-scrollbar">
             <table className="w-full text-left text-sm whitespace-nowrap">
               <thead className="bg-white/95 backdrop-blur sticky top-0 z-20 shadow-sm border-b border-[#B0DCDA]">
                 <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold">
-                  <th className="p-4 border-r border-gray-100">Billed Entity</th>
+                  <th className="p-4 pl-6 border-r border-gray-100">Billed Entity</th>
                   <th className="p-4 border-r border-gray-100">Invoice Ref #</th>
                   <th className="p-4 border-r border-gray-100 text-center">Date</th>
                   <th className="p-4 border-r border-gray-100 text-center">Status</th>
@@ -523,7 +547,7 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
                     .fill(0)
                     .map((_, i) => (
                       <tr key={i} className="animate-pulse bg-white">
-                        <td className="p-4 border-r border-gray-100 flex items-center space-x-3">
+                        <td className="p-4 pl-6 border-r border-gray-100 flex items-center space-x-3">
                           <div className="h-7 w-7 rounded-full bg-gray-200"></div>
                           <div className="h-4 bg-gray-200 rounded w-24"></div>
                         </td>
@@ -568,7 +592,7 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
                       key={i}
                       className="hover:bg-[#E9FAFA]/60 transition-colors even:bg-gray-50 odd:bg-white group"
                     >
-                      <td className="p-4 font-bold text-gray-800 flex items-center border-r border-gray-100">
+                      <td className="p-4 pl-6 font-bold text-gray-800 flex items-center border-r border-gray-100">
                         <div
                           className={`h-7 w-7 rounded-full text-white flex items-center justify-center font-bold text-[10px] shadow-sm shrink-0 mr-3 ${inv.payeeType === 'HMO' ? 'bg-indigo-500' : inv.payeeType === 'CORPORATE' ? 'bg-blue-500' : 'bg-teal-600'}`}
                         >
@@ -605,7 +629,7 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
                         <div className="flex items-center justify-center space-x-2">
                           <button
                             onClick={() => setSelectedInvoice(inv)}
-                            className="px-2.5 py-1.5 text-[11px] font-bold text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-md transition-colors flex items-center gap-1.5 shadow-sm"
+                            className="px-2.5 py-1.5 text-[11px] font-bold text-gray-700 bg-white hover:bg-gray-100 border border-gray-300 rounded-md transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
                             title="View Details"
                           >
                             <Eye size={13} className="text-gray-500" />
@@ -621,7 +645,7 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
                                   referenceNo: inv.referenceNo
                                 })
                               }
-                              className="px-3 py-1.5 text-[11px] font-bold text-white bg-[#1B9387] hover:bg-[#147067] rounded-md transition-colors flex items-center gap-1.5 shadow-sm"
+                              className="px-3 py-1.5 text-[11px] font-bold text-white bg-[#1B9387] hover:bg-[#147067] rounded-md transition-colors flex items-center gap-1.5 shadow-sm cursor-pointer"
                               title="Record Payment"
                             >
                               <CreditCard size={13} />
@@ -688,7 +712,7 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
               </div>
               <button
                 onClick={() => setSelectedInvoice(null)}
-                className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded-full transition"
+                className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded-full transition cursor-pointer"
               >
                 <X size={20} />
               </button>
@@ -745,13 +769,13 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
             <div className="p-4 border-t border-gray-200 bg-gray-50 flex justify-end space-x-3 rounded-b-xl">
               <button
                 onClick={() => setSelectedInvoice(null)}
-                className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-gray-800 transition"
+                className="px-4 py-2 text-sm font-bold text-gray-600 hover:text-gray-800 transition cursor-pointer"
               >
                 Close
               </button>
               {selectedInvoice.balance > 0 && (
                 <button
-                  className="px-5 py-2 bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-extrabold rounded-md tracking-wider uppercase transition shadow-sm flex items-center gap-2"
+                  className="px-5 py-2 bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-extrabold rounded-md tracking-wider uppercase transition shadow-sm flex items-center gap-2 cursor-pointer"
                   onClick={() => {
                     if (onNavigate)
                       onNavigate('collections', {

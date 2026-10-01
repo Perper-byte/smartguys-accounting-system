@@ -1,6 +1,16 @@
+// src/renderer/src/components/FinancialStatementsView.tsx
 import * as React from 'react'
 import { useState, useEffect } from 'react'
-import { FileText, FileSpreadsheet, ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import {
+  FileText,
+  FileSpreadsheet,
+  ChevronLeft,
+  ChevronRight,
+  AlertTriangle,
+  CheckCircle2,
+  Info
+} from 'lucide-react'
 
 export interface FinancialStatementsViewProps {
   onNavigate?: (view: string, props?: any) => void
@@ -18,11 +28,16 @@ export const FinancialStatementsView: React.FC<FinancialStatementsViewProps> = (
   const [data, setData] = useState<any | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
-  const showToast = (message: string, type: 'success' | 'error') => {
+  // 🔥 FLOATING TOAST STATE
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error' | 'info'
+  } | null>(null)
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 4000)
+    setTimeout(() => setToast(null), 5000)
   }
 
   useEffect(() => {
@@ -176,15 +191,24 @@ export const FinancialStatementsView: React.FC<FinancialStatementsViewProps> = (
       id="statement-card"
       className="w-full bg-white border border-[#B0DCDA] rounded-xl p-8 shadow-sm min-h-[550px] relative"
     >
-      {/* TOAST ALERTS */}
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 p-4 rounded-md shadow-lg text-white z-50 flex items-center space-x-2 animate-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-[#1B9387]' : 'bg-red-700'}`}
-        >
-          {toast.type === 'error' && <AlertTriangle size={18} />}
-          <span className="whitespace-pre-line text-sm font-medium">{toast.message}</span>
-        </div>
-      )}
+      {/* 🚀 FLOATING TOAST PROVIDER */}
+      {toast &&
+        createPortal(
+          <div
+            className={`fixed bottom-8 right-8 px-5 py-4 rounded-xl shadow-2xl text-white z-[999999] flex items-start space-x-3 transition-all duration-300 animate-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-[#1B9387]' : toast.type === 'error' ? 'bg-red-600' : 'bg-gray-800'}`}
+            style={{ maxWidth: '420px' }}
+          >
+            <div className="mt-0.5 shrink-0">
+              {toast.type === 'error' && <AlertTriangle size={20} />}
+              {toast.type === 'success' && <CheckCircle2 size={20} />}
+              {toast.type === 'info' && <Info size={20} />}
+            </div>
+            <span className="whitespace-pre-line text-sm font-semibold leading-relaxed">
+              {toast.message}
+            </span>
+          </div>,
+          document.body
+        )}
 
       {/* HEADER & CONTROLS */}
       <div
@@ -251,7 +275,7 @@ export const FinancialStatementsView: React.FC<FinancialStatementsViewProps> = (
             <button
               id="export-pdf-btn"
               onClick={handleExportPDF}
-              className="px-4 py-2 bg-white hover:bg-[#E9FAFA] border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-2 h-10"
+              className="px-4 py-2 bg-white hover:bg-[#E9FAFA] border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-2 h-10 cursor-pointer"
             >
               <FileText size={16} /> <span>Export PDF</span>
             </button>
@@ -260,7 +284,7 @@ export const FinancialStatementsView: React.FC<FinancialStatementsViewProps> = (
                 id="export-excel-btn"
                 onClick={statementType === 'trial' ? handleExportExcel : undefined}
                 disabled={statementType !== 'trial'}
-                className={`px-4 py-2 bg-[#E9FAFA] border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-2 h-10 ${statementType !== 'trial' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#B0DCDA]/50'}`}
+                className={`px-4 py-2 bg-[#E9FAFA] border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-2 h-10 ${statementType !== 'trial' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-[#B0DCDA]/50 cursor-pointer'}`}
               >
                 <FileSpreadsheet size={16} /> <span>Export Excel</span>
               </button>
@@ -289,7 +313,7 @@ export const FinancialStatementsView: React.FC<FinancialStatementsViewProps> = (
             <p className="text-red-700 font-bold mb-4">{error}</p>
             <button
               onClick={() => setStatementType(statementType)}
-              className="px-6 py-2 bg-[#1B9387] text-white font-bold rounded-md shadow hover:bg-[#157A70] transition"
+              className="px-6 py-2 bg-[#1B9387] text-white font-bold rounded-md shadow hover:bg-[#157A70] transition cursor-pointer"
             >
               Retry Loading
             </button>

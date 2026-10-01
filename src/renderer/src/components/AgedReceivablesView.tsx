@@ -1,6 +1,20 @@
 import * as React from 'react'
 import { useState, useEffect } from 'react'
-import { FileSpreadsheet, Search, RefreshCw, ChevronRight, X, Receipt } from 'lucide-react'
+import { createPortal } from 'react-dom' // 👈 Added for floating toast
+import * as XLSX from 'xlsx' // 👈 Added for frontend Excel generation
+
+// 👈 Added AlertTriangle, CheckCircle2, Info for the toast
+import {
+  FileSpreadsheet,
+  Search,
+  RefreshCw,
+  ChevronRight,
+  X,
+  Receipt,
+  AlertTriangle,
+  CheckCircle2,
+  Info
+} from 'lucide-react'
 
 interface AgedReceivablesProps {
   onNavigate?: (viewName: string, data?: any) => void
@@ -12,6 +26,17 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedEntity, setSelectedEntity] = useState<any | null>(null)
+
+  // 👈 Upgraded TOAST STATE
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error' | 'info'
+  } | null>(null)
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 5000)
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -25,6 +50,7 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
       setLastUpdated(new Date())
     } catch (error) {
       console.error('Failed to fetch aged receivables', error)
+      showToast('Failed to fetch aged receivables.', 'error')
       setData([])
     } finally {
       setLoading(false)
@@ -51,32 +77,103 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
   const total90 = filteredData.reduce((sum, row) => sum + (row.days90 || 0), 0)
   const grandTotal = filteredData.reduce((sum, row) => sum + (row.total || 0), 0)
 
-  const handleExportExcel = async () => {
-    if (filteredData.length === 0) return alert('No data to export.')
+  // 🌟 NEW: Frontend Excel Export with showSaveFilePicker
+  const handleExportExcel = () => {
+    if (filteredData.length === 0) return showToast('No data to export.', 'error')
 
-    setLoading(true)
-    try {
-      const api = (window as any).api || (window as any).electronAPI
+    showToast('Preparing Excel file...', 'info')
 
-      const totals = {
-        totalCurrent,
-        total30,
-        total60,
-        total90,
-        grandTotal
+    setTimeout(async () => {
+      try {
+        const exportData = filteredData.map((row) => ({
+          'Patient / HMO / Entity': row.payeeName || 'Unknown',
+          'Current (0-30)': row.current || 0,
+          '31-60 Days': row.days30 || 0,
+          '61-90 Days': row.days60 || 0,
+          '90+ Days (Critical)': row.days90 || 0,
+          'Total Balance': row.total || 0
+        }))
+
+        // Add Grand Totals row at the bottom
+        exportData.push({
+          'Patient / HMO / Entity': 'GRAND TOTALS',
+          'Current (0-30)': totalCurrent,
+          '31-60 Days': total30,
+          '61-90 Days': total60,
+          '90+ Days (Critical)': total90,
+          'Total Balance': grandTotal
+        })
+
+        const worksheet = XLSX.utils.json_to_sheet(exportData)
+
+        // Set optimal column widths
+        worksheet['!cols'] = [
+          { wch: 40 }, // Entity Name
+          { wch: 18 }, // Current
+          { wch: 18 }, // 31-60
+          { wch: 18 }, // 61-90
+          { wch: 20 }, // 90+
+          { wch: 20 } // Total Balance
+        ]
+
+        // Format currency columns
+        for (let row = 2; row <= exportData.length + 1; row++) {
+          ;['B', 'C', 'D', 'E', 'F'].forEach((col) => {
+            const cell = worksheet[`${col}${row}`]
+            if (cell) {
+              cell.t = 'n'
+              cell.z = '"₱"#,##0.00'
+            }
+          })
+        }
+
+        const workbook = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Aged Receivables')
+        const filename = `Aged_Receivables_${new Date().toISOString().slice(0, 10)}.xlsx`
+
+        // Use Modern File System Access API
+        if ('showSaveFilePicker' in window) {
+          try {
+            const handle = await (window as any).showSaveFilePicker({
+              suggestedName: filename,
+              types: [
+                {
+                  description: 'Excel Workbook',
+                  accept: {
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
+                  }
+                }
+              ]
+            })
+            const writable = await handle.createWritable()
+            const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+            await writable.write(buffer)
+            await writable.close()
+
+            showToast(`Exported successfully!\nSaved to: ${handle.name}`, 'success')
+          } catch (err: any) {
+            if (err.name !== 'AbortError') {
+              console.error('File Save Error:', err)
+              showToast('Failed to save the Excel file.', 'error')
+            } else {
+              setToast(null) // Cancelled
+            }
+          }
+        } else {
+          // Fallback
+          XLSX.writeFile(workbook, filename)
+          setTimeout(() => {
+            showToast(
+              `Export initiated.\nSaved as: ${filename}\n(Check Downloads folder)`,
+              'success'
+            )
+          }, 500)
+        }
+      } catch (error) {
+        console.error('Error exporting to Excel:', error)
+        showToast('System error while exporting to Excel.', 'error')
       }
-
-      const result = await api.exportAgedReceivablesToExcel(filteredData, totals)
-
-      if (result && !result.success && result.error !== 'Export cancelled by user.') {
-        alert(`Export failed: ${result.error}`)
-      }
-    } catch (error) {
-      console.error('Error exporting to Excel:', error)
-      alert('System error while exporting to Excel.')
-    } finally {
-      setLoading(false)
-    }
+    }, 150)
   }
 
   const getStatusStyle = (status: string) => {
@@ -88,6 +185,25 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
 
   return (
     <div className="w-full h-full px-8 py-6 flex flex-col relative font-sans text-gray-800 animate-in fade-in duration-300">
+      {/* 👈 FLOATING TOAST PROVIDER */}
+      {toast &&
+        createPortal(
+          <div
+            className={`fixed bottom-8 right-8 px-5 py-4 rounded-xl shadow-2xl text-white z-[999999] flex items-start space-x-3 transition-all duration-300 animate-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-[#1B9387]' : toast.type === 'error' ? 'bg-red-600' : 'bg-gray-800'}`}
+            style={{ maxWidth: '420px' }}
+          >
+            <div className="mt-0.5 shrink-0">
+              {toast.type === 'error' && <AlertTriangle size={20} />}
+              {toast.type === 'success' && <CheckCircle2 size={20} />}
+              {toast.type === 'info' && <Info size={20} />}
+            </div>
+            <span className="whitespace-pre-line text-sm font-semibold leading-relaxed">
+              {toast.message}
+            </span>
+          </div>,
+          document.body
+        )}
+
       <div className="w-full h-full flex-1 flex flex-col min-h-0">
         {/* HEADER */}
         <div className="flex justify-between items-end mb-6 pb-4 print:hidden">
@@ -194,16 +310,18 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
         {/* TABLE WRAPPER CONTAINER */}
         <div className="bg-white border border-[#B0DCDA] rounded-xl flex flex-col shadow-sm overflow-hidden flex-1 min-h-0">
           {/* Scrollable Data Area */}
-          <div className="overflow-auto relative flex-1">
+          <div className="overflow-auto relative flex-1 custom-scrollbar">
             {loading ? (
               <div className="flex justify-center items-center py-20 text-[#1B9387]">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current"></div>
               </div>
             ) : (
               <table className="w-full h-full table-fixed text-left text-sm whitespace-nowrap bg-white">
-                <thead className="bg-gray-50 sticky top-0 z-20 shadow-sm border-b border-[#B0DCDA]">
+                <thead className="bg-gray-50 sticky top-0 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.05)] border-b border-[#B0DCDA]">
                   <tr className="text-gray-500 uppercase tracking-wider text-xs font-extrabold h-[1px]">
-                    <th className="p-4 border-r border-gray-200 w-[28%]">Patient / HMO / Entity</th>
+                    <th className="p-4 pl-6 border-r border-gray-200 w-[28%]">
+                      Patient / HMO / Entity
+                    </th>
                     <th className="p-4 text-right border-r border-gray-200 text-[#1B9387] w-[12%]">
                       Current
                     </th>
@@ -238,7 +356,7 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
                           key={i}
                           className="hover:bg-[#E9FAFA]/50 transition-colors bg-white group h-[1px]"
                         >
-                          <td className="p-4 font-extrabold text-gray-800 border-r border-gray-100 truncate">
+                          <td className="p-4 pl-6 font-extrabold text-gray-800 border-r border-gray-100 truncate">
                             {row.payeeName}
                           </td>
                           <td className="p-4 text-right font-mono font-bold text-gray-800 border-r border-gray-100 truncate">
@@ -319,11 +437,11 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
 
           {/* FIXED BOTTOM FOOTER - Pinned to the bottom of the card */}
           {!loading && filteredData.length > 0 && (
-            <div className="bg-gray-50 shadow-[0_-1px_2px_rgba(0,0,0,0.05)] border-t-2 border-[#B0DCDA] shrink-0 z-30">
+            <div className="bg-gray-50 shadow-[0_-1px_2px_rgba(0,0,0,0.05)] border-t border-[#B0DCDA] shrink-0 z-30">
               <table className="w-full table-fixed text-left text-sm whitespace-nowrap">
                 <tbody>
                   <tr>
-                    <td className="p-4 font-extrabold text-gray-800 text-right border-r border-gray-200 uppercase tracking-wider w-[28%] truncate">
+                    <td className="p-4 pl-6 font-extrabold text-gray-800 text-right border-r border-gray-200 uppercase tracking-wider w-[28%] truncate">
                       Grand Totals
                     </td>
                     <td className="p-4 text-right font-mono font-black text-[#1B9387] border-r border-gray-200 w-[12%] truncate">
@@ -373,7 +491,7 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto max-h-[60vh]">
+            <div className="p-6 overflow-y-auto max-h-[60vh] custom-scrollbar">
               <div className="flex items-center justify-between bg-[#E9FAFA] border border-[#B0DCDA] p-4 rounded-lg mb-6">
                 <span className="font-bold text-[#1B9387] uppercase tracking-wider text-sm">
                   Total Outstanding Balance
@@ -433,17 +551,17 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
                   <table className="w-full text-left text-sm whitespace-nowrap">
                     <thead className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500 uppercase font-extrabold">
                       <tr>
-                        <th className="p-3 border-r border-gray-100">Invoice No.</th>
+                        <th className="p-3 border-r border-gray-100 pl-4">Invoice No.</th>
                         <th className="p-3 border-r border-gray-100">Date Issued</th>
                         <th className="p-3 border-r border-gray-100">Due Date</th>
                         <th className="p-3 border-r border-gray-100">Status</th>
-                        <th className="p-3 text-right">Amount</th>
+                        <th className="p-3 text-right pr-4">Amount</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
                       {selectedEntity.invoices.map((inv: any, idx: number) => (
                         <tr key={idx} className="hover:bg-gray-50 bg-white">
-                          <td className="p-3 font-bold text-[#1B9387] border-r border-gray-100">
+                          <td className="p-3 pl-4 font-bold text-[#1B9387] border-r border-gray-100">
                             {inv.invoiceNo}
                           </td>
                           <td className="p-3 text-gray-600 border-r border-gray-100">
@@ -459,7 +577,7 @@ export function AgedReceivablesView({ onNavigate }: AgedReceivablesProps) {
                               {inv.status || 'UNPAID'}
                             </span>
                           </td>
-                          <td className="p-3 text-right font-mono font-bold text-gray-800">
+                          <td className="p-3 pr-4 text-right font-mono font-bold text-gray-800">
                             {formatCurrency(inv.amount)}
                           </td>
                         </tr>

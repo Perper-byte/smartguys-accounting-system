@@ -292,6 +292,7 @@ export default function App() {
   const handleLogout = () => {
     setCurrentUser(null)
     setActiveTab('home')
+    setNavData(null)
   }
 
   const handleNavigation = (tabId: string, data?: any) => {
@@ -354,7 +355,7 @@ export default function App() {
                       return (
                         <button
                           key={tab.id}
-                          onClick={() => setActiveTab(tab.id)}
+                          onClick={() => handleNavigation(tab.id)}
                           className={`w-full flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
                             isActive
                               ? 'bg-[#1B9387] text-white shadow-md shadow-[#1B9387]/20'
@@ -449,7 +450,7 @@ export default function App() {
                 <WelcomeView
                   username={currentUser.username}
                   role={currentUser.role}
-                  onNavigate={setActiveTab}
+                  onNavigate={handleNavigation}
                 />
               )}
               {activeTab === 'settings' && <SystemSettingsView />}
@@ -484,7 +485,7 @@ export default function App() {
               )}
               {activeTab === 'journal' && <JournalManagementView userId={currentUser.id} />}
               {activeTab === 'adjusting' && (
-                <AdjustingEntryForm userId={currentUser.id} onNavigate={setActiveTab} />
+                <AdjustingEntryForm userId={currentUser.id} onNavigate={handleNavigation} />
               )}
               {activeTab === 'disbursement' && (
                 <CashDisbursementForm userId={currentUser.id} onNavigate={handleNavigation} />

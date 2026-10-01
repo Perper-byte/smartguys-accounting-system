@@ -1,7 +1,11 @@
 // src/renderer/src/components/BooksOfAccountsView.tsx
 import * as React from 'react'
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom' // 👈 Added for floating toast
 import * as XLSX from 'xlsx'
+
+// 👈 Added Lucide icons for the toast notification
+import { AlertTriangle, CheckCircle2, Info } from 'lucide-react'
 
 const getLocalDateString = (date: Date) => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0]
@@ -20,6 +24,17 @@ export function BooksOfAccountsView() {
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
+  // 👈 Upgraded TOAST STATE
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error' | 'info'
+  } | null>(null)
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 5000)
+  }
+
   const fetchBooks = async () => {
     setLoading(true)
     try {
@@ -28,6 +43,7 @@ export function BooksOfAccountsView() {
       setData(result || [])
     } catch (error) {
       console.error('Failed to fetch books', error)
+      showToast('Failed to fetch books of accounts.', 'error')
     } finally {
       setLoading(false)
     }
@@ -43,42 +59,92 @@ export function BooksOfAccountsView() {
     return `₱ ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
+  // 🌟 NEW: Modern File System Access API for Excel Export
   const handleExportExcel = () => {
-    if (data.length === 0) return alert('No data to export.')
+    if (data.length === 0) return showToast('No data to export.', 'error')
 
-    // 1. Map data to clean objects for Excel
-    const exportData = data.map((row) => ({
-      Date: new Date(row.date).toLocaleDateString(),
-      'Reference No.': row.referenceNo,
-      'Payee / Entity': row.payeeName || '',
-      Description: row.description,
-      'Account Code': row.accountCode,
-      'Account Name': row.accountName,
-      'Debit (PHP)': row.debit > 0 ? row.debit : '',
-      'Credit (PHP)': row.credit > 0 ? row.credit : ''
-    }))
+    showToast('Preparing Excel file...', 'info')
 
-    // 2. Convert to worksheet
-    const worksheet = XLSX.utils.json_to_sheet(exportData)
+    setTimeout(async () => {
+      try {
+        // 1. Map data to clean objects for Excel
+        const exportData = data.map((row) => ({
+          Date: new Date(row.date).toLocaleDateString(),
+          'Reference No.': row.referenceNo,
+          'Payee / Entity': row.payeeName || '',
+          Description: row.description,
+          'Account Code': row.accountCode,
+          'Account Name': row.accountName,
+          'Debit (PHP)': row.debit > 0 ? row.debit : '',
+          'Credit (PHP)': row.credit > 0 ? row.credit : ''
+        }))
 
-    // 3. ✨ FIX THE LAYOUT: Set explicit column widths
-    worksheet['!cols'] = [
-      { wch: 12 }, // A: Date
-      { wch: 15 }, // B: Reference No.
-      { wch: 30 }, // C: Payee / Entity
-      { wch: 45 }, // D: Description
-      { wch: 15 }, // E: Account Code
-      { wch: 35 }, // F: Account Name
-      { wch: 15 }, // G: Debit (PHP)
-      { wch: 15 } // H: Credit (PHP)
-    ]
+        // 2. Convert to worksheet
+        const worksheet = XLSX.utils.json_to_sheet(exportData)
 
-    // 4. Create workbook and append sheet
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, getBookTitle())
+        // 3. ✨ FIX THE LAYOUT: Set explicit column widths
+        worksheet['!cols'] = [
+          { wch: 12 }, // A: Date
+          { wch: 15 }, // B: Reference No.
+          { wch: 30 }, // C: Payee / Entity
+          { wch: 45 }, // D: Description
+          { wch: 15 }, // E: Account Code
+          { wch: 35 }, // F: Account Name
+          { wch: 15 }, // G: Debit (PHP)
+          { wch: 15 } // H: Credit (PHP)
+        ]
 
-    // 5. Save as a true .xlsx file
-    XLSX.writeFile(workbook, `BIR_Book_${bookType}_${startDate}_to_${endDate}.xlsx`)
+        // 4. Create workbook and append sheet
+        const workbook = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(workbook, worksheet, getBookTitle())
+        const filename = `BIR_Book_${bookType}_${startDate}_to_${endDate}.xlsx`
+
+        // 5. Use Modern File System Access API
+        if ('showSaveFilePicker' in window) {
+          try {
+            // Pauses execution until the user selects a save location or cancels
+            const handle = await (window as any).showSaveFilePicker({
+              suggestedName: filename,
+              types: [
+                {
+                  description: 'Excel Workbook',
+                  accept: {
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
+                  }
+                }
+              ]
+            })
+
+            // User selected location, write the file
+            const writable = await handle.createWritable()
+            const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+            await writable.write(buffer)
+            await writable.close()
+
+            showToast(`Exported successfully!\nSaved to: ${handle.name}`, 'success')
+          } catch (err: any) {
+            if (err.name !== 'AbortError') {
+              console.error('File Save Error:', err)
+              showToast('Failed to save the Excel file.', 'error')
+            } else {
+              setToast(null) // User cancelled the save dialog
+            }
+          }
+        } else {
+          // Fallback for older browsers
+          XLSX.writeFile(workbook, filename)
+          setTimeout(() => {
+            showToast(
+              `Export initiated.\nSaved as: ${filename}\n(Please check your Downloads folder)`,
+              'success'
+            )
+          }, 500)
+        }
+      } catch (error) {
+        console.error('Export process failed:', error)
+        showToast('Failed to prepare Excel export.', 'error')
+      }
+    }, 150)
   }
 
   const getBookTitle = () => {
@@ -103,8 +169,27 @@ export function BooksOfAccountsView() {
 
   return (
     // ✨ UX FIX: Full-page flex centering wrapper
-    <div className="w-full h-full flex p-4 lg:p-6 bg-gray-50/30">
-      <div className="w-full h-full bg-white border border-[#B0DCDA] rounded-xl p-6 shadow-sm flex flex-col font-sans text-gray-800">
+    <div className="w-full h-full flex p-4 lg:p-6 bg-gray-50/30 relative">
+      {/* 👈 FLOATING TOAST PROVIDER (Escapes CSS boundaries) */}
+      {toast &&
+        createPortal(
+          <div
+            className={`fixed bottom-8 right-8 px-5 py-4 rounded-xl shadow-2xl text-white z-[999999] flex items-start space-x-3 transition-all duration-300 animate-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-[#1B9387]' : toast.type === 'error' ? 'bg-red-600' : 'bg-gray-800'}`}
+            style={{ maxWidth: '420px' }}
+          >
+            <div className="mt-0.5 shrink-0">
+              {toast.type === 'error' && <AlertTriangle size={20} />}
+              {toast.type === 'success' && <CheckCircle2 size={20} />}
+              {toast.type === 'info' && <Info size={20} />}
+            </div>
+            <span className="whitespace-pre-line text-sm font-semibold leading-relaxed">
+              {toast.message}
+            </span>
+          </div>,
+          document.body
+        )}
+
+      <div className="w-full h-full bg-white border border-[#B0DCDA] rounded-xl p-6 shadow-sm flex flex-col font-sans text-gray-800 animate-in fade-in duration-300 min-h-0">
         {/* HEADER */}
         <div className="flex justify-between items-end mb-6 border-b border-[#B0DCDA] pb-6 shrink-0">
           <div>
@@ -183,7 +268,7 @@ export function BooksOfAccountsView() {
         </div>
 
         {/* MAIN LEDGER TABLE */}
-        <div className="bg-white border border-[#B0DCDA] rounded-xl flex-1 flex flex-col overflow-hidden shadow-sm">
+        <div className="bg-white border border-[#B0DCDA] rounded-xl flex-1 flex flex-col overflow-hidden shadow-sm min-h-0">
           {/* Table Title Bar */}
           <div className="bg-[#FBF8F8] p-4 border-b border-[#B0DCDA] flex justify-between items-center shrink-0">
             <h3 className="text-base font-extrabold text-gray-800 uppercase tracking-widest">
@@ -193,7 +278,7 @@ export function BooksOfAccountsView() {
           </div>
 
           {/* Table Content */}
-          <div className="flex-1 overflow-auto relative">
+          <div className="flex-1 overflow-auto relative custom-scrollbar">
             {loading ? (
               <div className="absolute inset-0 flex justify-center items-center bg-white/50 backdrop-blur-sm z-20 text-[#1B9387] font-bold animate-pulse">
                 Loading Journal Data...

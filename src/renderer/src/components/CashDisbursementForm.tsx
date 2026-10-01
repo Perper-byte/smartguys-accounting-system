@@ -238,7 +238,6 @@ export const CashDisbursementForm: React.FC<{
         </p>
       </div>
 
-      {/* 🔥 Added items-start to allow the sticky right column to work correctly */}
       <div className="flex flex-col lg:flex-row items-start gap-8">
         {/* LEFT SIDE: MAIN FORM */}
         <div className="flex-1 w-full bg-white border border-[#B0DCDA] rounded-xl shadow-sm relative overflow-hidden">
@@ -330,7 +329,7 @@ export const CashDisbursementForm: React.FC<{
                           className="w-full bg-white border border-gray-200 rounded p-2 text-sm text-gray-800 outline-none focus:border-[#1B9387]"
                         />
                       </div>
-                      <ul className="max-h-48 overflow-y-auto">
+                      <ul className="max-h-48 overflow-y-auto custom-scrollbar">
                         <li
                           onClick={() => {
                             setPayeeId('')
@@ -680,16 +679,17 @@ export const CashDisbursementForm: React.FC<{
               <h3 className="text-sm font-extrabold text-gray-700 uppercase tracking-wider">
                 Recent Disbursements
               </h3>
+              {/* 👈 FIX: Route to the Journal instead of the restricted Cashier's History view! */}
               <button
                 type="button"
-                onClick={() => onNavigate && onNavigate('history')}
+                onClick={() => onNavigate && onNavigate('journal')}
                 className="text-xs text-[#1B9387] hover:text-[#157A6F] font-bold cursor-pointer hover:underline transition bg-transparent border-none"
               >
                 View All
               </button>
             </div>
 
-            <div className="space-y-3 overflow-y-auto max-h-[700px] pr-1">
+            <div className="space-y-3 overflow-y-auto max-h-[700px] pr-1 custom-scrollbar">
               {recentVouchers.length === 0 ? (
                 <p className="text-xs text-gray-400 italic text-center mt-8">
                   No recent disbursements found.

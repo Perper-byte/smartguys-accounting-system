@@ -1,6 +1,7 @@
 // src/renderer/src/components/JournalManagementView.tsx
 import * as React from 'react'
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Search,
   Download,
@@ -9,7 +10,10 @@ import {
   X,
   Paperclip,
   Image as ImageIcon,
-  File as FileIcon
+  File as FileIcon,
+  AlertTriangle,
+  CheckCircle2,
+  Info
 } from 'lucide-react'
 import { JournalEntryForm } from './JournalEntryForm'
 
@@ -57,9 +61,17 @@ export function JournalManagementView({ userId }: { userId: string }) {
 
   // PDF export state
   const [exporting, setExporting] = useState(false)
-  const [exportMsg, setExportMsg] = useState<{ type: 'success' | 'error'; msg: string } | null>(
-    null
-  )
+
+  // 🔥 FLOATING TOAST STATE
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error' | 'info'
+  } | null>(null)
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 5000)
+  }
 
   const fetchEntries = async () => {
     setLoading(true)
@@ -148,21 +160,20 @@ export function JournalManagementView({ userId }: { userId: string }) {
   const runExport = async (html: string, filename: string, landscape: boolean) => {
     const api = (window as any).api || (window as any).electronAPI
     if (!api?.exportHtmlToPDF) {
-      setExportMsg({ type: 'error', msg: 'Export is unavailable. Fully restart the app.' })
+      showToast('Export is unavailable. Fully restart the app.', 'error')
       return
     }
     setExporting(true)
-    setExportMsg(null)
+    setToast(null)
     try {
       const res = await api.exportHtmlToPDF(html, filename, { landscape })
       if (res?.success) {
-        setExportMsg({ type: 'success', msg: 'PDF saved.' })
-        setTimeout(() => setExportMsg(null), 5000)
+        showToast('PDF saved successfully.', 'success')
       } else if (res?.error && res.error !== 'Export cancelled') {
-        setExportMsg({ type: 'error', msg: res.error })
+        showToast(res.error, 'error')
       }
     } catch (error: any) {
-      setExportMsg({ type: 'error', msg: error.message || 'Export failed.' })
+      showToast(error.message || 'Export failed.', 'error')
     } finally {
       setExporting(false)
     }
@@ -186,7 +197,7 @@ export function JournalManagementView({ userId }: { userId: string }) {
 
   const handleExportList = () => {
     if (filteredEntries.length === 0) {
-      setExportMsg({ type: 'error', msg: 'There are no journals to export.' })
+      showToast('There are no journals to export.', 'error')
       return
     }
     const tabLabel =
@@ -301,20 +312,31 @@ export function JournalManagementView({ userId }: { userId: string }) {
   const showStatusColumn = statusTab !== 'ACTIVE'
 
   return (
-    <div className="w-full min-h-[calc(100vh-64px)] bg-[#f9fafb] p-6 lg:px-8 lg:py-8 font-sans text-gray-800 animate-in fade-in duration-300">
+    <div className="w-full min-h-[calc(100vh-64px)] bg-[#f9fafb] p-6 lg:px-8 lg:py-8 font-sans text-gray-800 animate-in fade-in duration-300 relative">
+      {/* 🚀 FLOATING TOAST PROVIDER */}
+      {toast &&
+        createPortal(
+          <div
+            className={`fixed bottom-8 right-8 px-5 py-4 rounded-xl shadow-2xl text-white z-[999999] flex items-start space-x-3 transition-all duration-300 animate-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-[#1B9387]' : toast.type === 'error' ? 'bg-red-600' : 'bg-gray-800'}`}
+            style={{ maxWidth: '420px' }}
+          >
+            <div className="mt-0.5 shrink-0">
+              {toast.type === 'error' && <AlertTriangle size={20} />}
+              {toast.type === 'success' && <CheckCircle2 size={20} />}
+              {toast.type === 'info' && <Info size={20} />}
+            </div>
+            <span className="whitespace-pre-line text-sm font-semibold leading-relaxed">
+              {toast.message}
+            </span>
+          </div>,
+          document.body
+        )}
+
       <div className="w-full">
         {/* PAGE HEADER */}
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-black tracking-tight text-gray-900">All Journals</h1>
           <div className="flex items-center gap-3">
-            {exportMsg && (
-              <span
-                className={`text-xs font-bold ${exportMsg.type === 'success' ? 'text-[#1B9387]' : 'text-red-600'}`}
-              >
-                {exportMsg.type === 'success' ? '✅ ' : '⚠️ '}
-                {exportMsg.msg}
-              </span>
-            )}
             <button
               onClick={handleExportList}
               disabled={exporting || loading}
@@ -519,17 +541,10 @@ export function JournalManagementView({ userId }: { userId: string }) {
                 <div className="mt-2">{renderStatusBadge(selectedEntry.status)}</div>
               </div>
               <div className="flex items-center gap-2">
-                {exportMsg && (
-                  <span
-                    className={`text-xs font-bold ${exportMsg.type === 'success' ? 'text-[#1B9387]' : 'text-red-600'}`}
-                  >
-                    {exportMsg.msg}
-                  </span>
-                )}
                 <button
                   onClick={() => handleExportSingle(selectedEntry)}
                   disabled={exporting}
-                  className="px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition flex items-center gap-2 text-xs font-bold uppercase tracking-wider disabled:opacity-50"
+                  className="px-3 py-2 border border-gray-200 rounded text-gray-600 hover:bg-gray-50 transition flex items-center gap-2 text-xs font-bold uppercase tracking-wider disabled:opacity-50 cursor-pointer"
                   title="Export this journal as PDF"
                 >
                   <Download size={14} /> {exporting ? 'Exporting...' : 'Export PDF'}
@@ -537,7 +552,7 @@ export function JournalManagementView({ userId }: { userId: string }) {
                 <button
                   onClick={() => {
                     setSelectedEntry(null)
-                    setExportMsg(null)
+                    setToast(null)
                   }}
                   className="p-2 border border-transparent rounded text-gray-400 hover:text-gray-800 hover:bg-gray-100 transition cursor-pointer"
                 >

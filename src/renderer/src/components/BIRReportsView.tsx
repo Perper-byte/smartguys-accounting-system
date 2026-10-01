@@ -1,5 +1,7 @@
+// src/renderer/src/components/BIRReportsView.tsx
 import * as React from 'react'
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Printer,
   Download,
@@ -7,7 +9,8 @@ import {
   FileText,
   Inbox,
   CheckCircle2,
-  RefreshCcw
+  RefreshCcw,
+  Info
 } from 'lucide-react'
 
 export const BIRReportsView: React.FC = () => {
@@ -23,16 +26,19 @@ export const BIRReportsView: React.FC = () => {
   const [reliefData, setReliefData] = useState<any>(null)
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+
+  // 🔥 RESTORED THIS MISSING LINE!
+  const [view, setView] = useState<'2550Q' | '0619E' | '1601EQ' | 'relief'>('2550Q')
+
+  // 🔥 FLOATING TOAST STATE
   const [toast, setToast] = useState<{
     message: string
     type: 'success' | 'error' | 'info'
   } | null>(null)
 
-  const [view, setView] = useState<'2550Q' | '0619E' | '1601EQ' | 'relief'>('2550Q')
-
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type })
-    setTimeout(() => setToast(null), 4000)
+    setTimeout(() => setToast(null), 5000)
   }
 
   const fetchTaxData = async () => {
@@ -175,16 +181,24 @@ export const BIRReportsView: React.FC = () => {
 
   return (
     <div className="w-full h-full flex flex-col p-4 lg:p-6 bg-gray-50/50 relative print:p-0 print:bg-white print:block min-h-0">
-      {/* TOAST ALERTS */}
-      {toast && (
-        <div
-          className={`fixed bottom-6 right-6 p-4 rounded-md shadow-lg text-white z-50 flex items-center space-x-3 animate-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-[#1B9387]' : toast.type === 'error' ? 'bg-red-700' : 'bg-gray-800'}`}
-        >
-          {toast.type === 'error' && <AlertTriangle size={20} />}
-          {toast.type === 'success' && <CheckCircle2 size={20} />}
-          <span className="whitespace-pre-line text-sm font-medium">{toast.message}</span>
-        </div>
-      )}
+      {/* 🚀 FLOATING TOAST PROVIDER */}
+      {toast &&
+        createPortal(
+          <div
+            className={`fixed bottom-8 right-8 px-5 py-4 rounded-xl shadow-2xl text-white z-[999999] flex items-start space-x-3 transition-all duration-300 animate-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-[#1B9387]' : toast.type === 'error' ? 'bg-red-600' : 'bg-gray-800'}`}
+            style={{ maxWidth: '420px' }}
+          >
+            <div className="mt-0.5 shrink-0">
+              {toast.type === 'error' && <AlertTriangle size={20} />}
+              {toast.type === 'success' && <CheckCircle2 size={20} />}
+              {toast.type === 'info' && <Info size={20} />}
+            </div>
+            <span className="whitespace-pre-line text-sm font-semibold leading-relaxed">
+              {toast.message}
+            </span>
+          </div>,
+          document.body
+        )}
 
       <div className="w-full h-full bg-white border border-[#B0DCDA] rounded-xl shadow-sm flex flex-col overflow-hidden font-sans text-gray-800 print:shadow-none print:border-none print:overflow-visible">
         {/* HEADER & CONTROLS */}

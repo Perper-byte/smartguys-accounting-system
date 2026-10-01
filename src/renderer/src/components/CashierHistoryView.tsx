@@ -1,30 +1,61 @@
+// src/renderer/src/components/CashierHistoryView.tsx
 import * as React from 'react'
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import * as XLSX from 'xlsx'
 import jsPDF from 'jspdf'
 
-export function CashierHistoryView({ userId }: { userId: string }) {
+import { AlertTriangle, CheckCircle2, Info } from 'lucide-react'
+
+export function CashierHistoryView({
+  userId,
+  prefillData // 👈 Receive prefillData from App.tsx routing
+}: {
+  userId: string
+  prefillData?: any
+}) {
+  // Extract the search query from the prefill data
+  const initialSearchQuery = prefillData?.searchQuery || prefillData?.patientName || ''
+
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
-  const [statusMessage, setStatusMessage] = useState<{
-    type: 'success' | 'error'
-    msg: string
+
+  // TOAST STATE
+  const [toast, setToast] = useState<{
+    message: string
+    type: 'success' | 'error' | 'info'
   } | null>(null)
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+    setTimeout(() => setToast(null), 5000)
+  }
 
   // Void states
   const [voidReason, setVoidReason] = useState('')
   const [showVoidId, setShowVoidId] = useState<string | null>(null)
   const [receiptToPrint, setReceiptToPrint] = useState<any>(null)
+  // Modal state
+  const [selectedTx, setSelectedTx] = useState<any>(null)
 
   // States for Search, Filter, and Pagination
-  const [searchQuery, setSearchQuery] = useState('')
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery)
   const [dateFilter, setDateFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 10
 
+  // Effect to instantly apply search when navigating from Contact Directory
+  useEffect(() => {
+    if (initialSearchQuery) {
+      setSearchQuery(initialSearchQuery)
+      setDateFilter('all') // Default to "all time" so we see their full history
+      setCurrentPage(1)
+    }
+  }, [initialSearchQuery])
+
   const fetchHistory = async () => {
     setLoading(true)
-    setStatusMessage(null)
+    setToast(null)
 
     try {
       const api = (window as any).api || (window as any).electronAPI
@@ -52,13 +83,8 @@ export function CashierHistoryView({ userId }: { userId: string }) {
       setTransactions(data)
     } catch (error: any) {
       console.error('Failed to fetch transaction history:', error)
-
       setTransactions([])
-
-      setStatusMessage({
-        type: 'error',
-        msg: error?.message || 'Failed to load transaction history.'
-      })
+      showToast(error?.message || 'Failed to load transaction history.', 'error')
     } finally {
       setLoading(false)
     }
@@ -77,9 +103,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
 
     return transactions.filter((tx) => {
       const reference = String(tx.referenceNo || '').toLowerCase()
-
       const patient = String(tx.patientName || tx.payeeName || '').toLowerCase()
-
       const description = String(tx.description || '').toLowerCase()
 
       const matchesSearch =
@@ -89,7 +113,6 @@ export function CashierHistoryView({ userId }: { userId: string }) {
         description.includes(query)
 
       const txDate = new Date(tx.date)
-
       const now = new Date()
 
       let matchesDate = true
@@ -98,9 +121,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
         matchesDate = txDate.toDateString() === now.toDateString()
       } else if (dateFilter === 'week') {
         const oneWeekAgo = new Date()
-
         oneWeekAgo.setDate(now.getDate() - 7)
-
         matchesDate = txDate >= oneWeekAgo
       } else if (dateFilter === 'month') {
         matchesDate =
@@ -150,6 +171,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
 
     return 'SYSTEM'
   }
+
   const formatDateTime = (isoString: string) => {
     const d = new Date(isoString)
     const dateOpts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' }
@@ -162,56 +184,103 @@ export function CashierHistoryView({ userId }: { userId: string }) {
   }
 
   const submitVoidRequest = async (id: string) => {
-    setStatusMessage(null)
-    if (!voidReason || !voidReason.trim())
-      return setStatusMessage({ type: 'error', msg: 'Void reason is required.' })
+    setToast(null)
+    if (!voidReason || !voidReason.trim()) return showToast('Void reason is required.', 'error')
 
     try {
       const api = (window as any).api || (window as any).electronAPI
       const response = await api.requestVoid(id, voidReason)
       if (response.success) {
-        setStatusMessage({ type: 'success', msg: `Void requested! Awaiting manager approval.` })
+        showToast('Void requested! Awaiting manager approval.', 'success')
         setShowVoidId(null)
         setVoidReason('')
         fetchHistory()
-        setTimeout(() => setStatusMessage(null), 4000)
       } else {
-        setStatusMessage({ type: 'error', msg: 'Failed: ' + response.error })
+        showToast('Failed: ' + response.error, 'error')
       }
     } catch (error) {
-      setStatusMessage({ type: 'error', msg: 'System Error.' })
+      showToast('System Error.', 'error')
     }
   }
 
   const handleExportExcel = () => {
-    if (filteredTransactions.length === 0) return alert('No data to export.')
+    if (filteredTransactions.length === 0) return showToast('No data to export.', 'error')
 
-    const exportData = filteredTransactions.map((tx) => ({
-      'Date & Time': formatDateTime(tx.date),
-      'Reference No.': tx.referenceNo,
-      'Patient / Entity': tx.payeeName,
-      'Payment Method': getPaymentMethod(tx),
-      Description: tx.description,
-      'Total Amount (PHP)': tx.totalAmount,
-      Status: tx.status
-    }))
+    showToast('Preparing Excel file...', 'info')
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData)
+    setTimeout(async () => {
+      try {
+        const exportData = filteredTransactions.map((tx) => ({
+          'Date & Time': formatDateTime(tx.date),
+          'Reference No.': tx.referenceNo,
+          'Patient / Entity': tx.payeeName,
+          'Payment Method': getPaymentMethod(tx),
+          Description: tx.description,
+          'Total Amount (PHP)': tx.totalAmount,
+          Status: tx.status
+        }))
 
-    // 🔥 ADDED THIS BLOCK TO FIX THE EXCEL LAYOUT 🔥
-    worksheet['!cols'] = [
-      { wch: 25 }, // Column A: Date & Time
-      { wch: 15 }, // Column B: Reference No.
-      { wch: 30 }, // Column C: Patient / Entity
-      { wch: 18 }, // Column D: Payment Method
-      { wch: 40 }, // Column E: Description
-      { wch: 18 }, // Column F: Total Amount (PHP)
-      { wch: 12 } // Column G: Status
-    ]
+        const worksheet = XLSX.utils.json_to_sheet(exportData)
 
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Transactions')
-    XLSX.writeFile(workbook, `Transaction_History_${new Date().toISOString().slice(0, 10)}.xlsx`)
+        // 🔥 EXCEL LAYOUT FIXES
+        worksheet['!cols'] = [
+          { wch: 25 }, // Column A: Date & Time
+          { wch: 15 }, // Column B: Reference No.
+          { wch: 30 }, // Column C: Patient / Entity
+          { wch: 18 }, // Column D: Payment Method
+          { wch: 40 }, // Column E: Description
+          { wch: 18 }, // Column F: Total Amount (PHP)
+          { wch: 12 } // Column G: Status
+        ]
+
+        const workbook = XLSX.utils.book_new()
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Transactions')
+        const filename = `Transaction_History_${new Date().toISOString().slice(0, 10)}.xlsx`
+
+        // 🌟 NEW: Modern File System Access API
+        if ('showSaveFilePicker' in window) {
+          try {
+            const handle = await (window as any).showSaveFilePicker({
+              suggestedName: filename,
+              types: [
+                {
+                  description: 'Excel Workbook',
+                  accept: {
+                    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx']
+                  }
+                }
+              ]
+            })
+
+            const writable = await handle.createWritable()
+            const buffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })
+            await writable.write(buffer)
+            await writable.close()
+
+            showToast(`Exported successfully!\nSaved to: ${handle.name}`, 'success')
+          } catch (err: any) {
+            if (err.name !== 'AbortError') {
+              console.error('File Save Error:', err)
+              showToast('Failed to save the Excel file.', 'error')
+            } else {
+              setToast(null)
+            }
+          }
+        } else {
+          // Fallback for older browsers
+          XLSX.writeFile(workbook, filename)
+          setTimeout(() => {
+            showToast(
+              `Export initiated.\nSaved as: ${filename}\n(Please check your Downloads folder)`,
+              'success'
+            )
+          }, 500)
+        }
+      } catch (error) {
+        console.error('Export process failed:', error)
+        showToast('Failed to prepare Excel export.', 'error')
+      }
+    }, 150)
   }
 
   const handleExportPDF = (tx: any) => {
@@ -223,8 +292,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
         format: [80, 150]
       })
 
-      // 🔥 FIX 1: Create a PDF-safe currency formatter (Uses 'PHP' instead of '₱')
-      // This prevents the '±' glitch and fixes the weird spacing on the numbers
+      // PDF-safe currency formatter (Uses 'PHP' instead of '₱')
       const pdfCurrency = (val: number) =>
         `PHP ${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
@@ -237,7 +305,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
       doc.setFont('helvetica', 'normal')
       doc.text('OFFICIAL RECEIPT', 40, 20, { align: 'center' })
 
-      // 🔥 FIX 2: Widen margins from 10 to 5 to give text more breathing room (5 to 75)
+      // Widen margins from 10 to 5 to give text more breathing room (5 to 75)
       doc.setLineWidth(0.3)
       doc.line(5, 24, 75, 24)
 
@@ -271,7 +339,6 @@ export function CashierHistoryView({ userId }: { userId: string }) {
       doc.setFontSize(11)
       doc.setFont('helvetica', 'bold')
       doc.text('TOTAL:', 5, yAfterDesc + 14)
-      // Align to the new wider right edge (75)
       doc.text(pdfCurrency(tx.totalAmount), 75, yAfterDesc + 14, { align: 'right' })
 
       // Footer
@@ -286,11 +353,10 @@ export function CashierHistoryView({ userId }: { userId: string }) {
       // Trigger File Download
       doc.save(`${tx.referenceNo}_Receipt.pdf`)
 
-      setStatusMessage({ type: 'success', msg: `PDF Exported: ${tx.referenceNo}` })
-      setTimeout(() => setStatusMessage(null), 3000)
+      showToast(`PDF Exported: ${tx.referenceNo}`, 'success')
     } catch (error) {
       console.error(error)
-      setStatusMessage({ type: 'error', msg: 'Failed to generate PDF.' })
+      showToast('Failed to generate PDF.', 'error')
     }
   }
 
@@ -320,8 +386,26 @@ export function CashierHistoryView({ userId }: { userId: string }) {
   }
 
   return (
-    /* 🔥 ADDED 'w-full px-6 py-4' HERE TO FORCE CENTERING */
     <div className="w-full h-full px-8 py-6 flex flex-col font-sans text-gray-800 animate-in fade-in duration-300">
+      {/* 👈 FLOATING TOAST PROVIDER (Escapes CSS Clipping Boundaries) */}
+      {toast &&
+        createPortal(
+          <div
+            className={`fixed bottom-8 right-8 px-5 py-4 rounded-xl shadow-2xl text-white z-[999999] flex items-start space-x-3 transition-all duration-300 animate-in slide-in-from-bottom-5 ${toast.type === 'success' ? 'bg-[#1B9387]' : toast.type === 'error' ? 'bg-red-600' : 'bg-gray-800'}`}
+            style={{ maxWidth: '420px' }}
+          >
+            <div className="mt-0.5 shrink-0">
+              {toast.type === 'error' && <AlertTriangle size={20} />}
+              {toast.type === 'success' && <CheckCircle2 size={20} />}
+              {toast.type === 'info' && <Info size={20} />}
+            </div>
+            <span className="whitespace-pre-line text-sm font-semibold leading-relaxed">
+              {toast.message}
+            </span>
+          </div>,
+          document.body
+        )}
+
       {/* HEADER & CONTROLS */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4 mb-6 border-b border-[#B0DCDA] pb-6">
         <div>
@@ -378,27 +462,18 @@ export function CashierHistoryView({ userId }: { userId: string }) {
         </div>
       </div>
 
-      {statusMessage && (
-        <div
-          className={`mb-6 p-4 rounded-md text-sm font-bold shadow-sm border ${statusMessage.type === 'success' ? 'bg-[#E9FAFA] text-[#1B9387] border-[#B0DCDA]' : 'bg-red-50 text-red-500 border-red-200'}`}
-        >
-          {statusMessage.type === 'success' ? '✅ ' : '⚠️ '}
-          {statusMessage.msg}
-        </div>
-      )}
-
       {/* TABLE */}
       <div className="bg-white border border-[#B0DCDA] rounded-xl flex-1 flex flex-col overflow-hidden shadow-sm min-h-0">
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto custom-scrollbar">
           {loading ? (
             <div className="flex justify-center items-center h-full text-[#1B9387]">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-current"></div>
             </div>
           ) : (
             <table className="w-full text-left text-sm">
-              <thead className="bg-[#FBF8F8] sticky top-0 z-10 border-b border-[#B0DCDA] shadow-sm">
+              <thead className="bg-[#FBF8F8] sticky top-0 z-10 border-b border-[#B0DCDA] shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
                 <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold">
-                  <th className="p-4 border-r border-gray-100">Date & Time</th>
+                  <th className="p-4 border-r border-gray-100 pl-6">Date & Time</th>
                   <th className="p-4 border-r border-gray-100">Reference No.</th>
                   <th className="p-4 border-r border-gray-100">Patient / Entity</th>
                   <th className="p-4 border-r border-gray-100">Method</th>
@@ -420,12 +495,12 @@ export function CashierHistoryView({ userId }: { userId: string }) {
                       <tr
                         className={`hover:bg-gray-50 transition-colors ${tx.status === 'VOIDED' ? 'bg-gray-100 opacity-60' : 'even:bg-gray-50/50 odd:bg-white'} group`}
                       >
-                        <td className="p-4 text-gray-600 font-medium whitespace-nowrap border-r border-gray-100">
+                        <td className="p-4 pl-6 text-gray-600 font-medium whitespace-nowrap border-r border-gray-100">
                           {formatDateTime(tx.date)}
                         </td>
 
                         <td
-                          onClick={() => console.log('Open receipt for:', tx.referenceNo)}
+                          onClick={() => setSelectedTx(tx)}
                           className="p-4 border-r border-gray-100 font-mono font-extrabold text-[#1B9387] hover:underline cursor-pointer"
                         >
                           {tx.referenceNo}
@@ -444,7 +519,7 @@ export function CashierHistoryView({ userId }: { userId: string }) {
                         </td>
 
                         <td className="p-4 text-gray-600 font-medium border-r border-gray-100">
-                          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-[10px] font-extrabold tracking-wider">
+                          <span className="bg-gray-100 text-gray-700 px-2 py-1 rounded text-[10px] font-extrabold tracking-wider border border-gray-200">
                             {getPaymentMethod(tx)}
                           </span>
                         </td>
@@ -543,20 +618,174 @@ export function CashierHistoryView({ userId }: { userId: string }) {
             <button
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               disabled={currentPage === 1}
-              className="px-4 py-2 border border-[#B0DCDA] rounded-md bg-[#FBF8F8] hover:bg-[#E9FAFA] text-gray-700 font-bold text-xs uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
+              className="px-4 py-2 border border-[#B0DCDA] rounded-md bg-[#FBF8F8] hover:bg-[#E9FAFA] text-gray-700 font-bold text-xs uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm cursor-pointer"
             >
               &larr; Prev
             </button>
             <button
               onClick={() => setCurrentPage((p) => p + 1)}
               disabled={currentPage * itemsPerPage >= filteredTransactions.length}
-              className="px-4 py-2 border border-[#B0DCDA] rounded-md bg-[#FBF8F8] hover:bg-[#E9FAFA] text-gray-700 font-bold text-xs uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm"
+              className="px-4 py-2 border border-[#B0DCDA] rounded-md bg-[#FBF8F8] hover:bg-[#E9FAFA] text-gray-700 font-bold text-xs uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed transition shadow-sm cursor-pointer"
             >
               Next &rarr;
             </button>
           </div>
         </div>
       )}
-    </div> // <-- This is the final closing div of your component
+
+      {/* TRANSACTION DETAILS MODAL */}
+      {selectedTx && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/70 backdrop-blur-sm animate-in fade-in duration-200 print:hidden">
+          <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-2xl w-[650px] max-w-[95vw] overflow-hidden text-gray-800 font-sans flex flex-col max-h-[90vh]">
+            {/* HEADER */}
+            <div className="flex justify-between items-center px-6 py-4 border-b border-[#B0DCDA] bg-[#FBF8F8] shrink-0">
+              <div>
+                <h2 className="text-lg font-extrabold text-gray-800 tracking-wide">
+                  Transaction Details
+                </h2>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Ref No:{' '}
+                  <span className="font-mono text-[#1B9387] font-bold">
+                    {selectedTx.referenceNo}
+                  </span>
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedTx(null)}
+                className="text-gray-400 hover:text-red-500 text-3xl leading-none font-bold cursor-pointer transition-colors"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* BODY */}
+            <div className="p-6 overflow-y-auto custom-scrollbar space-y-6 flex-1">
+              <div className="grid grid-cols-2 gap-5">
+                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                  <p className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
+                    Date & Time
+                  </p>
+                  <p className="text-sm font-bold text-gray-800">
+                    {formatDateTime(selectedTx.date)}
+                  </p>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                  <p className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
+                    Status
+                  </p>
+                  <div className="mt-1">{renderStatusBadge(selectedTx.status)}</div>
+                </div>
+                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                  <p className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
+                    Patient / Entity
+                  </p>
+                  <p className="text-sm font-bold text-gray-800">
+                    {selectedTx.patientName || selectedTx.payeeName || 'Unknown'}
+                  </p>
+                  {selectedTx.billedEntity &&
+                    selectedTx.billedEntity !== selectedTx.patientName && (
+                      <p className="text-[10px] text-gray-500 mt-1 font-medium">
+                        Billed to: <span className="font-bold">{selectedTx.billedEntity}</span>
+                      </p>
+                    )}
+                </div>
+                <div className="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                  <p className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
+                    Payment Method
+                  </p>
+                  <p className="text-sm font-bold text-gray-800">{getPaymentMethod(selectedTx)}</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5 pl-1">
+                  Description
+                </p>
+                <p className="text-sm text-gray-700 bg-gray-50 p-3 rounded-lg border border-gray-200 font-medium leading-relaxed">
+                  {selectedTx.description}
+                </p>
+              </div>
+
+              <div>
+                <p className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5 pl-1">
+                  Accounting / Line Items
+                </p>
+                <div className="border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-gray-100 border-b border-gray-200">
+                      <tr className="text-gray-500 font-bold">
+                        <th className="p-3">Account</th>
+                        <th className="p-3 text-right">Debit</th>
+                        <th className="p-3 text-right">Credit</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 bg-white">
+                      {selectedTx.lines?.map((line: any, idx: number) => (
+                        <tr key={idx} className="hover:bg-gray-50 transition-colors">
+                          <td className="p-3 font-medium text-gray-700">
+                            <span className="text-gray-400 mr-2 font-mono">{line.accountCode}</span>
+                            {line.accountName}
+                          </td>
+                          <td className="p-3 text-right text-gray-600 font-mono">
+                            {line.debit > 0 ? formatCurrency(line.debit) : '-'}
+                          </td>
+                          <td className="p-3 text-right text-gray-600 font-mono">
+                            {line.credit > 0 ? formatCurrency(line.credit) : '-'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-gray-50 border-t border-gray-200 font-bold">
+                      <tr>
+                        <td className="p-3 text-right text-gray-500 uppercase tracking-wider text-[10px]">
+                          Totals:
+                        </td>
+                        <td className="p-3 text-right text-gray-800 font-mono">
+                          {formatCurrency(
+                            selectedTx.lines?.reduce((sum: number, l: any) => sum + l.debit, 0) || 0
+                          )}
+                        </td>
+                        <td className="p-3 text-right text-gray-800 font-mono">
+                          {formatCurrency(
+                            selectedTx.lines?.reduce((sum: number, l: any) => sum + l.credit, 0) ||
+                              0
+                          )}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* FOOTER */}
+            <div className="p-5 bg-[#FBF8F8] border-t border-[#B0DCDA] flex justify-between items-center shrink-0">
+              <div className="flex flex-col">
+                <span className="text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-0.5">
+                  Total Amount
+                </span>
+                <span className="text-2xl font-black text-[#1B9387] font-mono">
+                  {formatCurrency(selectedTx.totalAmount)}
+                </span>
+              </div>
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => setSelectedTx(null)}
+                  className="px-6 py-2.5 bg-white border border-gray-300 text-gray-700 font-bold text-xs uppercase tracking-wider rounded-md hover:bg-gray-50 transition shadow-sm cursor-pointer"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => handleExportPDF(selectedTx)}
+                  className="px-6 py-2.5 bg-[#1B9387] border border-transparent text-white font-bold text-xs uppercase tracking-wider rounded-md hover:bg-[#157a6f] transition shadow-sm flex items-center gap-2 cursor-pointer"
+                >
+                  <span>📄</span> Download PDF
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
