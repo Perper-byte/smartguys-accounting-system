@@ -17,7 +17,7 @@ const CACHE_USERS_PATH = path.join(app.getPath('userData'), 'cache-users.json')
 import { AnalyticsService } from './services/analytics.service'
 import { TaxService } from './services/tax.service'
 import { BackupService } from './services/backup.service'
-import { ReportsService } from './services/reports.service'
+import { ReportsService, resolvePeriodDateRange } from './services/reports.service'
 import { LedgerService } from './services/ledger.service'
 import { ExportService } from './services/export.service'
 import { AuthService } from './services/auth.service'
@@ -515,6 +515,13 @@ app.whenReady().then(() => {
       return []
     }
   })
+  ipcMain.handle('ledger:getJournalEntryById', async (_, idOrRef) => {
+    try {
+      return await LedgerService.getJournalEntryById(idOrRef)
+    } catch (error) {
+      return null
+    }
+  })
   ipcMain.handle('get-user-sales-history', async (e, userId) => {
     try {
       const result = await LedgerService.getUserSalesHistory(userId)
@@ -727,33 +734,36 @@ app.whenReady().then(() => {
   })
 
   // Reports
-  ipcMain.handle('reports:getTrialBalance', async (event, year, month) => {
+  ipcMain.handle('reports:getTrialBalance', async (event, year, month, quarter) => {
     try {
       let endDate
-      if (year && month) endDate = new Date(year, month, 0, 23, 59, 59)
+      if (quarter || (year && month)) {
+        const dates = resolvePeriodDateRange(year, month, quarter)
+        endDate = dates.endDate
+      }
       return await ReportsService.getTrialBalance(undefined, endDate)
     } catch (error: any) {
       return { error: error.message }
     }
   })
-  ipcMain.handle('reports:getIncomeStatement', async (event, year, month) => {
+  ipcMain.handle('reports:getIncomeStatement', async (event, year, month, quarter) => {
     try {
-      return await ReportsService.getIncomeStatement(year, month)
+      return await ReportsService.getIncomeStatement(year, month, quarter)
     } catch (error: any) {
       return { error: error.message }
     }
   })
-  ipcMain.handle('reports:getBalanceSheet', async (event, year, month) => {
+  ipcMain.handle('reports:getBalanceSheet', async (event, year, month, quarter) => {
     try {
-      return await ReportsService.getBalanceSheet(year, month)
+      return await ReportsService.getBalanceSheet(year, month, quarter)
     } catch (error: any) {
       return { error: error.message }
     }
   })
-  ipcMain.handle('reports:getCashFlowStatement', async (event, year, month) => {
+  ipcMain.handle('reports:getCashFlowStatement', async (event, year, month, quarter) => {
     try {
       return typeof ReportsService.getCashFlowStatement === 'function'
-        ? await ReportsService.getCashFlowStatement(year, month)
+        ? await ReportsService.getCashFlowStatement(year, month, quarter)
         : { error: 'Missing backend function' }
     } catch (error: any) {
       return { error: error.message }
@@ -886,10 +896,58 @@ app.whenReady().then(() => {
     }
   })
 
-  // Exporters
-  ipcMain.handle('export:trialBalanceExcel', async (event, year, month) => {
+  ipcMain.handle('payroll:bulkImportEmployees', async (event, records: any[], updateExisting: boolean) => {
     try {
-      const result = await ExportService.exportTrialBalanceToExcel(year, month)
+      const result = await PayrollService.bulkImportEmployees(records, updateExisting)
+      if (result.success) {
+        await AuditService.logAction(
+          'SYSTEM',
+          'HR RECORD',
+          `Bulk imported employees: ${result.createdCount} created, ${result.updatedCount} updated`
+        )
+      }
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('export:employeesExcel', async (event, employees?: any[]) => {
+    try {
+      const result = await ExportService.exportEmployeesToExcel(employees)
+      if (result.success) {
+        await AuditService.logAction('SYSTEM', 'DATA EXPORT', `Exported Employee Directory to Excel`)
+      }
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('export:downloadEmployeeTemplate', async () => {
+    try {
+      return await ExportService.downloadEmployeeTemplate()
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  // Exporters
+  ipcMain.handle('export:financialStatementExcel', async (event, statementType, year, month, quarter) => {
+    try {
+      const result = await ExportService.exportFinancialStatementToExcel(statementType, year, month, quarter)
+      if (result.success) {
+        await AuditService.logAction('SYSTEM', 'DATA EXPORT', `Exported ${statementType} statement to Excel`)
+      }
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
+
+  ipcMain.handle('export:trialBalanceExcel', async (event, year, month, quarter) => {
+    try {
+      const result = await ExportService.exportTrialBalanceToExcel(year, month, quarter)
       await AuditService.logAction('SYSTEM', 'DATA EXPORT', `Exported Trial Balance`)
       return result
     } catch (error: any) {

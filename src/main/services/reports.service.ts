@@ -4,6 +4,59 @@ import { cleanDescription } from '../../shared/formatters'
 
 const prisma = new PrismaClient()
 
+export function resolvePeriodDateRange(year?: number, month?: number, quarter?: string): {
+  startDate?: Date
+  endDate?: Date
+  label: string
+} {
+  const yr = year || new Date().getFullYear()
+  if (quarter === 'ALL_YEAR' || quarter === 'FULL_YEAR') {
+    return {
+      startDate: new Date(yr, 0, 1, 0, 0, 0, 0),
+      endDate: new Date(yr, 11, 31, 23, 59, 59, 999),
+      label: `Full Year ${yr}`
+    }
+  }
+  if (quarter === 'Q1') {
+    return {
+      startDate: new Date(yr, 0, 1, 0, 0, 0, 0),
+      endDate: new Date(yr, 2, 31, 23, 59, 59, 999),
+      label: `Q1 ${yr} (Jan 1 – Mar 31)`
+    }
+  }
+  if (quarter === 'Q2') {
+    return {
+      startDate: new Date(yr, 3, 1, 0, 0, 0, 0),
+      endDate: new Date(yr, 5, 30, 23, 59, 59, 999),
+      label: `Q2 ${yr} (Apr 1 – Jun 30)`
+    }
+  }
+  if (quarter === 'Q3') {
+    return {
+      startDate: new Date(yr, 6, 1, 0, 0, 0, 0),
+      endDate: new Date(yr, 8, 30, 23, 59, 59, 999),
+      label: `Q3 ${yr} (Jul 1 – Sep 30)`
+    }
+  }
+  if (quarter === 'Q4') {
+    return {
+      startDate: new Date(yr, 9, 1, 0, 0, 0, 0),
+      endDate: new Date(yr, 11, 31, 23, 59, 59, 999),
+      label: `Q4 ${yr} (Oct 1 – Dec 31)`
+    }
+  }
+  if (month) {
+    const lastDay = new Date(yr, month, 0).getDate()
+    const monthName = new Date(2000, month - 1, 1).toLocaleString('en-US', { month: 'long' })
+    return {
+      startDate: new Date(yr, month - 1, 1, 0, 0, 0, 0),
+      endDate: new Date(yr, month - 1, lastDay, 23, 59, 59, 999),
+      label: `${monthName} ${yr}`
+    }
+  }
+  return { startDate: undefined, endDate: new Date(), label: 'All-Time' }
+}
+
 export class ReportsService {
   static async getTrialBalance(startDate?: Date, endDate?: Date) {
     const accounts = await prisma.account.findMany({
@@ -104,11 +157,12 @@ export class ReportsService {
     }
   }
 
-  static async getIncomeStatement(year?: number, month?: number) {
+  static async getIncomeStatement(year?: number, month?: number, quarter?: string) {
     let startDate, endDate
-    if (year && month) {
-      startDate = new Date(year, month - 1, 1)
-      endDate = new Date(year, month, 0, 23, 59, 59)
+    if (quarter || (year && month)) {
+      const dates = resolvePeriodDateRange(year, month, quarter)
+      startDate = dates.startDate
+      endDate = dates.endDate
     }
 
     const trialBalance = await this.getTrialBalance(startDate, endDate)
@@ -138,14 +192,15 @@ export class ReportsService {
     }
   }
 
-  static async getBalanceSheet(year?: number, month?: number) {
+  static async getBalanceSheet(year?: number, month?: number, quarter?: string) {
     let endDate
-    if (year && month) {
-      endDate = new Date(year, month, 0, 23, 59, 59)
+    if (quarter || (year && month)) {
+      const dates = resolvePeriodDateRange(year, month, quarter)
+      endDate = dates.endDate
     }
 
     const trialBalance = await this.getTrialBalance(undefined, endDate)
-    const incomeStatement = await this.getIncomeStatement(year, month)
+    const incomeStatement = await this.getIncomeStatement(year, month, quarter)
 
     const assetLines: any[] = []
     const liabilityLines: any[] = []
@@ -597,11 +652,12 @@ export class ReportsService {
     return results.sort((a, b) => b.date.getTime() - a.date.getTime())
   }
 
-  static async getCashFlowStatement(year?: number, month?: number) {
+  static async getCashFlowStatement(year?: number, month?: number, quarter?: string) {
     let startDate, endDate
-    if (year && month) {
-      startDate = new Date(year, month - 1, 1)
-      endDate = new Date(year, month, 0, 23, 59, 59)
+    if (quarter || (year && month)) {
+      const dates = resolvePeriodDateRange(year, month, quarter)
+      startDate = dates.startDate
+      endDate = dates.endDate
     }
 
     const whereClause: any = { lines: { some: { account_id: '1010' } } }

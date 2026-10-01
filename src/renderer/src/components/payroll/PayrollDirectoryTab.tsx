@@ -1,5 +1,7 @@
 import * as React from 'react'
 import { useState } from 'react'
+import { Download, Upload, FileSpreadsheet, Plus, X, AlertCircle, CheckCircle2, FileUp, RefreshCw } from 'lucide-react'
+import * as XLSX from 'xlsx'
 
 export function PayrollDirectoryTab({
   employees,
@@ -13,6 +15,11 @@ export function PayrollDirectoryTab({
   const [dirSearch, setDirSearch] = useState('')
   const [dirFilter, setDirFilter] = useState<'ACTIVE' | 'INCOMPLETE' | 'ARCHIVED'>('ACTIVE')
   const [isEmpModalOpen, setIsEmpModalOpen] = useState(false)
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false)
+  const [exporting, setExporting] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const [updateExisting, setUpdateExisting] = useState(true)
+  const [importRows, setImportRows] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [newEmp, setNewEmp] = useState({
     id: '',
@@ -35,28 +42,28 @@ export function PayrollDirectoryTab({
     const num = v.replace(/\D/g, '').substring(0, 12)
     return num.replace(
       /(\d{3})(\d{1,3})?(\d{1,3})?(\d{1,3})?/,
-      (m, p1, p2, p3, p4) => p1 + (p2 ? `-${p2}` : '') + (p3 ? `-${p3}` : '') + (p4 ? `-${p4}` : '')
+      (_m, p1, p2, p3, p4) => p1 + (p2 ? `-${p2}` : '') + (p3 ? `-${p3}` : '') + (p4 ? `-${p4}` : '')
     )
   }
   const formatSSS = (v: string) => {
     const num = v.replace(/\D/g, '').substring(0, 10)
     return num.replace(
       /(\d{2})(\d{1,7})?(\d{1})?/,
-      (m, p1, p2, p3) => p1 + (p2 ? `-${p2}` : '') + (p3 ? `-${p3}` : '')
+      (_m, p1, p2, p3) => p1 + (p2 ? `-${p2}` : '') + (p3 ? `-${p3}` : '')
     )
   }
   const formatHDMF = (v: string) => {
     const num = v.replace(/\D/g, '').substring(0, 12)
     return num.replace(
       /(\d{4})(\d{1,4})?(\d{1,4})?/,
-      (m, p1, p2, p3) => p1 + (p2 ? `-${p2}` : '') + (p3 ? `-${p3}` : '')
+      (_m, p1, p2, p3) => p1 + (p2 ? `-${p2}` : '') + (p3 ? `-${p3}` : '')
     )
   }
   const formatPHIC = (v: string) => {
     const num = v.replace(/\D/g, '').substring(0, 12)
     return num.replace(
       /(\d{2})(\d{1,9})?(\d{1})?/,
-      (m, p1, p2, p3) => p1 + (p2 ? `-${p2}` : '') + (p3 ? `-${p3}` : '')
+      (_m, p1, p2, p3) => p1 + (p2 ? `-${p2}` : '') + (p3 ? `-${p3}` : '')
     )
   }
 
@@ -139,6 +146,160 @@ export function PayrollDirectoryTab({
     return true
   })
 
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true)
+      const api = (window as any).api || (window as any).electronAPI
+      const res = await api.exportEmployeesExcel(filteredEmployees)
+      if (res?.success) {
+        setStatus({ type: 'success', msg: `Exported ${filteredEmployees.length} employees to Excel!` })
+        setTimeout(() => setStatus(null), 3000)
+      } else if (!res?.canceled) {
+        setStatus({ type: 'error', msg: res?.error || 'Failed to export employees.' })
+      }
+    } catch (err: any) {
+      setStatus({ type: 'error', msg: err?.message || 'Export failed.' })
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const api = (window as any).api || (window as any).electronAPI
+      const res = await api.downloadEmployeeTemplate()
+      if (res?.success) {
+        setStatus({ type: 'success', msg: 'Template saved successfully!' })
+        setTimeout(() => setStatus(null), 3000)
+      } else if (!res?.canceled) {
+        setStatus({ type: 'error', msg: res?.error || 'Failed to download template.' })
+      }
+    } catch (err: any) {
+      setStatus({ type: 'error', msg: err?.message || 'Download failed.' })
+    }
+  }
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    parseExcelFile(file)
+  }
+
+  const parseExcelFile = (file: File) => {
+    const reader = new FileReader()
+    reader.onload = (evt) => {
+      try {
+        const data = new Uint8Array(evt.target?.result as ArrayBuffer)
+        const workbook = XLSX.read(data, { type: 'array' })
+        const sheetName = workbook.SheetNames[0]
+        const worksheet = workbook.Sheets[sheetName]
+        const rawJson: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' })
+
+        if (!rawJson || rawJson.length === 0) {
+          setStatus({ type: 'error', msg: 'Uploaded sheet contains no data rows.' })
+          return
+        }
+
+        const parsed = rawJson.map((row, idx) => {
+          const findVal = (keywords: string[]) => {
+            const keys = Object.keys(row)
+            for (const kw of keywords) {
+              const matchedKey = keys.find((k) => k.toLowerCase().replace(/[^a-z0-9]/g, '').includes(kw))
+              if (matchedKey && row[matchedKey] !== undefined && row[matchedKey] !== '') {
+                return String(row[matchedKey]).trim()
+              }
+            }
+            return ''
+          }
+
+          const firstName = findVal(['firstname', 'first', 'givenname'])
+          const lastName = findVal(['lastname', 'last', 'surname'])
+          const position = findVal(['position', 'role', 'jobtitle', 'title']) || 'Staff'
+          const rawSalary = findVal(['monthlysalary', 'salary', 'basicsalary', 'monthlypay', 'basicpay'])
+          const monthlySalary = Number(rawSalary.replace(/[^0-9.]/g, '')) || 0
+          const tin = findVal(['tin', 'taxid'])
+          const sss = findVal(['sssnumber', 'sssno', 'sss'])
+          const philhealth = findVal(['philhealthnumber', 'philhealthno', 'philhealth', 'phic'])
+          const pagibig = findVal(['pagibignumber', 'pagibigno', 'pagibig', 'hdmf'])
+
+          const existing = employees.find((e) => {
+            const nameMatch =
+              e.first_name?.toLowerCase() === firstName.toLowerCase() &&
+              e.last_name?.toLowerCase() === lastName.toLowerCase()
+            const tinMatch = tin && e.tin && e.tin.replace(/\D/g, '') === tin.replace(/\D/g, '')
+            const sssMatch = sss && e.sss_no && e.sss_no.replace(/\D/g, '') === sss.replace(/\D/g, '')
+            return nameMatch || tinMatch || sssMatch
+          })
+
+          const isValid = firstName.length > 0 && lastName.length > 0 && monthlySalary > 0
+          const isMissingGov = !tin || !sss
+
+          return {
+            rowIdx: idx + 1,
+            firstName,
+            lastName,
+            position,
+            monthlySalary,
+            tin,
+            sss,
+            philhealth,
+            pagibig,
+            isValid,
+            isExisting: Boolean(existing),
+            existingName: existing ? `${existing.first_name} ${existing.last_name}` : null,
+            isMissingGov
+          }
+        })
+
+        setImportRows(parsed)
+      } catch (err: any) {
+        setStatus({ type: 'error', msg: 'Failed to read file: ' + err.message })
+      }
+    }
+    reader.readAsArrayBuffer(file)
+  }
+
+  const handleCommitImport = async () => {
+    const validRows = importRows.filter((r) => r.isValid).map((r) => ({
+      first_name: r.firstName,
+      last_name: r.lastName,
+      position: r.position,
+      monthly_salary: r.monthlySalary,
+      tin: r.tin,
+      sss_no: r.sss,
+      philhealth_no: r.philhealth,
+      pagibig_no: r.pagibig,
+      is_active: true
+    }))
+
+    if (validRows.length === 0) {
+      setStatus({ type: 'error', msg: 'No valid rows to import.' })
+      return
+    }
+
+    setIsImporting(true)
+    try {
+      const api = (window as any).api || (window as any).electronAPI
+      const res = await api.bulkImportEmployees(validRows, updateExisting)
+      if (res?.success) {
+        setStatus({
+          type: 'success',
+          msg: `Import complete: ${res.createdCount} new employees created, ${res.updatedCount} updated!`
+        })
+        fetchEmployees()
+        setIsImportModalOpen(false)
+        setImportRows([])
+        setTimeout(() => setStatus(null), 4000)
+      } else {
+        setStatus({ type: 'error', msg: res?.error || 'Import failed.' })
+      }
+    } catch (err: any) {
+      setStatus({ type: 'error', msg: 'Import error: ' + err.message })
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
   return (
     <div className="flex-1 flex flex-col animate-in fade-in duration-300 min-h-0 bg-white print:hidden">
       <div className="p-6 border-b border-[#B0DCDA] flex justify-between items-center bg-[#FBF8F8] shrink-0">
@@ -161,26 +322,53 @@ export function PayrollDirectoryTab({
               </button>
             ))}
           </div>
+
+          {/* EXPORT EXCEL BUTTON */}
+          <button
+            onClick={handleExportExcel}
+            disabled={exporting}
+            className="px-4 py-2 border border-[#B0DCDA] bg-white hover:bg-emerald-50 text-emerald-700 rounded-md text-xs font-bold transition shadow-sm uppercase tracking-wider flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+            title="Export Employee Directory to Excel (.xlsx)"
+          >
+            <Download className="w-3.5 h-3.5" />
+            {exporting ? 'Exporting...' : 'Export Excel'}
+          </button>
         </div>
-        <button
-          onClick={() => {
-            setNewEmp({
-              id: '',
-              firstName: '',
-              lastName: '',
-              position: '',
-              monthlySalary: '',
-              tin: '',
-              sss: '',
-              philhealth: '',
-              pagibig: ''
-            })
-            setIsEmpModalOpen(true)
-          }}
-          className="px-5 py-2.5 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-md text-sm font-bold transition shadow-sm uppercase tracking-wider flex items-center gap-2"
-        >
-          <span>+</span> Add Employee
-        </button>
+
+        <div className="flex items-center gap-3">
+          {/* IMPORT EXCEL BUTTON */}
+          <button
+            onClick={() => {
+              setImportRows([])
+              setIsImportModalOpen(true)
+            }}
+            className="px-4 py-2.5 bg-white border border-[#1B9387] text-[#1B9387] hover:bg-[#E9FAFA] rounded-md text-sm font-bold transition shadow-sm uppercase tracking-wider flex items-center gap-2 cursor-pointer"
+          >
+            <Upload className="w-4 h-4" />
+            Import Excel
+          </button>
+
+          {/* ADD EMPLOYEE BUTTON */}
+          <button
+            onClick={() => {
+              setNewEmp({
+                id: '',
+                firstName: '',
+                lastName: '',
+                position: '',
+                monthlySalary: '',
+                tin: '',
+                sss: '',
+                philhealth: '',
+                pagibig: ''
+              })
+              setIsEmpModalOpen(true)
+            }}
+            className="px-5 py-2.5 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-md text-sm font-bold transition shadow-sm uppercase tracking-wider flex items-center gap-2 cursor-pointer"
+          >
+            <Plus className="w-4 h-4" /> Add Employee
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto">
@@ -485,6 +673,197 @@ export function PayrollDirectoryTab({
               >
                 {employeeToToggle.isActive ? 'Archive' : 'Restore'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* EXCEL IMPORT MODAL */}
+      {isImportModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm print:hidden p-4">
+          <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 bg-[#FBF8F8] border-b border-[#B0DCDA] flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-2.5">
+                <FileSpreadsheet className="w-5 h-5 text-[#1B9387]" />
+                <div>
+                  <h3 className="text-lg font-extrabold text-gray-800 uppercase tracking-wide">
+                    Import Employees from Excel
+                  </h3>
+                  <p className="text-xs text-gray-500 font-medium">
+                    Upload an Excel (.xlsx, .xls) or CSV sheet to bulk register or update employees
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsImportModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition p-1 rounded cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="p-6 flex-1 overflow-auto flex flex-col gap-5">
+              {/* Template Download & File Upload Area */}
+              <div className="flex flex-col sm:flex-row gap-4 items-stretch">
+                <div className="flex-1 border-2 border-dashed border-[#B0DCDA] hover:border-[#1B9387] rounded-xl p-6 bg-[#E9FAFA]/30 flex flex-col items-center justify-center text-center transition cursor-pointer relative">
+                  <input
+                    type="file"
+                    accept=".xlsx, .xls, .csv"
+                    onChange={handleFileChange}
+                    className="absolute inset-0 opacity-0 cursor-pointer"
+                  />
+                  <FileUp className="w-10 h-10 text-[#1B9387] mb-2" />
+                  <p className="text-sm font-bold text-gray-700">
+                    Click to select or drag and drop an Excel file
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">Supports .xlsx, .xls, or .csv</p>
+                </div>
+
+                <div className="w-full sm:w-72 bg-gray-50 border border-gray-200 rounded-xl p-5 flex flex-col justify-between">
+                  <div>
+                    <h4 className="text-xs font-extrabold text-gray-700 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                      <Download className="w-3.5 h-3.5 text-[#1B9387]" /> Need the template?
+                    </h4>
+                    <p className="text-xs text-gray-500 leading-relaxed">
+                      Download the official template with pre-styled headers and sample rows to guarantee error-free import.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleDownloadTemplate}
+                    type="button"
+                    className="mt-3 w-full py-2 bg-white border border-[#1B9387] text-[#1B9387] hover:bg-[#E9FAFA] rounded-md text-xs font-bold uppercase tracking-wider transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" /> Download Template
+                  </button>
+                </div>
+              </div>
+
+              {/* Data Preview Table */}
+              {importRows.length > 0 && (
+                <div className="flex-1 flex flex-col gap-3 min-h-0">
+                  <div className="flex flex-wrap items-center justify-between gap-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <div className="flex items-center gap-3 text-xs">
+                      <span className="font-extrabold text-gray-700 uppercase tracking-wider">
+                        Parsed: <strong className="text-gray-900">{importRows.length}</strong> rows
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 font-bold">
+                        {importRows.filter((r) => r.isValid).length} Valid
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-blue-100 text-blue-800 font-bold">
+                        {importRows.filter((r) => r.isExisting).length} Existing Matches
+                      </span>
+                      {importRows.some((r) => !r.isValid) && (
+                        <span className="px-2 py-0.5 rounded bg-red-100 text-red-800 font-bold">
+                          {importRows.filter((r) => !r.isValid).length} Invalid
+                        </span>
+                      )}
+                    </div>
+
+                    <label className="flex items-center gap-2 text-xs font-bold text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={updateExisting}
+                        onChange={(e) => setUpdateExisting(e.target.checked)}
+                        className="rounded border-gray-300 text-[#1B9387] focus:ring-[#1B9387]"
+                      />
+                      <span>Update existing employee records</span>
+                    </label>
+                  </div>
+
+                  <div className="border border-gray-200 rounded-lg overflow-auto max-h-64">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-gray-100 border-b border-gray-200 sticky top-0 z-10 text-[10px] font-extrabold text-gray-500 uppercase">
+                        <tr>
+                          <th className="p-2.5 pl-3">Status</th>
+                          <th className="p-2.5">Name</th>
+                          <th className="p-2.5">Position</th>
+                          <th className="p-2.5 text-right">Salary</th>
+                          <th className="p-2.5">TIN</th>
+                          <th className="p-2.5">SSS</th>
+                          <th className="p-2.5">PhilHealth</th>
+                          <th className="p-2.5 pr-3">Pag-IBIG</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {importRows.map((r) => (
+                          <tr
+                            key={r.rowIdx}
+                            className={`hover:bg-gray-50 transition-colors ${!r.isValid ? 'bg-red-50/40 text-red-800' : ''}`}
+                          >
+                            <td className="p-2 pl-3">
+                              {!r.isValid ? (
+                                <span className="px-1.5 py-0.5 rounded bg-red-100 text-red-700 text-[9px] font-bold">
+                                  Missing info
+                                </span>
+                              ) : r.isExisting ? (
+                                <span className="px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 text-[9px] font-bold">
+                                  Updates match
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 text-[9px] font-bold">
+                                  Ready
+                                </span>
+                              )}
+                            </td>
+                            <td className="p-2 font-bold text-gray-800">
+                              {r.firstName} {r.lastName}
+                            </td>
+                            <td className="p-2 text-gray-600">{r.position}</td>
+                            <td className="p-2 text-right font-mono font-bold text-gray-900">
+                              ₱{r.monthlySalary.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="p-2 font-mono text-gray-600">{r.tin || '-'}</td>
+                            <td className="p-2 font-mono text-gray-600">{r.sss || '-'}</td>
+                            <td className="p-2 font-mono text-gray-600">{r.philhealth || '-'}</td>
+                            <td className="p-2 pr-3 font-mono text-gray-600">{r.pagibig || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-200 flex justify-between items-center shrink-0">
+              <button
+                type="button"
+                onClick={() => setImportRows([])}
+                className="text-xs font-bold text-gray-500 hover:text-gray-700 cursor-pointer"
+                disabled={importRows.length === 0}
+              >
+                Clear Selected File
+              </button>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsImportModalOpen(false)}
+                  className="px-5 py-2.5 bg-white border border-gray-300 hover:bg-gray-100 text-gray-700 rounded-md text-sm font-bold transition cursor-pointer shadow-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCommitImport}
+                  disabled={isImporting || importRows.filter((r) => r.isValid).length === 0}
+                  className="px-6 py-2.5 bg-[#1B9387] hover:bg-[#28958B] text-white font-bold rounded-md transition cursor-pointer shadow-sm uppercase tracking-wider text-sm flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isImporting ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 animate-spin" /> Importing...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" /> Import{' '}
+                      {importRows.filter((r) => r.isValid).length} Employees
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>

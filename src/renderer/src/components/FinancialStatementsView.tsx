@@ -2,6 +2,8 @@
 import * as React from 'react'
 import { useState, useEffect } from 'react'
 
+export type StatementPeriodType = 'MONTHLY' | 'ALL_YEAR' | 'Q1' | 'Q2' | 'Q3' | 'Q4'
+
 export const FinancialStatementsView: React.FC = () => {
   const currentYear = new Date().getFullYear()
   const currentMonth = new Date().getMonth() + 1
@@ -11,6 +13,7 @@ export const FinancialStatementsView: React.FC = () => {
   )
   const [selectedYear, setSelectedYear] = useState<number>(currentYear)
   const [selectedMonth, setSelectedMonth] = useState<number>(currentMonth)
+  const [selectedPeriod, setSelectedPeriod] = useState<StatementPeriodType>('MONTHLY')
   const [data, setData] = useState<any | null>(null)
   const [loading, setLoading] = useState(false)
 
@@ -20,15 +23,16 @@ export const FinancialStatementsView: React.FC = () => {
       setData(null)
       try {
         const api = (window as any).electronAPI || (window as any).api
+        const quarterParam = selectedPeriod !== 'MONTHLY' ? selectedPeriod : undefined
         let result
         if (statementType === 'trial')
-          result = await api.getTrialBalance(selectedYear, selectedMonth)
+          result = await api.getTrialBalance(selectedYear, selectedMonth, quarterParam)
         else if (statementType === 'income')
-          result = await api.getIncomeStatement(selectedYear, selectedMonth)
+          result = await api.getIncomeStatement(selectedYear, selectedMonth, quarterParam)
         else if (statementType === 'balance')
-          result = await api.getBalanceSheet(selectedYear, selectedMonth)
+          result = await api.getBalanceSheet(selectedYear, selectedMonth, quarterParam)
         else if (statementType === 'cash-flow')
-          result = await api.getCashFlowStatement(selectedYear, selectedMonth)
+          result = await api.getCashFlowStatement(selectedYear, selectedMonth, quarterParam)
 
         setData(result)
       } catch (e) {
@@ -38,7 +42,7 @@ export const FinancialStatementsView: React.FC = () => {
       }
     }
     fetchReport()
-  }, [statementType, selectedYear, selectedMonth])
+  }, [statementType, selectedYear, selectedMonth, selectedPeriod])
 
   const formatCurrency = (val: number | null | undefined, isAbnormal: boolean = false) => {
     if (val === null || val === undefined || isNaN(val) || val === 0) return '—'
@@ -51,9 +55,15 @@ export const FinancialStatementsView: React.FC = () => {
 
   const handleExportExcel = async () => {
     const api = (window as any).electronAPI || (window as any).api
-    const result = await api.exportTrialBalanceExcel(selectedYear, selectedMonth)
-    if (result.success) alert(`Report exported successfully to:\n${result.filePath}`)
-    else if (result.error) alert(`Export Failed: ${result.error}`)
+    const quarterParam = selectedPeriod !== 'MONTHLY' ? selectedPeriod : undefined
+    let result
+    if (api?.exportFinancialStatementExcel) {
+      result = await api.exportFinancialStatementExcel(statementType, selectedYear, selectedMonth, quarterParam)
+    } else if (api?.exportTrialBalanceExcel) {
+      result = await api.exportTrialBalanceExcel(selectedYear, selectedMonth, quarterParam)
+    }
+    if (result && result.success) alert(`Report exported successfully to:\n${result.filePath}`)
+    else if (result && result.error) alert(`Export Failed: ${result.error}`)
   }
 
   const handleExportPDF = async () => {
@@ -96,7 +106,11 @@ export const FinancialStatementsView: React.FC = () => {
       await new Promise((resolve) => setTimeout(resolve, 150))
 
       const api = (window as any).electronAPI || (window as any).api
-      const filename = `${statementType.toUpperCase()}_Statement_${selectedYear}_${selectedMonth}.pdf`
+      const periodSuffix =
+        selectedPeriod === 'MONTHLY'
+          ? `${selectedYear}_${selectedMonth}`
+          : `${selectedPeriod}_${selectedYear}`
+      const filename = `${statementType.toUpperCase()}_Statement_${periodSuffix}.pdf`
       const result = await api.exportPDF(filename)
 
       if (result && result.success) {
@@ -135,6 +149,38 @@ export const FinancialStatementsView: React.FC = () => {
     return new Date(2000, monthNum - 1, 1).toLocaleString('en-US', { month: 'long' })
   }
 
+  const getPeriodSubtitle = (mode: 'asOf' | 'forPeriod') => {
+    if (selectedPeriod === 'ALL_YEAR') {
+      return mode === 'asOf'
+        ? `As of December 31, ${selectedYear}`
+        : `For the year ended December 31, ${selectedYear}`
+    }
+    if (selectedPeriod === 'Q1') {
+      return mode === 'asOf'
+        ? `As of March 31, ${selectedYear} (Q1)`
+        : `For the quarter ended March 31, ${selectedYear} (Q1)`
+    }
+    if (selectedPeriod === 'Q2') {
+      return mode === 'asOf'
+        ? `As of June 30, ${selectedYear} (Q2)`
+        : `For the quarter ended June 30, ${selectedYear} (Q2)`
+    }
+    if (selectedPeriod === 'Q3') {
+      return mode === 'asOf'
+        ? `As of September 30, ${selectedYear} (Q3)`
+        : `For the quarter ended September 30, ${selectedYear} (Q3)`
+    }
+    if (selectedPeriod === 'Q4') {
+      return mode === 'asOf'
+        ? `As of December 31, ${selectedYear} (Q4)`
+        : `For the quarter ended December 31, ${selectedYear} (Q4)`
+    }
+    const lastDay = new Date(selectedYear, selectedMonth, 0).getDate()
+    return mode === 'asOf'
+      ? `As of ${getMonthName(selectedMonth)} ${lastDay}, ${selectedYear}`
+      : `For the month ended ${getMonthName(selectedMonth)} ${selectedYear}`
+  }
+
   return (
     <div
       id="statement-card"
@@ -147,56 +193,148 @@ export const FinancialStatementsView: React.FC = () => {
       >
         <div>
           <h2 className="text-xl font-extrabold text-gray-800 tracking-wide">
-            Monthly Financial Statements
+            Financial Statements
           </h2>
+          <p className="text-xs text-gray-500 mt-0.5 font-medium">
+            {selectedPeriod === 'MONTHLY'
+              ? `Monthly Report: ${getMonthName(selectedMonth)} ${selectedYear}`
+              : selectedPeriod === 'ALL_YEAR'
+                ? `Annual Report: Full Year ${selectedYear}`
+                : `Quarterly Report: ${selectedPeriod} ${selectedYear}`}
+          </p>
           <div className="flex space-x-3 mt-3">
             <button
               id="export-pdf-btn"
               onClick={handleExportPDF}
-              className="px-4 py-2 bg-white hover:bg-[#E9FAFA] border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-2"
+              className="px-4 py-2 bg-white hover:bg-[#E9FAFA] border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-2 cursor-pointer"
             >
               <span className="text-base">📄</span> <span>Export PDF</span>
             </button>
-            {statementType === 'trial' && (
-              <button
-                id="export-excel-btn"
-                onClick={handleExportExcel}
-                className="px-4 py-2 bg-[#E9FAFA] hover:bg-[#B0DCDA]/50 border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-2"
-              >
-                <span className="text-base">📊</span> <span>Export Excel</span>
-              </button>
-            )}
+            <button
+              id="export-excel-btn"
+              onClick={handleExportExcel}
+              className="px-4 py-2 bg-[#E9FAFA] hover:bg-[#B0DCDA]/50 border border-[#B0DCDA] text-xs font-bold text-[#1B9387] rounded-md tracking-wider uppercase transition shadow-sm flex items-center space-x-2 cursor-pointer"
+            >
+              <span className="text-base">📊</span> <span>Export Excel</span>
+            </button>
           </div>
         </div>
 
         <div className="flex flex-wrap items-end gap-3 w-full lg:w-auto">
+          {/* PERIOD PRESET PILLS */}
+          <div>
+            <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
+              Period Preset
+            </label>
+            <div className="inline-flex rounded-lg shadow-xs bg-gray-100 p-0.5 border border-[#B0DCDA]/60">
+              <button
+                type="button"
+                onClick={() => setSelectedPeriod('MONTHLY')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition cursor-pointer ${
+                  selectedPeriod === 'MONTHLY'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+                }`}
+              >
+                Monthly
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedPeriod('ALL_YEAR')}
+                className={`px-3 py-1.5 text-xs font-bold rounded-md transition cursor-pointer ${
+                  selectedPeriod === 'ALL_YEAR'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+                }`}
+              >
+                Full Year
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedPeriod('Q1')}
+                className={`px-2.5 py-1.5 text-xs font-bold rounded-md transition cursor-pointer ${
+                  selectedPeriod === 'Q1'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+                }`}
+                title="Q1: January 1 – March 31"
+              >
+                Q1
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedPeriod('Q2')}
+                className={`px-2.5 py-1.5 text-xs font-bold rounded-md transition cursor-pointer ${
+                  selectedPeriod === 'Q2'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+                }`}
+                title="Q2: April 1 – June 30"
+              >
+                Q2
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedPeriod('Q3')}
+                className={`px-2.5 py-1.5 text-xs font-bold rounded-md transition cursor-pointer ${
+                  selectedPeriod === 'Q3'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+                }`}
+                title="Q3: July 1 – September 30"
+              >
+                Q3
+              </button>
+              <button
+                type="button"
+                onClick={() => setSelectedPeriod('Q4')}
+                className={`px-2.5 py-1.5 text-xs font-bold rounded-md transition cursor-pointer ${
+                  selectedPeriod === 'Q4'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+                }`}
+                title="Q4: October 1 – December 31"
+              >
+                Q4
+              </button>
+            </div>
+          </div>
+
           <div>
             <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
               Year
             </label>
-            <input
-              type="number"
+            <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(Number(e.target.value))}
-              className="w-24 bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-2 text-sm text-gray-800 font-bold outline-none focus:border-[#1B9387]"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
-              Month
-            </label>
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              className="w-40 bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-2 text-sm text-gray-800 font-bold outline-none cursor-pointer focus:border-[#1B9387]"
+              className="bg-[#FBF8F8] border border-[#B0DCDA] rounded-md px-2.5 py-1.5 text-sm text-gray-800 font-bold outline-none cursor-pointer focus:border-[#1B9387]"
             >
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
-                <option key={m} value={m}>
-                  {getMonthName(m)}
+              {[currentYear + 1, currentYear, currentYear - 1, currentYear - 2, currentYear - 3, currentYear - 4].map((y) => (
+                <option key={y} value={y}>
+                  {y}
                 </option>
               ))}
             </select>
           </div>
+
+          {selectedPeriod === 'MONTHLY' && (
+            <div>
+              <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1">
+                Month
+              </label>
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(Number(e.target.value))}
+                className="w-36 bg-[#FBF8F8] border border-[#B0DCDA] rounded-md px-2.5 py-1.5 text-sm text-gray-800 font-bold outline-none cursor-pointer focus:border-[#1B9387]"
+              >
+                {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
+                  <option key={m} value={m}>
+                    {getMonthName(m)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       </div>
 
@@ -245,7 +383,7 @@ export const FinancialStatementsView: React.FC = () => {
                 </h2>
                 <h3 className="text-lg font-bold text-gray-600 mt-1">Trial Balance</h3>
                 <p className="text-sm text-gray-500 mt-1 italic">
-                  As of {getMonthName(selectedMonth)} {selectedYear}
+                  {getPeriodSubtitle('asOf')}
                 </p>
               </div>
 
@@ -323,7 +461,7 @@ export const FinancialStatementsView: React.FC = () => {
                 </h2>
                 <h3 className="text-lg font-bold text-gray-600 mt-1">Income Statement</h3>
                 <p className="text-sm text-gray-500 mt-1 italic">
-                  For the month ended {getMonthName(selectedMonth)} {selectedYear}
+                  {getPeriodSubtitle('forPeriod')}
                 </p>
               </div>
 
@@ -333,7 +471,7 @@ export const FinancialStatementsView: React.FC = () => {
                 </h3>
                 {data.revenue?.length === 0 && (
                   <p className="text-sm text-gray-400 px-4 pl-8 italic">
-                    No revenue recorded this month.
+                    No revenue recorded in this period.
                   </p>
                 )}
                 {data.revenue?.map((rev: any, idx: number) => (
@@ -405,7 +543,7 @@ export const FinancialStatementsView: React.FC = () => {
                 </h2>
                 <h3 className="text-lg font-bold text-gray-600 mt-1">Balance Sheet</h3>
                 <p className="text-sm text-gray-500 mt-1 italic">
-                  As of {getMonthName(selectedMonth)} {selectedYear}
+                  {getPeriodSubtitle('asOf')}
                 </p>
               </div>
 
@@ -516,7 +654,7 @@ export const FinancialStatementsView: React.FC = () => {
                 </h2>
                 <h3 className="text-lg font-bold text-gray-600 mt-1">Statement of Cash Flows</h3>
                 <p className="text-sm text-gray-500 mt-1 italic">
-                  For the month ended {getMonthName(selectedMonth)} {selectedYear}
+                  {getPeriodSubtitle('forPeriod')}
                 </p>
               </div>
 
@@ -526,7 +664,7 @@ export const FinancialStatementsView: React.FC = () => {
                 </h3>
                 {data.operating?.details.length === 0 && (
                   <p className="text-sm text-gray-400 px-4 pl-8 italic">
-                    No operating activities this month.
+                    No operating activities in this period.
                   </p>
                 )}
                 {data.operating?.details.map((item: any, idx: number) => (
@@ -558,7 +696,7 @@ export const FinancialStatementsView: React.FC = () => {
                 </h3>
                 {data.investing?.details.length === 0 && (
                   <p className="text-sm text-gray-400 px-4 pl-8 italic">
-                    No investing activities this month.
+                    No investing activities in this period.
                   </p>
                 )}
                 {data.investing?.details.map((item: any, idx: number) => (
@@ -590,7 +728,7 @@ export const FinancialStatementsView: React.FC = () => {
                 </h3>
                 {data.financing?.details.length === 0 && (
                   <p className="text-sm text-gray-400 px-4 pl-8 italic">
-                    No financing activities this month.
+                    No financing activities in this period.
                   </p>
                 )}
                 {data.financing?.details.map((item: any, idx: number) => (

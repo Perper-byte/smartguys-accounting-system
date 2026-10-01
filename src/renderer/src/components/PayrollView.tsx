@@ -13,6 +13,7 @@ export function PayrollView({ userId }: { userId: string }) {
   const [payrollHistory, setPayrollHistory] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [dtrAppliedUpdates, setDtrAppliedUpdates] = useState<any[] | null>(null)
 
   // Run Payroll States
   const [payrollItems, setPayrollItems] = useState<any[]>([])
@@ -152,48 +153,13 @@ export function PayrollView({ userId }: { userId: string }) {
     )
   }
 
-  const handleImportApply = async (updates: any[]) => {
-    try {
-      const api = (window as any).api || (window as any).electronAPI
-      const settings = (await api.getPayrollSettings?.()) || {}
-      
-      setPayrollItems((prev) => {
-        const next = [...prev]
-        updates.forEach(update => {
-          const empItem = next.find(item => item.id === update.id)
-          if (!empItem) return
-          
-          const empRef = employees.find(e => e.id === update.id)
-          if (!empRef) return
-          
-          const hourlyRate = (empRef.monthly_salary ? Number(empRef.monthly_salary) / 2 : 0) / 104 // Approx 104 hours per cutoff
-          
-          const regOtMultiplier = settings.regular_ot || 1.25
-          const nightDiffMultiplier = settings.regular_night || 1.10
-          
-          const basePay = update.baseHours * hourlyRate
-          const overtimePay = update.overtimeHours.regular_ot * hourlyRate * regOtMultiplier
-          const nightDiffPay = update.overtimeHours.regular_night * hourlyRate * nightDiffMultiplier
-          
-          const lateDemerit = (update.demerits.late_minutes / 60) * hourlyRate
-          const undertimeDemerit = (update.demerits.undertime_minutes / 60) * hourlyRate
-          
-          empItem.basePay = Number(basePay.toFixed(2))
-          empItem.overtime = Number(overtimePay.toFixed(2))
-          empItem.nightDiff = Number(nightDiffPay.toFixed(2))
-          empItem.otherDeductions = Number((empItem.otherDeductions + lateDemerit + undertimeDemerit).toFixed(2))
-          
-          empItem.gross = empItem.basePay + empItem.overtime + empItem.nightDiff + empItem.otherEarnings
-          empItem.deductions = empItem.sss + empItem.philhealth + empItem.pagibig + empItem.cashAdvance + empItem.licenseFee + empItem.otherDeductions
-          empItem.net = empItem.gross - empItem.deductions - empItem.tax
-        })
-        return next
-      })
-      setView('GRID')
-      setStatus({ type: 'success', msg: 'DTR data applied to grid successfully.' })
-    } catch (err) {
-      setStatus({ type: 'error', msg: 'Failed to apply DTR data.' })
-    }
+  const handleImportApply = (updates: any[]) => {
+    setDtrAppliedUpdates(updates)
+    setView('GRID')
+    setStatus({
+      type: 'success',
+      msg: `DTR timesheet attendance data loaded for ${updates.length} employee(s)!`
+    })
   }
 
   const handleProcessPayroll = async () => {
@@ -279,8 +245,8 @@ export function PayrollView({ userId }: { userId: string }) {
   const totalNet = payrollItems.reduce((sum, item) => sum + item.net, 0)
 
   return (
-    <div className="w-full h-full flex items-center justify-center p-4 lg:p-8 bg-gray-50/30">
-      <div className="w-full max-w-7xl h-full flex flex-col font-sans text-gray-800 bg-white shadow-sm border border-transparent rounded-xl overflow-hidden">
+    <div className="w-full h-full flex items-center justify-center p-2 lg:p-4 bg-gray-50/30">
+      <div className="w-full max-w-[1900px] h-full flex flex-col font-sans text-gray-800 bg-white shadow-sm border border-transparent rounded-xl overflow-hidden">
         {/* HEADER */}
         <div className="flex justify-between items-end mb-2 p-6 pb-4 border-b border-[#B0DCDA] shrink-0 print:hidden">
           <div>
@@ -358,294 +324,16 @@ export function PayrollView({ userId }: { userId: string }) {
         )}
 
         {/* ========================================== */}
-        {/* RUN PAYROLL TAB                            */}
+        {/* RUN PAYROLL TAB: CLINIC EXCEL SPREADSHEET */}
         {/* ========================================== */}
         {view === 'GRID' && (
-          <div className="flex-1 flex flex-col animate-in fade-in duration-300 min-h-0 relative print:hidden">
-            <div className="px-6 mb-4 shrink-0">
-              <div className="grid grid-cols-4 gap-6">
-                <div>
-                  <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">
-                    Payroll Date
-                  </label>
-                  <input
-                    type="date"
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">
-                    Voucher No.
-                  </label>
-                  <div className="flex">
-                    <span className="bg-gray-50 border border-[#B0DCDA] border-r-0 rounded-l-md px-4 py-3 text-sm font-extrabold text-gray-500 select-none">
-                      PY-
-                    </span>
-                    <input
-                      type="text"
-                      required
-                      value={refSequence}
-                      onChange={(e) => setRefSequence(e.target.value)}
-                      placeholder="001"
-                      className="w-full bg-white border border-[#B0DCDA] rounded-r-md p-3 text-sm font-mono font-bold text-gray-800 focus:border-[#1B9387] outline-none transition"
-                    />
-                  </div>
-                </div>
-                <div className="col-span-2 flex items-end justify-between">
-                  <div className="flex-1 mr-4">
-                    <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">
-                      Description / Memo
-                    </label>
-                    <input
-                      type="text"
-                      value={description}
-                      onChange={(e) => setDescription(e.target.value)}
-                      className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] outline-none transition"
-                    />
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => setShowDetailed(!showDetailed)}
-                      className="px-4 py-3 h-[46px] bg-white hover:bg-gray-50 border border-gray-300 text-xs font-bold text-gray-600 rounded-md transition shadow-sm cursor-pointer"
-                    >
-                      {showDetailed ? '📉 Compact View' : '📈 Detailed View'}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Ledger Table Container */}
-            <div className="flex-1 overflow-auto bg-white relative">
-              <table className="w-full text-left text-sm whitespace-nowrap min-w-max border-t border-[#B0DCDA]">
-                <thead className="bg-[#FBF8F8] sticky top-0 z-30 shadow-[0_2px_4px_rgba(0,0,0,0.02)]">
-                  <tr className="border-b border-gray-200 text-center text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
-                    <th className="p-2 border-r border-[#B0DCDA] sticky left-0 z-40 bg-[#FBF8F8]"></th>
-                    <th
-                      colSpan={showDetailed ? 4 : 2}
-                      className="p-2 border-r border-[#B0DCDA] text-blue-600 bg-blue-50/50"
-                    >
-                      Earnings (₱)
-                    </th>
-                    <th
-                      colSpan={showDetailed ? 7 : 3}
-                      className="p-2 border-r border-[#B0DCDA] text-orange-500 bg-orange-50/50"
-                    >
-                      Deductions & Taxes (₱)
-                    </th>
-                    <th className="p-2 text-[#1B9387] bg-[#E9FAFA]/50">Payout (₱)</th>
-                  </tr>
-                  <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold border-b border-[#B0DCDA]">
-                    <th className="p-3 border-r border-[#B0DCDA] sticky left-0 z-40 bg-[#FBF8F8] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                      Employee Name
-                    </th>
-                    <th className="p-3 text-right border-r border-gray-200">Base Pay</th>
-                    <th className="p-3 text-right border-r border-gray-200">Overtime</th>
-                    {showDetailed && (
-                      <th className="p-3 text-right border-r border-gray-200">Night Diff</th>
-                    )}
-                    {showDetailed && (
-                      <th className="p-3 text-right border-r border-gray-200">Other Earn.</th>
-                    )}
-                    <th className="p-3 text-right border-r border-[#B0DCDA] text-blue-600 bg-blue-50/50">
-                      Total Gross
-                    </th>
-
-                    <th className="p-3 text-right border-r border-gray-200">SSS</th>
-                    {showDetailed && (
-                      <th className="p-3 text-right border-r border-gray-200">PhilHealth</th>
-                    )}
-                    {showDetailed && (
-                      <th className="p-3 text-right border-r border-gray-200">Pag-IBIG</th>
-                    )}
-                    {showDetailed && (
-                      <th className="p-3 text-right border-r border-gray-200">Cash Adv.</th>
-                    )}
-                    {showDetailed && (
-                      <th className="p-3 text-right border-r border-gray-200">Lic. Fee</th>
-                    )}
-                    {showDetailed && (
-                      <th className="p-3 text-right border-r border-gray-200">Other Ded.</th>
-                    )}
-                    {!showDetailed && (
-                      <th className="p-3 text-right border-r border-gray-200 italic text-gray-400">
-                        Total Deductions
-                      </th>
-                    )}
-
-                    <th className="p-3 text-right border-r border-[#B0DCDA] text-red-500 bg-red-50/50">
-                      Tax W/H
-                    </th>
-                    <th className="p-3 text-right text-[#1B9387] bg-[#E9FAFA]/50 pr-6">Net Pay</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 bg-gray-50/30">
-                  {payrollItems.length === 0 ? (
-                    <tr>
-                      <td colSpan={14} className="p-12 text-center text-gray-400 italic">
-                        No active employees found.
-                      </td>
-                    </tr>
-                  ) : (
-                    payrollItems.map((emp) => (
-                      <tr key={emp.id} className="hover:bg-[#E9FAFA]/30 transition-colors group">
-                        <td className="p-3 font-bold text-gray-800 border-r border-[#B0DCDA] sticky left-0 z-10 bg-white group-hover:bg-[#FBF8F8] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] flex items-center justify-between">
-                          <span>{emp.name}</span>
-                          {emp.hasIncompleteIds && (
-                            <span title="Missing IDs" className="text-yellow-500 text-xs ml-2">
-                              ⚠️
-                            </span>
-                          )}
-                        </td>
-                        {renderInput(
-                          emp.id,
-                          emp.basePay,
-                          'basePay',
-                          'text-gray-800',
-                          'bg-blue-50/50'
-                        )}
-                        {renderInput(
-                          emp.id,
-                          emp.overtime,
-                          'overtime',
-                          'text-blue-600',
-                          'bg-blue-50/50'
-                        )}
-                        {showDetailed &&
-                          renderInput(
-                            emp.id,
-                            emp.nightDiff,
-                            'nightDiff',
-                            'text-blue-600',
-                            'bg-blue-50/50'
-                          )}
-                        {showDetailed &&
-                          renderInput(
-                            emp.id,
-                            emp.otherEarnings,
-                            'otherEarnings',
-                            'text-blue-600',
-                            'bg-blue-50/50'
-                          )}
-                        <td className="p-3 pr-4 border-r border-[#B0DCDA] bg-blue-50/30">
-                          <CellMoney val={emp.gross} colorClass="text-blue-600" />
-                        </td>
-
-                        {renderInput(emp.id, emp.sss, 'sss', 'text-orange-600', 'bg-orange-50/50')}
-                        {showDetailed &&
-                          renderInput(
-                            emp.id,
-                            emp.philhealth,
-                            'philhealth',
-                            'text-orange-600',
-                            'bg-orange-50/50'
-                          )}
-                        {showDetailed &&
-                          renderInput(
-                            emp.id,
-                            emp.pagibig,
-                            'pagibig',
-                            'text-orange-600',
-                            'bg-orange-50/50'
-                          )}
-                        {showDetailed &&
-                          renderInput(
-                            emp.id,
-                            emp.cashAdvance,
-                            'cashAdvance',
-                            'text-red-500',
-                            'bg-red-50/50'
-                          )}
-                        {showDetailed &&
-                          renderInput(
-                            emp.id,
-                            emp.licenseFee,
-                            'licenseFee',
-                            'text-red-500',
-                            'bg-red-50/50'
-                          )}
-                        {showDetailed &&
-                          renderInput(
-                            emp.id,
-                            emp.otherDeductions,
-                            'otherDeductions',
-                            'text-red-500',
-                            'bg-red-50/50'
-                          )}
-                        {!showDetailed && (
-                          <td className="p-3 pr-4 border-r border-gray-200 bg-white">
-                            <CellMoney
-                              val={emp.deductions}
-                              colorClass="text-orange-500"
-                              isBold={false}
-                            />
-                          </td>
-                        )}
-
-                        {renderInput(emp.id, emp.tax, 'tax', 'text-red-600', 'bg-red-50/50')}
-                        <td className="p-3 pr-6 text-right bg-[#FBF8F8]/50 border-r border-transparent">
-                          <CellMoney val={emp.net} colorClass="text-[#1B9387]" />
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* UX FIX: Sticky Summary Bar */}
-            <div className="sticky bottom-0 bg-[#FBF8F8] border-t border-[#B0DCDA] p-5 px-6 flex justify-between items-center shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] z-40 shrink-0">
-              <div className="grid grid-cols-4 gap-8 text-sm w-2/3">
-                <div>
-                  <p className="text-gray-500 uppercase text-[10px] font-extrabold tracking-widest">
-                    Total Gross
-                  </p>
-                  <p className="font-mono text-gray-800 font-bold text-lg mt-1 tabular-nums">
-                    {formatCurrency(totalGross)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-orange-500 uppercase text-[10px] font-extrabold tracking-widest">
-                    Total Deductions
-                  </p>
-                  <p className="font-mono text-orange-500 font-bold text-lg mt-1 tabular-nums">
-                    {formatCurrency(totalDeductions)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-red-500 uppercase text-[10px] font-extrabold tracking-widest">
-                    Total Tax W/H
-                  </p>
-                  <p className="font-mono text-red-500 font-bold text-lg mt-1 tabular-nums">
-                    {formatCurrency(totalTax)}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-[#1B9387] uppercase text-[10px] font-extrabold tracking-widest">
-                    Total Net Payout
-                  </p>
-                  <p className="font-mono text-[#1B9387] font-black text-2xl mt-0.5 tabular-nums">
-                    {formatCurrency(totalNet)}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={handleProcessPayroll}
-                disabled={loading || payrollItems.length === 0}
-                className="px-10 py-4 bg-[#1B9387] hover:bg-[#28958B] disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-lg font-bold transition shadow-md tracking-wide cursor-pointer uppercase text-sm flex items-center gap-2"
-              >
-                {loading ? (
-                  <>
-                    <span className="animate-spin text-lg">↻</span> Processing...
-                  </>
-                ) : (
-                  'Post Payroll'
-                )}
-              </button>
-            </div>
-          </div>
+          <PayrollGridTab
+            employees={employees}
+            userId={userId}
+            setStatus={setStatus}
+            dtrUpdates={dtrAppliedUpdates || undefined}
+            onClearDtr={() => setDtrAppliedUpdates(null)}
+          />
         )}
 
          {/* SETTINGS TAB */}

@@ -1,144 +1,898 @@
 import * as React from 'react'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import {
+  Download,
+  CheckCircle,
+  AlertTriangle,
+  ShieldCheck,
+  Clock,
+  Save,
+  FolderOpen,
+  Trash2,
+  Calendar,
+  X
+} from 'lucide-react'
+import { exportPayrollGridToExcel, PayrollRowExportData } from '../../utils/excel-payroll-export'
+import {
+  ALL_DOLE_RATES,
+  getActiveDoleRateKeys,
+  getDoleMultipliers,
+  DOLERateDef
+} from '../../utils/dole-rates'
+import {
+  MONTH_NAMES,
+  isLeapYear,
+  getDaysInMonth,
+  getPayrollCutoffDetails,
+  CutoffType,
+  PayrollDraft,
+  getPayrollDrafts,
+  findDraftForCutoff,
+  savePayrollDraft,
+  deletePayrollDraft
+} from '../../utils/payroll-periods'
+
+export interface DOLEHourRates {
+  reg: number
+  ot: number
+  nd: number
+  nd_ot: number
+  sun_reg: number
+  sun_ot: number
+  sun_nd: number
+  sun_nd_ot: number
+  leg_reg: number
+  leg_ot: number
+  leg_nd: number
+  leg_nd_ot: number
+  spcl_reg: number
+  spcl_ot: number
+  spcl_nd: number
+  spcl_nd_ot: number
+  [key: string]: number
+}
 
 export function PayrollGridTab({
   employees,
   userId,
-  setStatus
+  setStatus,
+  dtrUpdates,
+  onClearDtr
 }: {
   employees: any[]
   userId: string
   setStatus: (status: { type: 'success' | 'error'; msg: string } | null) => void
+  dtrUpdates?: any[]
+  onClearDtr?: () => void
 }) {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0])
+  const now = new Date()
+  const initialCutoff: CutoffType = now.getDate() <= 15 ? '1ST_HALF' : '2ND_HALF'
+  const initialDetails = getPayrollCutoffDetails(now.getFullYear(), now.getMonth() + 1, initialCutoff)
+
+  const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear())
+  const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1)
+  const [cutoffType, setCutoffType] = useState<CutoffType>(initialCutoff)
+
+  const [date, setDate] = useState(initialDetails.payrollDate)
   const [refSequence, setRefSequence] = useState('')
-  const [description, setDescription] = useState('Salary for August 15-30')
-  const [showDetailed, setShowDetailed] = useState(false)
+  const [description, setDescription] = useState(initialDetails.defaultMemo)
   const [loading, setLoading] = useState(false)
 
+  // Drafts management
+  const [draftsList, setDraftsList] = useState<PayrollDraft[]>(getPayrollDrafts())
+  const [showDraftsModal, setShowDraftsModal] = useState(false)
+  const [draftSavedStatus, setDraftSavedStatus] = useState<string | null>(null)
+  const autoSaveTimerRef = useRef<any>(null)
+
+  // Active DOLE rates & multipliers
+  const [activeRateKeys, setActiveRateKeys] = useState<string[]>(getActiveDoleRateKeys())
+  const [doleMultipliers, setDoleMultipliers] = useState<Record<string, number>>(getDoleMultipliers())
+
+  // Period lock management
   const [lockDate, setLockDate] = useState<string | null>(null)
   const [showPinModal, setShowPinModal] = useState(false)
   const [overridePin, setOverridePin] = useState('')
   const [pinError, setPinError] = useState('')
-
   const isLocked = lockDate ? date <= lockDate : false
 
-  // Map employeeId -> input values
-  const [inputs, setInputs] = useState<Record<number, any>>({})
-  // Map employeeId -> calculated result
-  const [results, setResults] = useState<Record<number, any>>({})
+  // Employee row in-cell state
+  // key: emp.id -> { hours: DOLEHourRates, absentDays: number, deductions: { sss, philhealth, hdmf, tax }, adjustments: { meal, license, adj, sil } }
+  const [rowInputs, setRowInputs] = useState<Record<number, any>>({})
+  const [overrides, setOverrides] = useState<Record<number, Record<string, boolean>>>({})
+
+  // Listen for DOLE settings updates from Settings tab
+  useEffect(() => {
+    const handleRatesUpdate = (e: any) => {
+      if (e.detail) setActiveRateKeys(e.detail)
+    }
+    const handleMultUpdate = (e: any) => {
+      if (e.detail) setDoleMultipliers(e.detail)
+    }
+    window.addEventListener('smartguys:dole-rates-updated', handleRatesUpdate)
+    window.addEventListener('smartguys:dole-multipliers-updated', handleMultUpdate)
+
+    const handleDraftsUpdate = (e: any) => {
+      if (e.detail) setDraftsList(e.detail)
+    }
+    window.addEventListener('smartguys:payroll-drafts-updated', handleDraftsUpdate)
+
+    return () => {
+      window.removeEventListener('smartguys:dole-rates-updated', handleRatesUpdate)
+      window.removeEventListener('smartguys:dole-multipliers-updated', handleMultUpdate)
+      window.removeEventListener('smartguys:payroll-drafts-updated', handleDraftsUpdate)
+    }
+  }, [])
+
+  // Cutoff change handler
+  const handleCutoffChange = (
+    newCutoff: CutoffType,
+    yr: number = selectedYear,
+    mo: number = selectedMonth
+  ) => {
+    setCutoffType(newCutoff)
+    if (newCutoff !== 'CUSTOM') {
+      const details = getPayrollCutoffDetails(yr, mo, newCutoff)
+      setDate(details.payrollDate)
+      setDescription(details.defaultMemo)
+
+      // Look up existing draft for this period
+      const existingDraft = findDraftForCutoff(yr, mo, newCutoff)
+      if (existingDraft && Object.keys(existingDraft.rowInputs || {}).length > 0) {
+        setRowInputs(existingDraft.rowInputs)
+        const timeStr = new Date(existingDraft.savedAt).toLocaleTimeString([], {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+        setDraftSavedStatus(`Draft loaded (${timeStr})`)
+      }
+    }
+  }
+
+  // Save Draft (Manual or Autosave)
+  const handleSaveDraft = (manual = true) => {
+    if (Object.keys(rowInputs).length === 0) return
+    const draftId = `draft-${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${cutoffType}`
+    const details = getPayrollCutoffDetails(selectedYear, selectedMonth, cutoffType)
+    const draft: PayrollDraft = {
+      id: draftId,
+      cutoff: cutoffType,
+      year: selectedYear,
+      month: selectedMonth,
+      startDate: details.startDate,
+      endDate: details.endDate,
+      payrollDate: date,
+      refSequence,
+      description,
+      rowInputs,
+      savedAt: new Date().toISOString(),
+      totalEmployees: calculatedRows.length,
+      totalNet: summaryTotals?.netTotal || 0
+    }
+    savePayrollDraft(draft)
+    const timeStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    setDraftSavedStatus(`Draft saved at ${timeStr}`)
+    if (manual) {
+      setStatus({
+        type: 'success',
+        msg: `Payroll draft for ${details.label} (${MONTH_NAMES[selectedMonth - 1]} ${selectedYear}) saved successfully!`
+      })
+      setTimeout(() => setStatus(null), 3000)
+    }
+  }
+
+  // Resume Draft from Saved Drafts modal
+  const handleResumeDraft = (draft: PayrollDraft) => {
+    setSelectedYear(draft.year)
+    setSelectedMonth(draft.month)
+    setCutoffType(draft.cutoff)
+    setDate(draft.payrollDate)
+    setRefSequence(draft.refSequence || refSequence)
+    setDescription(draft.description)
+    setRowInputs(draft.rowInputs || {})
+    setShowDraftsModal(false)
+    const timeStr = new Date(draft.savedAt).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+    setDraftSavedStatus(`Resumed draft from ${timeStr}`)
+    setStatus({
+      type: 'success',
+      msg: `Resumed draft for ${draft.description}!`
+    })
+    setTimeout(() => setStatus(null), 3500)
+  }
+
+  // Delete Draft
+  const handleDeleteDraft = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation()
+    deletePayrollDraft(id)
+  }
+
+  // Debounced auto-save effect
+  useEffect(() => {
+    if (Object.keys(rowInputs).length === 0) return
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    autoSaveTimerRef.current = setTimeout(() => {
+      handleSaveDraft(false) // background autosave
+    }, 2000)
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+    }
+  }, [rowInputs, date, description, refSequence, cutoffType, selectedYear, selectedMonth])
 
   const fetchNextSeq = async () => {
     try {
       const api = (window as any).api || (window as any).electronAPI
-      const nextSeq = await api.getNextSequence('PY-')
-      setRefSequence(nextSeq)
-    } catch (error) {
-      console.error(error)
+      if (api?.getNextSequence) {
+        const nextSeq = await api.getNextSequence('PY-')
+        setRefSequence(nextSeq)
+      } else {
+        setRefSequence('001')
+      }
+    } catch {
+      setRefSequence('001')
     }
   }
 
   useEffect(() => {
     fetchNextSeq()
-    const fetchLockDate = async () => {
+    const fetchLock = async () => {
       try {
         const api = (window as any).api || (window as any).electronAPI
-        const lockSettings = await api.getLockDate()
-        if (lockSettings?.lockDate) {
-          setLockDate(lockSettings.lockDate.split('T')[0])
+        if (api?.getLockDate) {
+          const res = await api.getLockDate()
+          if (res?.lockDate) setLockDate(res.lockDate.split('T')[0])
         }
       } catch (err) {
         console.error('Failed to get lock date', err)
       }
     }
-    fetchLockDate()
+    fetchLock()
   }, [])
 
-  // Initialize inputs when employees load
+  // Initialize row data from active employees
   useEffect(() => {
     const active = employees.filter((e) => e.is_active !== false)
-    const newInputs = { ...inputs }
+    const newInputs = { ...rowInputs }
     let changed = false
+
     active.forEach((emp) => {
       if (!newInputs[emp.id]) {
+        // Standard clinic daily rate: (Monthly * 12) / 313
+        const monthly = Number(emp.monthly_salary) || 0
+        const dailyRate = Math.round(((monthly * 12) / 313) * 100) / 100
+        const hourlyRate = Math.round((dailyRate / 8) * 100) / 100
+
+        // Default recurring allowance
+        const mealAllowance =
+          emp.allowances?.reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0) || 500
+
         newInputs[emp.id] = {
-          monthlySalary: Number(emp.monthly_salary) || 0,
-          demerits: { late_minutes: 0, undertime_hours: 0, undertime_minutes: 0, absence_days: 0 },
-          hours: {}
+          monthlySalary: monthly,
+          dailyRate,
+          hourlyRate,
+          hours: {
+            reg: 0,
+            ot: 0,
+            nd: 0,
+            nd_ot: 0,
+            sun_reg: 0,
+            sun_ot: 0,
+            sun_nd: 0,
+            sun_nd_ot: 0,
+            leg_reg: 0,
+            leg_ot: 0,
+            leg_nd: 0,
+            leg_nd_ot: 0,
+            spcl_reg: 0,
+            spcl_ot: 0,
+            spcl_nd: 0,
+            spcl_nd_ot: 0
+          },
+          absentDays: 0,
+          deductions: {
+            sss: 500,
+            philhealth: 225,
+            hdmf: 100,
+            tax: 0
+          },
+          adjustments: {
+            meal: mealAllowance,
+            license: 0,
+            adj: 0,
+            sil: 0
+          }
         }
         changed = true
       }
     })
-    if (changed) setInputs(newInputs)
+
+    if (changed) setRowInputs(newInputs)
   }, [employees])
 
-  // Debounced calculation
-  const timeoutRef = useRef<any>(null)
+  // Apply DTR import updates if received
+  const [dtrAppliedBanner, setDtrAppliedBanner] = useState<number | null>(null)
 
   useEffect(() => {
-    const active = employees.filter((e) => e.is_active !== false)
-    if (active.length === 0 || Object.keys(inputs).length === 0) return
-
-    if (timeoutRef.current) clearTimeout(timeoutRef.current)
-
-    timeoutRef.current = setTimeout(async () => {
-      try {
-        const payload = active.map(emp => ({
-          id: emp.id,
-          monthlySalary: inputs[emp.id]?.monthlySalary || 0,
-          hours: inputs[emp.id]?.hours || {},
-          demerits: inputs[emp.id]?.demerits || { late_minutes: 0, undertime_hours: 0, undertime_minutes: 0, absence_days: 0 }
-        }))
-
-        const api = (window as any).api || (window as any).electronAPI
-        const calcResults = await api.batchCalculatePayroll(payload)
-        
-        const newResults: Record<number, any> = {}
-        calcResults.forEach((res: any) => {
-          newResults[res.employee_id] = res
-        })
-        setResults(newResults)
-      } catch (err) {
-        console.error('Failed to batch calculate', err)
+    if (!dtrUpdates || dtrUpdates.length === 0) return
+    setRowInputs((prev) => {
+      const next = { ...prev }
+      let appliedCount = 0
+      dtrUpdates.forEach((u) => {
+        const empId = Number(u.id)
+        if (next[empId]) {
+          appliedCount++
+          next[empId] = {
+            ...next[empId],
+            hours: {
+              ...next[empId].hours,
+              reg: u.regHours ?? u.baseHours ?? next[empId].hours.reg,
+              ot: u.otHours ?? u.overtimeHours?.regular_ot ?? next[empId].hours.ot,
+              nd: u.ndHours ?? u.overtimeHours?.regular_night ?? next[empId].hours.nd,
+              nd_ot: u.ndOtHours ?? u.overtimeHours?.regular_night_ot ?? next[empId].hours.nd_ot,
+              sun_reg: u.sunRegHours ?? u.sunHours ?? u.overtimeHours?.rest_day ?? next[empId].hours.sun_reg,
+              sun_ot: u.sunOtHours ?? u.overtimeHours?.rest_day_ot ?? next[empId].hours.sun_ot,
+              sun_nd: u.sunNdHours ?? u.overtimeHours?.rest_day_night ?? next[empId].hours.sun_nd,
+              sun_nd_ot: u.sunNdOtHours ?? u.overtimeHours?.rest_day_night_ot ?? next[empId].hours.sun_nd_ot,
+              leg_reg: u.legRegHours ?? u.legHours ?? u.overtimeHours?.legal_holiday ?? next[empId].hours.leg_reg,
+              leg_ot: u.legOtHours ?? u.overtimeHours?.legal_holiday_ot ?? next[empId].hours.leg_ot,
+              leg_nd: u.legNdHours ?? u.overtimeHours?.legal_holiday_night ?? next[empId].hours.leg_nd,
+              leg_nd_ot: u.legNdOtHours ?? u.overtimeHours?.legal_holiday_night_ot ?? next[empId].hours.leg_nd_ot,
+              spcl_reg: u.spclRegHours ?? u.spclHours ?? u.overtimeHours?.special_holiday ?? next[empId].hours.spcl_reg,
+              spcl_ot: u.spclOtHours ?? u.overtimeHours?.special_holiday_ot ?? next[empId].hours.spcl_ot,
+              spcl_nd: u.spclNdHours ?? u.overtimeHours?.special_holiday_night ?? next[empId].hours.spcl_nd,
+              spcl_nd_ot: u.spclNdOtHours ?? u.overtimeHours?.special_holiday_night_ot ?? next[empId].hours.spcl_nd_ot
+            },
+            absentDays: u.absentDays ?? u.demerits?.absences_days ?? next[empId].absentDays
+          }
+        }
+      })
+      if (appliedCount > 0) {
+        setDtrAppliedBanner(appliedCount)
       }
-    }, 500)
+      return next
+    })
+  }, [dtrUpdates])
 
-    return () => clearTimeout(timeoutRef.current)
-  }, [inputs, employees])
+  // Active rate definitions and group counts
+  const activeRateDefs = useMemo(() => {
+    return ALL_DOLE_RATES.filter((r) => activeRateKeys.includes(r.key))
+  }, [activeRateKeys])
 
-  const confirmProcessPayroll = async (pin?: string) => {
+  const regularCount = activeRateDefs.filter((r) => r.group === 'REGULAR').length
+  const sundayCount = activeRateDefs.filter((r) => r.group === 'SUNDAY').length
+  const legalCount = activeRateDefs.filter((r) => r.group === 'LEGAL').length
+  const specialCount = activeRateDefs.filter((r) => r.group === 'SPECIAL').length
+
+  // Editable columns metadata mapping for 2D cell coordinate tracking
+  interface EditableColumnMeta {
+    index: number
+    category: 'hours' | 'absent' | 'deductions' | 'adjustments'
+    field: string
+    label: string
+  }
+
+  const editableColumns = useMemo<EditableColumnMeta[]>(() => {
+    const cols: EditableColumnMeta[] = []
+    let idx = 0
+    activeRateDefs.forEach((def) => {
+      cols.push({ index: idx++, category: 'hours', field: def.key, label: def.label })
+    })
+    cols.push({ index: idx++, category: 'absent', field: 'absentDays', label: 'Absent Days' })
+    cols.push({ index: idx++, category: 'deductions', field: 'sss', label: 'SSS' })
+    cols.push({ index: idx++, category: 'deductions', field: 'philhealth', label: 'PhilHealth' })
+    cols.push({ index: idx++, category: 'deductions', field: 'hdmf', label: 'HDMF' })
+    cols.push({ index: idx++, category: 'deductions', field: 'tax', label: 'Withholding Tax' })
+    cols.push({ index: idx++, category: 'adjustments', field: 'meal', label: 'Meal Allowance' })
+    cols.push({ index: idx++, category: 'adjustments', field: 'license', label: 'License Fee' })
+    cols.push({ index: idx++, category: 'adjustments', field: 'adj', label: 'Adjustment' })
+    cols.push({ index: idx++, category: 'adjustments', field: 'sil', label: 'SIL' })
+    return cols
+  }, [activeRateDefs])
+
+  // Multi-cell selection state
+  interface CellCoord {
+    row: number
+    col: number
+  }
+
+  const [selection, setSelection] = useState<{ start: CellCoord; end: CellCoord } | null>(null)
+  const [isDragging, setIsDragging] = useState(false)
+
+  const selectionBounds = useMemo(() => {
+    if (!selection) return null
+    const minRow = Math.min(selection.start.row, selection.end.row)
+    const maxRow = Math.max(selection.start.row, selection.end.row)
+    const minCol = Math.min(selection.start.col, selection.end.col)
+    const maxCol = Math.max(selection.start.col, selection.end.col)
+    return { minRow, maxRow, minCol, maxCol }
+  }, [selection])
+
+  const getCellSelectionStyle = (row: number, col: number) => {
+    if (!selectionBounds) return ''
+    const { minRow, maxRow, minCol, maxCol } = selectionBounds
+    const isSelected = row >= minRow && row <= maxRow && col >= minCol && col <= maxCol
+    if (!isSelected) return ''
+
+    let classes = 'bg-sky-100/70 '
+    if (row === minRow) classes += 'border-t-2 !border-t-sky-600 '
+    if (row === maxRow) classes += 'border-b-2 !border-b-sky-600 '
+    if (col === minCol) classes += 'border-l-2 !border-l-sky-600 '
+    if (col === maxCol) classes += 'border-r-2 !border-r-sky-600 '
+    return classes
+  }
+
+  const handleCellMouseDown = (row: number, col: number, e: React.MouseEvent) => {
+    if (e.button !== 0) return
+    if (e.shiftKey && selection) {
+      setSelection({ start: selection.start, end: { row, col } })
+      return
+    }
+    setIsDragging(true)
+    setSelection({ start: { row, col }, end: { row, col } })
+  }
+
+  const handleCellMouseEnter = (row: number, col: number) => {
+    if (!isDragging || !selection) return
+    setSelection((prev) => (prev ? { ...prev, end: { row, col } } : null))
+  }
+
+  useEffect(() => {
+    const onMouseUp = () => setIsDragging(false)
+    window.addEventListener('mouseup', onMouseUp)
+    return () => window.removeEventListener('mouseup', onMouseUp)
+  }, [])
+
+  // Cell change handler
+  const handleCellChange = (empId: number, category: string, field: string, val: string) => {
+    const num = parseFloat(val) || 0
+    setRowInputs((prev) => {
+      const current = prev[empId] || {}
+      if (category === 'hours') {
+        return {
+          ...prev,
+          [empId]: {
+            ...current,
+            hours: {
+              ...(current.hours || {}),
+              [field]: num
+            }
+          }
+        }
+      }
+      if (category === 'absent') {
+        return {
+          ...prev,
+          [empId]: {
+            ...current,
+            absentDays: num
+          }
+        }
+      }
+      if (category === 'deductions') {
+        setOverrides((o) => ({
+          ...o,
+          [empId]: { ...(o[empId] || {}), [field]: true }
+        }))
+        return {
+          ...prev,
+          [empId]: {
+            ...current,
+            deductions: {
+              ...(current.deductions || {}),
+              [field]: num
+            }
+          }
+        }
+      }
+      if (category === 'adjustments') {
+        return {
+          ...prev,
+          [empId]: {
+            ...current,
+            adjustments: {
+              ...(current.adjustments || {}),
+              [field]: num
+            }
+          }
+        }
+      }
+      return prev
+    })
+  }
+
+  // Calculate row results in real time
+  const calculatedRows = useMemo(() => {
+    const active = employees.filter((e) => e.is_active !== false)
+    return active.map((emp) => {
+      const inp = rowInputs[emp.id] || {}
+      const monthly = Number(emp.monthly_salary) || 0
+      const dailyRate = Math.round(((monthly * 12) / 313) * 100) / 100
+      const hourlyRate = Math.round((dailyRate / 8) * 100) / 100
+      const hours = inp.hours || {}
+
+      // Calculate Gross Pay = SUM(Hours x Hourly Rate x Multiplier)
+      let grossPay = 0
+      let totalDaysWorked = 0
+
+      // Regular days
+      const regHrs = Number(hours.reg) || 0
+      const sunRegHrs = Number(hours.sun_reg) || 0
+      const legRegHrs = Number(hours.leg_reg) || 0
+      const spclRegHrs = Number(hours.spcl_reg) || 0
+
+      totalDaysWorked = Math.round(((regHrs + sunRegHrs + legRegHrs + spclRegHrs) / 8) * 100) / 100
+
+      Object.entries(doleMultipliers).forEach(([k, mult]) => {
+        const h = Number(hours[k]) || 0
+        if (h > 0) {
+          grossPay += Math.round(h * hourlyRate * mult * 100) / 100
+        }
+      })
+      grossPay = Math.round(grossPay * 100) / 100
+
+      // Absent deduction
+      const absentDays = Number(inp.absentDays) || 0
+      const absentDeduction = Math.round(absentDays * dailyRate * 100) / 100
+      const totalAfterAbsent = Math.round((grossPay - absentDeduction) * 100) / 100
+
+      // Deductions
+      const ded = inp.deductions || {}
+      const sss = Number(ded.sss) || 0
+      const philhealth = Number(ded.philhealth) || 0
+      const hdmf = Number(ded.hdmf) || 0
+      const tax = Number(ded.tax) || 0
+
+      const totalPrimaryDeductions = Math.round((sss + philhealth + hdmf + tax) * 100) / 100
+      const netPrimaryDeductions = Math.round((totalAfterAbsent - totalPrimaryDeductions) * 100) / 100
+      const totalNetDeductions = netPrimaryDeductions
+
+      // Adjustments
+      const adj = inp.adjustments || {}
+      const meal = Number(adj.meal) || 0
+      const license = Number(adj.license) || 0
+      const adjustmentVal = Number(adj.adj) || 0
+      const sil = Number(adj.sil) || 0
+
+      const netTotal =
+        Math.round((totalNetDeductions + meal - license + adjustmentVal + sil) * 100) / 100
+
+      return {
+        emp,
+        monthlySalary: monthly,
+        dailyRate,
+        hourlyRate,
+        hours,
+        totalDaysWorked,
+        grossPay,
+        absentDays,
+        absentDeduction,
+        totalAfterAbsent,
+        sss,
+        philhealth,
+        hdmf,
+        tax,
+        totalPrimaryDeductions,
+        netPrimaryDeductions,
+        totalNetDeductions,
+        meal,
+        license,
+        adjustmentVal,
+        sil,
+        netTotal
+      }
+    })
+  }, [employees, rowInputs])
+
+  // Summary Totals across all rows
+  const summaryTotals = useMemo(() => {
+    const init: any = {
+      monthlySalary: 0,
+      grossPay: 0,
+      absentDays: 0,
+      absentDeduction: 0,
+      totalAfterAbsent: 0,
+      sss: 0,
+      philhealth: 0,
+      hdmf: 0,
+      tax: 0,
+      totalPrimaryDeductions: 0,
+      netPrimaryDeductions: 0,
+      meal: 0,
+      license: 0,
+      adjustmentVal: 0,
+      sil: 0,
+      netTotal: 0,
+      hours: {
+        reg: 0,
+        ot: 0,
+        nd: 0,
+        nd_ot: 0,
+        sun_reg: 0,
+        sun_ot: 0,
+        sun_nd: 0,
+        sun_nd_ot: 0,
+        leg_reg: 0,
+        leg_ot: 0,
+        leg_nd: 0,
+        leg_nd_ot: 0,
+        spcl_reg: 0,
+        spcl_ot: 0,
+        spcl_nd: 0,
+        spcl_nd_ot: 0
+      }
+    }
+
+    calculatedRows.forEach((r) => {
+      init.monthlySalary += r.monthlySalary
+      init.grossPay += r.grossPay
+      init.absentDays += r.absentDays
+      init.absentDeduction += r.absentDeduction
+      init.totalAfterAbsent += r.totalAfterAbsent
+      init.sss += r.sss
+      init.philhealth += r.philhealth
+      init.hdmf += r.hdmf
+      init.tax += r.tax
+      init.totalPrimaryDeductions += r.totalPrimaryDeductions
+      init.netPrimaryDeductions += r.netPrimaryDeductions
+      init.meal += r.meal
+      init.license += r.license
+      init.adjustmentVal += r.adjustmentVal
+      init.sil += r.sil
+      init.netTotal += r.netTotal
+
+      Object.keys(doleMultipliers).forEach((k) => {
+        init.hours[k] = (init.hours[k] || 0) + (Number(r.hours[k]) || 0)
+      })
+    })
+
+    return init
+  }, [calculatedRows, doleMultipliers])
+
+  const formatCurrency = (val: number) => {
+    if (!val || val === 0) return '-'
+    return val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+
+  const formatHour = (val: number) => {
+    if (!val || val === 0) return '-'
+    return val % 1 === 0 ? `${val}.` : val.toString()
+  }
+
+  // Live Excel Selection Statistics (Average, Count, Sum)
+  const selectionStats = useMemo(() => {
+    if (!selectionBounds) return null
+    const { minRow, maxRow, minCol, maxCol } = selectionBounds
+    const count = (maxRow - minRow + 1) * (maxCol - minCol + 1)
+    if (count < 2) return null
+
+    let sum = 0
+    for (let r = minRow; r <= maxRow; r++) {
+      const rowData = calculatedRows[r]
+      if (!rowData) continue
+      for (let c = minCol; c <= maxCol; c++) {
+        const colMeta = editableColumns[c]
+        if (!colMeta) continue
+        let val = 0
+        if (colMeta.category === 'hours') val = Number(rowData.hours[colMeta.field]) || 0
+        else if (colMeta.category === 'absent') val = Number(rowData.absentDays) || 0
+        else if (colMeta.category === 'deductions') val = Number((rowData as any)[colMeta.field]) || 0
+        else if (colMeta.category === 'adjustments') {
+          if (colMeta.field === 'adj') val = Number(rowData.adjustmentVal) || 0
+          else val = Number((rowData as any)[colMeta.field]) || 0
+        }
+        sum += val
+      }
+    }
+
+    const avg = count > 0 ? sum / count : 0
+    return { count, sum, avg }
+  }, [selectionBounds, calculatedRows, editableColumns])
+
+  // Multi-cell keyboard shortcuts: Delete/Backspace (Bulk clear), Ctrl+C (Copy), Ctrl+V (Paste)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!selectionBounds) return
+
+      const { minRow, maxRow, minCol, maxCol } = selectionBounds
+      const cellCount = (maxRow - minRow + 1) * (maxCol - minCol + 1)
+
+      // 1. Delete / Backspace: Zero out all selected cells
+      if (e.key === 'Delete' || (e.key === 'Backspace' && cellCount > 1)) {
+        e.preventDefault()
+        setRowInputs((prev) => {
+          const next = { ...prev }
+          for (let r = minRow; r <= maxRow; r++) {
+            const rowData = calculatedRows[r]
+            if (!rowData) continue
+            const empId = rowData.emp.id
+            const empRow = { ...(next[empId] || {}) }
+
+            for (let c = minCol; c <= maxCol; c++) {
+              const colMeta = editableColumns[c]
+              if (!colMeta) continue
+              if (colMeta.category === 'hours') {
+                empRow.hours = { ...(empRow.hours || {}), [colMeta.field]: 0 }
+              } else if (colMeta.category === 'absent') {
+                empRow.absentDays = 0
+              } else if (colMeta.category === 'deductions') {
+                empRow.deductions = { ...(empRow.deductions || {}), [colMeta.field]: 0 }
+                setOverrides((o) => ({ ...o, [empId]: { ...(o[empId] || {}), [colMeta.field]: true } }))
+              } else if (colMeta.category === 'adjustments') {
+                empRow.adjustments = { ...(empRow.adjustments || {}), [colMeta.field]: 0 }
+              }
+            }
+            next[empId] = empRow
+          }
+          return next
+        })
+        return
+      }
+
+      // 2. Escape: Clear selection
+      if (e.key === 'Escape') {
+        setSelection(null)
+        return
+      }
+
+      // 3. Copy: Ctrl+C / Cmd+C
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'c') {
+        const rowsText: string[] = []
+        for (let r = minRow; r <= maxRow; r++) {
+          const rowData = calculatedRows[r]
+          if (!rowData) continue
+          const colsText: string[] = []
+          for (let c = minCol; c <= maxCol; c++) {
+            const colMeta = editableColumns[c]
+            if (!colMeta) continue
+            let val = 0
+            if (colMeta.category === 'hours') val = Number(rowData.hours[colMeta.field]) || 0
+            else if (colMeta.category === 'absent') val = Number(rowData.absentDays) || 0
+            else if (colMeta.category === 'deductions') val = Number((rowData as any)[colMeta.field]) || 0
+            else if (colMeta.category === 'adjustments') {
+              if (colMeta.field === 'adj') val = Number(rowData.adjustmentVal) || 0
+              else val = Number((rowData as any)[colMeta.field]) || 0
+            }
+            colsText.push(val === 0 ? '' : String(val))
+          }
+          rowsText.push(colsText.join('\t'))
+        }
+        navigator.clipboard.writeText(rowsText.join('\n'))
+        return
+      }
+
+      // 4. Paste: Ctrl+V / Cmd+V
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v') {
+        navigator.clipboard.readText().then((clipText) => {
+          if (!clipText) return
+          const lines = clipText.split(/\r?\n/).filter((l) => l.length > 0)
+          if (lines.length === 0) return
+
+          setRowInputs((prev) => {
+            const next = { ...prev }
+            lines.forEach((line, lineOffset) => {
+              const targetRowIdx = minRow + lineOffset
+              if (targetRowIdx >= calculatedRows.length) return
+              const rowData = calculatedRows[targetRowIdx]
+              const empId = rowData.emp.id
+              const empRow = { ...(next[empId] || {}) }
+
+              const cells = line.split('\t')
+              cells.forEach((cellVal, colOffset) => {
+                const targetColIdx = minCol + colOffset
+                if (targetColIdx >= editableColumns.length) return
+                const colMeta = editableColumns[targetColIdx]
+                const num = parseFloat(cellVal.trim()) || 0
+
+                if (colMeta.category === 'hours') {
+                  empRow.hours = { ...(empRow.hours || {}), [colMeta.field]: num }
+                } else if (colMeta.category === 'absent') {
+                  empRow.absentDays = num
+                } else if (colMeta.category === 'deductions') {
+                  empRow.deductions = { ...(empRow.deductions || {}), [colMeta.field]: num }
+                  setOverrides((o) => ({ ...o, [empId]: { ...(o[empId] || {}), [colMeta.field]: true } }))
+                } else if (colMeta.category === 'adjustments') {
+                  empRow.adjustments = { ...(empRow.adjustments || {}), [colMeta.field]: num }
+                }
+              })
+              next[empId] = empRow
+            })
+            return next
+          })
+        })
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [selectionBounds, calculatedRows, editableColumns])
+
+  // Export to Excel (.xlsx)
+  const handleExportExcel = () => {
+    const exportRows: PayrollRowExportData[] = calculatedRows.map((r) => ({
+      name: `${r.emp.first_name} ${r.emp.last_name}`,
+      position: r.emp.position || r.emp.department || 'Staff',
+      monthlySalary: r.monthlySalary,
+      dailyRate: r.dailyRate,
+      regHours: r.hours.reg || 0,
+      otHours: r.hours.ot || 0,
+      ndHours: r.hours.nd || 0,
+      ndOtHours: r.hours.nd_ot || 0,
+      sunRegHours: r.hours.sun_reg || 0,
+      sunOtHours: r.hours.sun_ot || 0,
+      sunNdHours: r.hours.sun_nd || 0,
+      sunNdOtHours: r.hours.sun_nd_ot || 0,
+      legRegHours: r.hours.leg_reg || 0,
+      legOtHours: r.hours.leg_ot || 0,
+      legNdHours: r.hours.leg_nd || 0,
+      legNdOtHours: r.hours.leg_nd_ot || 0,
+      spclRegHours: r.hours.spcl_reg || 0,
+      spclOtHours: r.hours.spcl_ot || 0,
+      spclNdHours: r.hours.spcl_nd || 0,
+      spclNdOtHours: r.hours.spcl_nd_ot || 0,
+      totalDays: r.totalDaysWorked,
+      hourlyRate: r.hourlyRate,
+      grossPay: r.grossPay,
+      absentDays: r.absentDays,
+      absentDeduction: r.absentDeduction,
+      totalAfterAbsent: r.totalAfterAbsent,
+      sss: r.sss,
+      philhealth: r.philhealth,
+      hdmf: r.hdmf,
+      withholdingTax: r.tax,
+      totalPrimaryDeductions: r.totalPrimaryDeductions,
+      netPrimaryDeductions: r.netPrimaryDeductions,
+      totalNetDeduction: r.totalNetDeductions,
+      mealTranspoAllowance: r.meal,
+      licenseFee: r.license,
+      adjustment: r.adjustmentVal,
+      sil: r.sil,
+      netTotal: r.netTotal
+    }))
+
+    const voucherStr = `PY-${refSequence.padStart(3, '0')}`
+    exportPayrollGridToExcel(
+      exportRows,
+      date,
+      voucherStr,
+      description,
+      activeRateKeys,
+      doleMultipliers
+    )
+  }
+
+  // Save & Post Payroll to General Ledger
+  const handlePostPayroll = async (pin?: string) => {
     setStatus(null)
     setPinError('')
     if (!refSequence) return setStatus({ type: 'error', msg: 'Sequence number required.' })
-    const active = employees.filter((e) => e.is_active !== false)
-    if (active.length === 0)
+    if (calculatedRows.length === 0)
       return setStatus({ type: 'error', msg: 'No active employees to pay.' })
 
     setLoading(true)
     try {
       const api = (window as any).api || (window as any).electronAPI
-      
-      // format payroll items based on Phase 2 processPayroll schema
-      const payrollItems = active.map(emp => {
-        const res = results[emp.id] || {}
-        return {
-          id: emp.id,
-          basePay: res.base_pay || 0,
-          overtime: res.overtime || 0,
-          nightDiff: res.night_diff || 0,
-          otherEarnings: res.other_earnings || 0,
-          gross: res.gross_pay || 0,
-          sss: res.sss || 0,
-          philhealth: res.philhealth || 0,
-          pagibig: res.pagibig || 0,
-          cashAdvance: res.cash_advance || 0,
-          licenseFee: res.license_fee || 0,
-          otherDeductions: res.other_deductions || 0,
-          tax: res.tax_withheld || 0,
-          net: res.net_pay || 0,
-          processedLoans: res.processedLoans || []
-        }
-      })
+      const payrollItems = calculatedRows.map((r) => ({
+        id: r.emp.id,
+        basePay: r.grossPay,
+        gross: r.grossPay,
+        gross_pay: r.grossPay,
+        sss: r.sss,
+        philhealth: r.philhealth,
+        pagibig: r.hdmf,
+        sss_er: r.sss * 1.5,
+        philhealth_er: r.philhealth,
+        pagibig_er: r.hdmf,
+        tax: r.tax,
+        tax_withheld: r.tax,
+        cash_advance: 0,
+        license_fee: r.license,
+        other_deductions: r.absentDeduction,
+        otherEarnings: r.meal + r.adjustmentVal + r.sil,
+        net: r.netTotal,
+        net_pay: r.netTotal,
+        processedLoans: []
+      }))
 
       const payload = {
         date,
@@ -148,382 +902,988 @@ export function PayrollGridTab({
         employees: payrollItems,
         overridePin: pin
       }
-      
-      const response = await api.processPayroll(payload)
-      if (response.success) {
+
+      const res = await api.processPayroll(payload)
+      if (res?.success) {
         setStatus({
           type: 'success',
-          msg: `Payroll ${payload.referenceNo} processed successfully!`
+          msg: `Payroll ${payload.referenceNo} successfully posted to General Ledger!`
         })
+        fetchNextSeq()
         setShowPinModal(false)
         setOverridePin('')
-        fetchNextSeq()
-        setTimeout(() => setStatus(null), 5000)
+        // Clear draft for this cutoff
+        const draftId = `draft-${selectedYear}-${String(selectedMonth).padStart(2, '0')}-${cutoffType}`
+        deletePayrollDraft(draftId)
+        setDraftSavedStatus(null)
       } else {
-        if (response.error?.includes('PERIOD LOCKED') || response.error?.includes('PIN')) {
-          setPinError(response.error)
-          if (pin) return
+        if (res?.error && res.error.includes('PERIOD LOCKED')) {
+          setShowPinModal(true)
         } else {
-          setStatus({ type: 'error', msg: 'Database Error: ' + response.error })
-          setShowPinModal(false)
+          setStatus({ type: 'error', msg: res?.error || 'Failed to process payroll.' })
         }
       }
-    } catch (error: any) {
-      if (error.message?.includes('PERIOD LOCKED') || error.message?.includes('PIN')) {
-        setPinError(error.message)
+    } catch (err: any) {
+      if (err.message && err.message.includes('PERIOD LOCKED')) {
+        setShowPinModal(true)
       } else {
-        setStatus({ type: 'error', msg: 'System Error: ' + error.message })
-        setShowPinModal(false)
+        setStatus({ type: 'error', msg: err.message || 'System error processing payroll.' })
       }
     } finally {
       setLoading(false)
     }
   }
 
-  const handleProcessPayroll = () => {
-    if (isLocked) {
-      setShowPinModal(true)
-    } else {
-      confirmProcessPayroll()
-    }
-  }
-
-  const formatCurrency = (val: number = 0) =>
-    `₱${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-
-  const CellMoney = ({ val = 0, colorClass = 'text-gray-800', isBold = true }: any) => (
-    <span className={`tabular-nums block w-full text-right ${isBold ? 'font-bold' : 'font-medium'} ${val === 0 ? 'text-gray-300' : colorClass}`}>
-      {val === 0 ? '0.00' : val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-    </span>
-  )
-
-  const activeEmployees = employees.filter(e => e.is_active !== false)
-  const totalGross = activeEmployees.reduce((sum, e) => sum + (results[e.id]?.gross_pay || 0), 0)
-  const totalDeductions = activeEmployees.reduce((sum, e) => sum + ((results[e.id]?.total_deductions || 0) + (results[e.id]?.tax_withheld || 0)), 0)
-  const totalTax = activeEmployees.reduce((sum, e) => sum + (results[e.id]?.tax_withheld || 0), 0)
-  const totalNet = activeEmployees.reduce((sum, e) => sum + (results[e.id]?.net_pay || 0), 0)
-
-  const handleDemeritChange = (empId: number, field: string, val: number) => {
-    setInputs(prev => ({
-      ...prev,
-      [empId]: {
-        ...prev[empId],
-        demerits: {
-          ...prev[empId]?.demerits,
-          [field]: val
-        }
-      }
-    }))
-  }
-
-  const handleHourChange = (empId: number, field: string, val: number) => {
-    setInputs(prev => ({
-      ...prev,
-      [empId]: {
-        ...prev[empId],
-        hours: {
-          ...prev[empId]?.hours,
-          [field]: val
-        }
-      }
-    }))
-  }
-
-  const renderInput = (
-    val: number,
-    onChange: (e: any) => void,
-    defaultTextColor: string,
-    focusBg: string
-  ) => (
-    <td className="p-0 border-r border-gray-200 bg-white group-hover:bg-transparent transition-colors">
-      <input
-        type="number"
-        min="0"
-        step="0.01"
-        value={val === 0 ? '' : val}
-        placeholder="0"
-        onChange={(e) => onChange(Number(e.target.value))}
-        className={`w-full h-full min-h-[48px] min-w-[60px] bg-transparent hover:bg-gray-100/50 px-2 text-right font-mono tabular-nums outline-none focus:${focusBg} border-2 border-transparent focus:border-gray-300 transition-colors ${val === 0 ? 'text-gray-300 font-medium' : `font-bold ${defaultTextColor}`}`}
-      />
-    </td>
-  )
-
-  const categories = [
-    { key: 'regular_ot', label: 'Reg OT', color: 'text-blue-600', bg: 'bg-blue-50' },
-    { key: 'regular_night', label: 'ND', color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { key: 'regular_night_ot', label: 'ND OT', color: 'text-indigo-600', bg: 'bg-indigo-50' },
-    { key: 'rest_day', label: 'RD', color: 'text-purple-600', bg: 'bg-purple-50' },
-    { key: 'rest_day_ot', label: 'RD OT', color: 'text-purple-600', bg: 'bg-purple-50' },
-    { key: 'rest_day_night', label: 'RD ND', color: 'text-purple-600', bg: 'bg-purple-50' },
-    { key: 'rest_day_night_ot', label: 'RD ND OT', color: 'text-purple-600', bg: 'bg-purple-50' },
-    { key: 'special_holiday', label: 'SH', color: 'text-pink-600', bg: 'bg-pink-50' },
-    { key: 'special_holiday_ot', label: 'SH OT', color: 'text-pink-600', bg: 'bg-pink-50' },
-    { key: 'special_holiday_night', label: 'SH ND', color: 'text-pink-600', bg: 'bg-pink-50' },
-    { key: 'special_holiday_night_ot', label: 'SH ND OT', color: 'text-pink-600', bg: 'bg-pink-50' },
-    { key: 'special_holiday_rest_day', label: 'SH RD', color: 'text-rose-600', bg: 'bg-rose-50' },
-    { key: 'special_holiday_rest_day_ot', label: 'SH RD OT', color: 'text-rose-600', bg: 'bg-rose-50' },
-    { key: 'special_holiday_rest_day_night', label: 'SH RD ND', color: 'text-rose-600', bg: 'bg-rose-50' },
-    { key: 'special_holiday_rest_day_night_ot', label: 'SH RD ND OT', color: 'text-rose-600', bg: 'bg-rose-50' },
-    { key: 'legal_holiday', label: 'LH', color: 'text-red-600', bg: 'bg-red-50' }
-  ]
-
   return (
-    <div className="flex-1 flex flex-col animate-in fade-in duration-300 min-h-0 relative print:hidden">
+    <div className="flex-1 flex flex-col animate-in fade-in duration-300 min-h-0 relative select-none">
+      {/* PERIOD LOCK WARNING */}
       {isLocked && (
-        <div className="mx-6 mt-4 p-3 bg-orange-50 border border-orange-200 text-orange-700 text-sm font-medium rounded-md flex items-center gap-2">
-          <svg className="w-5 h-5 text-orange-500 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-          </svg>
-          Payroll cutoff date falls in a locked accounting period (on or before {lockDate}). Manager Override PIN required to approve and post.
+        <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-300 text-amber-800 text-xs font-bold rounded-lg flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={16} className="text-amber-600 shrink-0" />
+            <span>
+              Payroll cutoff date falls in a locked accounting period (on or before {lockDate}).
+              Manager Override PIN required to post.
+            </span>
+          </div>
+          <span className="text-[10px] bg-amber-200 text-amber-900 px-2 py-0.5 rounded font-black uppercase tracking-wider">
+            Period Locked
+          </span>
         </div>
       )}
-      <div className="px-6 mb-4 mt-4 shrink-0">
-        <div className="grid grid-cols-4 gap-6">
+
+      {/* DTR APPLIED NOTIFICATION BANNER */}
+      {dtrAppliedBanner !== null && (
+        <div className="mx-6 mt-4 p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 text-xs font-bold rounded-lg flex items-center justify-between shadow-xs">
+          <div className="flex items-center gap-2">
+            <Clock size={16} className="text-emerald-600 shrink-0" />
+            <span>
+              Applied DTR timesheet logs for {dtrAppliedBanner} employee(s) into editable grid cells.
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setDtrAppliedBanner(null)
+              if (onClearDtr) onClearDtr()
+            }}
+            className="text-xs text-emerald-700 hover:text-emerald-950 font-bold underline cursor-pointer"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* PAYROLL PERIOD CUTOFF & DRAFTS TOOLBAR */}
+      <div className="px-6 py-3 bg-gray-50/90 border-b border-gray-200 flex flex-wrap items-center justify-between gap-4 shrink-0">
+        <div className="flex flex-wrap items-center gap-3">
+          {/* YEAR & MONTH SELECTORS */}
+          <div className="flex items-center gap-1.5">
+            <Calendar size={15} className="text-gray-500" />
+            <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider">
+              Period:
+            </span>
+            <select
+              value={selectedYear}
+              onChange={(e) => {
+                const yr = Number(e.target.value)
+                setSelectedYear(yr)
+                handleCutoffChange(cutoffType, yr, selectedMonth)
+              }}
+              className="bg-white border border-gray-300 rounded px-2.5 py-1 text-xs font-bold text-gray-800 outline-none focus:border-[#1B9387] cursor-pointer shadow-xs"
+            >
+              {[now.getFullYear() + 1, now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2].map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+
+            <select
+              value={selectedMonth}
+              onChange={(e) => {
+                const mo = Number(e.target.value)
+                setSelectedMonth(mo)
+                handleCutoffChange(cutoffType, selectedYear, mo)
+              }}
+              className="bg-white border border-gray-300 rounded px-2.5 py-1 text-xs font-bold text-gray-800 outline-none focus:border-[#1B9387] cursor-pointer shadow-xs"
+            >
+              {MONTH_NAMES.map((name, i) => (
+                <option key={name} value={i + 1}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="h-4 w-px bg-gray-300 mx-0.5" />
+
+          {/* CUTOFF TOGGLE BUTTONS */}
+          <div className="inline-flex rounded-lg shadow-xs bg-gray-200/80 p-0.5">
+            <button
+              type="button"
+              onClick={() => handleCutoffChange('1ST_HALF')}
+              className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                cutoffType === '1ST_HALF'
+                  ? 'bg-[#1B9387] text-white shadow-xs'
+                  : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+              }`}
+              title="1st to 15th of the month"
+            >
+              1st Half (1st–15th)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCutoffChange('2ND_HALF')}
+              className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer flex items-center gap-1.5 ${
+                cutoffType === '2ND_HALF'
+                  ? 'bg-[#1B9387] text-white shadow-xs'
+                  : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+              }`}
+              title="16th to end of month (30th, 31st, or 28th/29th for Feb)"
+            >
+              <span>2nd Half (16th–{getDaysInMonth(selectedYear, selectedMonth)}th)</span>
+              {selectedMonth === 2 && (
+                <span
+                  className={`text-[9px] px-1.5 py-0.2 rounded font-black uppercase tracking-tight ${
+                    isLeapYear(selectedYear)
+                      ? 'bg-amber-400 text-amber-950 animate-pulse'
+                      : 'bg-gray-300 text-gray-800'
+                  }`}
+                >
+                  {isLeapYear(selectedYear) ? 'Leap Year 29d' : '28d'}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleCutoffChange('CUSTOM')}
+              className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                cutoffType === 'CUSTOM'
+                  ? 'bg-[#1B9387] text-white shadow-xs'
+                  : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+              }`}
+            >
+              Custom
+            </button>
+          </div>
+
+          {/* ACTIVE CUTOFF BADGE */}
+          {cutoffType !== 'CUSTOM' && (
+            <span className="text-[11px] font-bold text-gray-600 bg-white border border-gray-300 px-2 py-0.5 rounded shadow-2xs">
+              {getPayrollCutoffDetails(selectedYear, selectedMonth, cutoffType).badgeText}
+            </span>
+          )}
+        </div>
+
+        {/* DRAFT CONTROLS */}
+        <div className="flex items-center gap-3">
+          {draftSavedStatus && (
+            <span className="text-[11px] text-gray-500 font-mono italic">
+              {draftSavedStatus}
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={() => handleSaveDraft(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+            title="Save current grid hours and deductions as draft"
+          >
+            <Save size={13} className="text-[#1B9387]" />
+            <span>Save Draft</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowDraftsModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 border border-gray-300 rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
+            title="View and resume saved payroll drafts"
+          >
+            <FolderOpen size={13} className="text-amber-600" />
+            <span>Saved Drafts</span>
+            {draftsList.length > 0 && (
+              <span className="bg-[#1B9387] text-white text-[10px] font-black px-1.5 py-0.2 rounded-full">
+                {draftsList.length}
+              </span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* TOP CONTROLS & EXCEL ACTIONS TOOLBAR */}
+      <div className="px-6 py-4 bg-white border-b border-gray-200 flex flex-wrap items-center justify-between gap-4 shrink-0">
+        <div className="flex items-center gap-4">
           <div>
-            <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">
+            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
               Payroll Date
             </label>
             <input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition"
+              className="bg-gray-50 border border-gray-300 rounded px-3 py-1.5 text-xs font-bold text-gray-800 outline-none focus:border-[#1B9387] focus:bg-white"
             />
           </div>
+
           <div>
-            <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">
+            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
               Voucher No.
             </label>
-            <div className="flex">
-              <span className="bg-gray-50 border border-[#B0DCDA] border-r-0 rounded-l-md px-4 py-3 text-sm font-extrabold text-gray-500 select-none">
+            <div className="flex items-center">
+              <span className="bg-gray-100 border border-gray-300 border-r-0 rounded-l px-2.5 py-1.5 text-xs font-mono font-bold text-gray-600">
                 PY-
               </span>
               <input
                 type="text"
-                required
                 value={refSequence}
                 onChange={(e) => setRefSequence(e.target.value)}
                 placeholder="001"
-                className="w-full bg-white border border-[#B0DCDA] rounded-r-md p-3 text-sm font-mono font-bold text-gray-800 focus:border-[#1B9387] outline-none transition"
+                className="w-16 bg-gray-50 border border-gray-300 rounded-r px-2 py-1.5 text-xs font-mono font-bold text-gray-800 outline-none focus:border-[#1B9387] focus:bg-white"
               />
             </div>
           </div>
-          <div className="col-span-2 flex items-end justify-between">
-            <div className="flex-1 mr-4">
-              <label className="block text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-2">
-                Description / Memo
-              </label>
-              <input
-                type="text"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-medium focus:border-[#1B9387] outline-none transition"
-              />
-            </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowDetailed(!showDetailed)}
-                className="px-4 py-3 h-[46px] bg-white hover:bg-gray-50 border border-gray-300 text-xs font-bold text-gray-600 rounded-md transition shadow-sm cursor-pointer"
-              >
-                {showDetailed ? '📉 Compact View' : '📈 Full DOLE Categories'}
-              </button>
-            </div>
+
+          <div className="w-64">
+            <label className="block text-[10px] font-black text-gray-500 uppercase tracking-wider mb-1">
+              Description / Memo
+            </label>
+            <input
+              type="text"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="w-full bg-gray-50 border border-gray-300 rounded px-3 py-1.5 text-xs font-bold text-gray-800 outline-none focus:border-[#1B9387] focus:bg-white"
+            />
           </div>
+        </div>
+
+        {/* ACTION BUTTONS */}
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleExportExcel}
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-black uppercase tracking-wider transition shadow-sm cursor-pointer"
+            title="Export exact clinic spreadsheet to Microsoft Excel (.xlsx)"
+          >
+            <Download size={14} />
+            <span>Export to Excel (.xlsx)</span>
+          </button>
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => handlePostPayroll()}
+            className="flex items-center gap-1.5 px-5 py-2 bg-[#1B9387] hover:bg-[#15796f] disabled:opacity-50 text-white rounded-lg text-xs font-black uppercase tracking-wider transition shadow-sm cursor-pointer"
+          >
+            <CheckCircle size={14} />
+            <span>{loading ? 'Posting...' : 'Post to General Ledger'}</span>
+          </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto bg-white relative">
-        <table className="w-full text-left text-sm whitespace-nowrap min-w-max border-t border-[#B0DCDA]">
-          <thead className="bg-[#FBF8F8] sticky top-0 z-30 shadow-[0_2px_4px_rgba(0,0,0,0.02)]">
-            <tr className="border-b border-gray-200 text-center text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
-              <th className="p-2 border-r border-[#B0DCDA] sticky left-0 z-40 bg-[#FBF8F8]">Profile</th>
-              <th colSpan={3} className="p-2 border-r border-[#B0DCDA] text-orange-600 bg-orange-50/50">
+      {/* SPREADSHEET CONTAINER */}
+      <div className="flex-1 overflow-auto bg-gray-100 relative">
+        <table className={`border-collapse text-[11px] whitespace-nowrap bg-white border border-gray-400 ${isDragging ? 'select-none' : ''}`}>
+          <thead>
+            {/* ROW 1: DOLE CATEGORY GROUP HEADERS */}
+            <tr className="bg-[#B8CCE4] text-center font-black uppercase tracking-wider text-gray-800 border-b border-gray-400">
+              <th
+                colSpan={4}
+                className="p-1.5 border-r border-gray-400 sticky left-0 z-30 bg-[#B8CCE4]"
+              >
+                Employee Profile
+              </th>
+              {regularCount > 0 && (
+                <th colSpan={regularCount} className="p-1.5 border-r border-gray-400 bg-[#B8CCE4]">
+                  REGULAR (hours)
+                </th>
+              )}
+              {sundayCount > 0 && (
+                <th colSpan={sundayCount} className="p-1.5 border-r border-gray-400 bg-[#B8CCE4]">
+                  SUNDAY/SATURDAY (hours)
+                </th>
+              )}
+              {legalCount > 0 && (
+                <th colSpan={legalCount} className="p-1.5 border-r border-gray-400 bg-[#B8CCE4]">
+                  LEGAL HOLIDAY (hours)
+                </th>
+              )}
+              {specialCount > 0 && (
+                <th colSpan={specialCount} className="p-1.5 border-r border-gray-400 bg-[#B8CCE4]">
+                  SPECIAL HOLIDAY (hours)
+                </th>
+              )}
+              <th colSpan={3} className="p-1.5 border-r border-gray-400 bg-[#DCE6F1]">
+                Earnings Summary
+              </th>
+              <th colSpan={3} className="p-1.5 border-r border-gray-400 bg-[#F2DCDB]">
                 Demerits
               </th>
-              <th colSpan={showDetailed ? 16 : 1} className="p-2 border-r border-[#B0DCDA] text-blue-600 bg-blue-50/50">
-                DOLE Premiums (Hours)
+              <th colSpan={7} className="p-1.5 border-r border-gray-400 bg-[#B8CCE4]">
+                PRIMARY DEDUCTIONS
               </th>
-              <th colSpan={2} className="p-2 border-r border-[#B0DCDA] text-green-600 bg-green-50/50">
-                Allowances & Gross (₱)
+              <th colSpan={5} className="p-1.5 bg-[#B8CCE4]">
+                ADJUSTMENTS
               </th>
-              <th colSpan={4} className="p-2 border-r border-[#B0DCDA] text-red-500 bg-red-50/50">
-                Deductions & Taxes (₱)
-              </th>
-              <th className="p-2 text-[#1B9387] bg-[#E9FAFA]/50">Payout (₱)</th>
             </tr>
-            <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold border-b border-[#B0DCDA]">
-              <th className="p-3 border-r border-[#B0DCDA] sticky left-0 z-40 bg-[#FBF8F8] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                Employee Name
+
+            {/* ROW 2: YELLOW MULTIPLIER ROW (MATCHING CLINIC EXCEL EXACTLY) */}
+            <tr className="bg-[#FFFF00] text-center font-bold text-gray-900 border-b border-gray-400 text-[10px]">
+              <th className="p-1 border-r border-gray-400 sticky left-0 z-30 bg-gray-100"></th>
+              <th className="p-1 border-r border-gray-400 sticky left-[140px] z-30 bg-gray-100"></th>
+              <th className="p-1 border-r border-gray-400 sticky left-[240px] z-30 bg-gray-100"></th>
+              <th className="p-1 border-r border-gray-400 text-right pr-2 sticky left-[330px] z-30 bg-gray-100 font-black">
+                Multiplier:
               </th>
-              <th className="p-3 text-center border-r border-gray-200" title="Late Minutes">Late(m)</th>
-              <th className="p-3 text-center border-r border-gray-200" title="Undertime Minutes">UT(m)</th>
-              <th className="p-3 text-center border-r border-gray-200" title="Absence Days">Abs(d)</th>
 
-              {showDetailed ? (
-                categories.map(c => (
-                  <th key={c.key} className="p-3 text-center border-r border-gray-200">{c.label}</th>
-                ))
-              ) : (
-                <th className="p-3 text-center border-r border-gray-200 text-gray-400 italic">Total Premium Hours (Hidden)</th>
-              )}
+              {/* ACTIVE DOLE MULTIPLIERS */}
+              {activeRateDefs.map((r) => {
+                const mult = doleMultipliers[r.key] ?? r.defaultMultiplier
+                return (
+                  <th
+                    key={r.key}
+                    className="p-1 border-r border-gray-400 bg-[#FFFF00] min-w-[50px] font-mono"
+                    title={`${r.label}: ${mult}x`}
+                  >
+                    {mult.toFixed(3)}
+                  </th>
+                )
+              })}
 
-              <th className="p-3 text-right border-r border-gray-200">Allowances</th>
-              <th className="p-3 text-right border-r border-[#B0DCDA] text-green-600 bg-green-50/50">Total Gross</th>
+              {/* Blank fillers for non-multiplier columns */}
+              <th colSpan={18} className="p-1 bg-gray-100 border-r border-gray-400"></th>
+            </tr>
 
-              <th className="p-3 text-right border-r border-gray-200">Statutory</th>
-              <th className="p-3 text-right border-r border-gray-200">Loans</th>
-              <th className="p-3 text-right border-r border-gray-200">Other Ded.</th>
-              <th className="p-3 text-right border-r border-[#B0DCDA] text-red-500 bg-red-50/50">Tax W/H</th>
+            {/* ROW 3: DETAILED COLUMN HEADERS */}
+            <tr className="bg-[#DCE6F1] font-black text-gray-700 uppercase tracking-tight text-[10px] border-b-2 border-gray-500">
+              <th className="p-2 border-r border-gray-400 sticky left-0 z-30 bg-[#DCE6F1] min-w-[140px] text-left">
+                NAME
+              </th>
+              <th className="p-2 border-r border-gray-400 sticky left-[140px] z-30 bg-[#DCE6F1] min-w-[100px] text-left">
+                POSITION
+              </th>
+              <th className="p-2 border-r border-gray-400 sticky left-[240px] z-30 bg-[#DCE6F1] min-w-[90px] text-right">
+                SALARY (Monthly)
+              </th>
+              <th className="p-2 border-r border-gray-400 sticky left-[330px] z-30 bg-[#DCE6F1] min-w-[90px] text-right shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)]">
+                DAILY RATE
+              </th>
 
-              <th className="p-3 text-right text-[#1B9387] bg-[#E9FAFA]/50 pr-6">Net Pay</th>
+              {/* ACTIVE DOLE Columns */}
+              {activeRateDefs.map((r) => (
+                <th
+                  key={r.key}
+                  className="p-2 border-r border-gray-400 text-center min-w-[50px]"
+                  title={r.label}
+                >
+                  {r.shortLabel}
+                </th>
+              ))}
+
+              {/* Earnings */}
+              <th className="p-2 border-r border-gray-400 text-right min-w-[70px]">Total # of Days</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[80px]">REGULAR HOURLY RATE</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[100px] bg-blue-50/70 font-black">
+                GROSS PAY (Hours x Rate x Multiplier)
+              </th>
+
+              {/* Demerits */}
+              <th className="p-2 border-r border-gray-400 text-center min-w-[60px]">Absent (days)</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[80px]">Absent Deduction</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[90px] font-black">TOTAL</th>
+
+              {/* Primary Deductions */}
+              <th className="p-2 border-r border-gray-400 text-right min-w-[70px]">SSS</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[75px]">PHILHEALTH</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[65px]">HDMF</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[80px]">WITHHOLDING</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[95px] font-black bg-gray-50">
+                TOTAL OF PRIMARY DEDUCTIONS
+              </th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[95px] font-black">
+                NET TOTAL OF PRIMARY DEDUCTION
+              </th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[95px] font-black">
+                TOTAL NET OF DEDUCTION
+              </th>
+
+              {/* Adjustments */}
+              <th className="p-2 border-r border-gray-400 text-right min-w-[100px]">Meal & Transpo Allowance</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[75px]">License Fee</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[75px]">ADJUSTMENT</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[60px]">SIL</th>
+              <th className="p-2 text-right min-w-[110px] font-black bg-emerald-50 text-emerald-800">
+                NET TOTAL
+              </th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-100 bg-gray-50/30">
-            {activeEmployees.length === 0 ? (
+
+          <tbody className="divide-y divide-gray-300">
+            {calculatedRows.length === 0 ? (
               <tr>
-                <td colSpan={25} className="p-12 text-center text-gray-400 italic">
+                <td colSpan={4 + activeRateDefs.length + 18} className="p-12 text-center text-gray-400 italic">
                   No active employees found.
                 </td>
               </tr>
             ) : (
-              activeEmployees.map((emp) => {
-                const res = results[emp.id] || {}
-                const inp = inputs[emp.id] || { demerits: {}, hours: {} }
+              calculatedRows.map((r, rowIdx) => {
+                const isEven = rowIdx % 2 === 0
+                const rowBg = isEven ? 'bg-white' : 'bg-gray-50/50'
 
                 return (
-                  <tr key={emp.id} className="hover:bg-[#E9FAFA]/30 transition-colors group">
-                    <td className="p-3 font-bold text-gray-800 border-r border-[#B0DCDA] sticky left-0 z-10 bg-white group-hover:bg-[#FBF8F8] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] flex items-center justify-between">
-                      <div className="flex flex-col">
-                        <span>{emp.first_name} {emp.last_name}</span>
-                        <span className="text-[10px] font-normal text-gray-400">Base: {formatCurrency(emp.monthly_salary/2)}</span>
-                      </div>
+                  <tr key={r.emp.id} className={`${rowBg} hover:bg-sky-50/40 transition`}>
+                    {/* FROZEN LEFT COLUMNS */}
+                    <td className={`p-2 border-r border-gray-300 font-bold text-blue-800 sticky left-0 z-20 ${rowBg}`}>
+                      {r.emp.first_name} {r.emp.last_name}
+                    </td>
+                    <td className={`p-2 border-r border-gray-300 text-blue-700 sticky left-[140px] z-20 ${rowBg}`}>
+                      {r.emp.position || r.emp.department || 'Nurse'}
+                    </td>
+                    <td className={`p-2 border-r border-gray-300 text-right font-mono text-blue-700 sticky left-[240px] z-20 ${rowBg}`}>
+                      {formatCurrency(r.monthlySalary)}
+                    </td>
+                    <td className={`p-2 border-r border-gray-300 text-right font-mono text-gray-800 sticky left-[330px] z-20 ${rowBg} shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)]`}>
+                      {formatCurrency(r.dailyRate)}
                     </td>
 
-                    {renderInput(inp.demerits.late_minutes || 0, (v) => handleDemeritChange(emp.id, 'late_minutes', v), 'text-orange-600', 'bg-orange-50/50')}
-                    {renderInput(inp.demerits.undertime_minutes || 0, (v) => handleDemeritChange(emp.id, 'undertime_minutes', v), 'text-orange-600', 'bg-orange-50/50')}
-                    {renderInput(inp.demerits.absence_days || 0, (v) => handleDemeritChange(emp.id, 'absence_days', v), 'text-orange-600', 'bg-orange-50/50')}
+                    {/* ACTIVE EDITABLE DOLE HOURS */}
+                    {activeRateDefs.map((def, defIdx) => {
+                      const colIdx = defIdx
+                      const selStyle = getCellSelectionStyle(rowIdx, colIdx)
+                      return (
+                        <td
+                          key={def.key}
+                          onMouseDown={(e) => handleCellMouseDown(rowIdx, colIdx, e)}
+                          onMouseEnter={() => handleCellMouseEnter(rowIdx, colIdx)}
+                          className={`p-0 border-r border-gray-300 text-center min-w-[50px] relative transition-colors ${selStyle}`}
+                        >
+                          <input
+                            type="number"
+                            step="0.5"
+                            min="0"
+                            value={r.hours[def.key] === 0 ? '' : r.hours[def.key] ?? ''}
+                            placeholder="-"
+                            onChange={(e) => handleCellChange(r.emp.id, 'hours', def.key, e.target.value)}
+                            onFocus={() => {
+                              if (!isDragging) {
+                                setSelection({ start: { row: rowIdx, col: colIdx }, end: { row: rowIdx, col: colIdx } })
+                              }
+                            }}
+                            className="w-full h-8 text-center bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
+                          />
+                        </td>
+                      )
+                    })}
 
-                    {showDetailed ? (
-                      categories.map(c => (
-                        renderInput(inp.hours[c.key] || 0, (v) => handleHourChange(emp.id, c.key, v), c.color, c.bg)
-                      ))
-                    ) : (
-                      <td className="p-3 text-center border-r border-gray-200 text-gray-400 bg-gray-50 italic">
-                        {(Object.values(inp.hours) as any[]).reduce((a: any, b: any) => a + (b || 0), 0) > 0 ? 'Has premiums' : '-'}
-                      </td>
-                    )}
-
-                    <td className="p-3 pr-4 border-r border-gray-200 bg-white">
-                      <CellMoney val={(res.taxable_allowances || 0) + (res.non_taxable_allowances || 0)} />
+                    {/* EARNINGS */}
+                    <td className="p-2 border-r border-gray-300 text-right font-mono text-gray-700">
+                      {formatCurrency(r.totalDaysWorked)}
                     </td>
-                    <td className="p-3 pr-4 border-r border-[#B0DCDA] bg-green-50/30">
-                      <CellMoney val={res.gross_pay || 0} colorClass="text-green-600" />
+                    <td className="p-2 border-r border-gray-300 text-right font-mono text-gray-800">
+                      {formatCurrency(r.hourlyRate)}
+                    </td>
+                    <td className="p-2 border-r border-gray-300 text-right font-mono font-bold text-gray-900 bg-blue-50/30">
+                      {formatCurrency(r.grossPay)}
                     </td>
 
-                    <td className="p-3 pr-4 border-r border-gray-200 bg-white">
-                      <CellMoney val={(res.sss || 0) + (res.philhealth || 0) + (res.pagibig || 0)} colorClass="text-orange-500" isBold={false} />
+                    {/* DEMERITS */}
+                    {(() => {
+                      const absentColIdx = activeRateDefs.length
+                      const selStyle = getCellSelectionStyle(rowIdx, absentColIdx)
+                      return (
+                        <td
+                          onMouseDown={(e) => handleCellMouseDown(rowIdx, absentColIdx, e)}
+                          onMouseEnter={() => handleCellMouseEnter(rowIdx, absentColIdx)}
+                          className={`p-0 border-r border-gray-300 text-center w-16 relative transition-colors ${selStyle}`}
+                        >
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.5"
+                            value={r.absentDays === 0 ? '' : r.absentDays ?? ''}
+                            placeholder="-"
+                            onChange={(e) => handleCellChange(r.emp.id, 'absent', 'absentDays', e.target.value)}
+                            onFocus={() => {
+                              if (!isDragging) {
+                                setSelection({ start: { row: rowIdx, col: absentColIdx }, end: { row: rowIdx, col: absentColIdx } })
+                              }
+                            }}
+                            className="w-full h-8 text-center bg-transparent text-red-600 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
+                          />
+                        </td>
+                      )
+                    })()}
+                    <td className="p-2 border-r border-gray-300 text-right font-mono text-red-600">
+                      {formatCurrency(r.absentDeduction)}
                     </td>
-                    <td className="p-3 pr-4 border-r border-gray-200 bg-white">
-                      <CellMoney val={(res.cash_advance || 0) + (res.loans_amount || 0)} colorClass="text-orange-500" isBold={false} />
+                    <td className="p-2 border-r border-gray-300 text-right font-mono font-bold text-gray-900">
+                      {formatCurrency(r.totalAfterAbsent)}
                     </td>
-                    <td className="p-3 pr-4 border-r border-gray-200 bg-white">
-                      <CellMoney val={(res.license_fee || 0) + (res.other_deductions || 0)} colorClass="text-orange-500" isBold={false} />
+
+                    {/* PRIMARY DEDUCTIONS (EDITABLE/OVERRIDABLE) */}
+                    {(() => {
+                      const sssColIdx = activeRateDefs.length + 1
+                      const phColIdx = activeRateDefs.length + 2
+                      const hdmfColIdx = activeRateDefs.length + 3
+                      const taxColIdx = activeRateDefs.length + 4
+                      return (
+                        <>
+                          <td
+                            onMouseDown={(e) => handleCellMouseDown(rowIdx, sssColIdx, e)}
+                            onMouseEnter={() => handleCellMouseEnter(rowIdx, sssColIdx)}
+                            className={`p-0 border-r border-gray-300 text-right relative transition-colors ${getCellSelectionStyle(rowIdx, sssColIdx)}`}
+                          >
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.sss === 0 ? '' : r.sss ?? ''}
+                              placeholder="-"
+                              onChange={(e) => handleCellChange(r.emp.id, 'deductions', 'sss', e.target.value)}
+                              onFocus={() => {
+                                if (!isDragging) {
+                                  setSelection({ start: { row: rowIdx, col: sssColIdx }, end: { row: rowIdx, col: sssColIdx } })
+                                }
+                              }}
+                              className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
+                            />
+                          </td>
+                          <td
+                            onMouseDown={(e) => handleCellMouseDown(rowIdx, phColIdx, e)}
+                            onMouseEnter={() => handleCellMouseEnter(rowIdx, phColIdx)}
+                            className={`p-0 border-r border-gray-300 text-right relative transition-colors ${getCellSelectionStyle(rowIdx, phColIdx)}`}
+                          >
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.philhealth === 0 ? '' : r.philhealth ?? ''}
+                              placeholder="-"
+                              onChange={(e) => handleCellChange(r.emp.id, 'deductions', 'philhealth', e.target.value)}
+                              onFocus={() => {
+                                if (!isDragging) {
+                                  setSelection({ start: { row: rowIdx, col: phColIdx }, end: { row: rowIdx, col: phColIdx } })
+                                }
+                              }}
+                              className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
+                            />
+                          </td>
+                          <td
+                            onMouseDown={(e) => handleCellMouseDown(rowIdx, hdmfColIdx, e)}
+                            onMouseEnter={() => handleCellMouseEnter(rowIdx, hdmfColIdx)}
+                            className={`p-0 border-r border-gray-300 text-right relative transition-colors ${getCellSelectionStyle(rowIdx, hdmfColIdx)}`}
+                          >
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.hdmf === 0 ? '' : r.hdmf ?? ''}
+                              placeholder="-"
+                              onChange={(e) => handleCellChange(r.emp.id, 'deductions', 'hdmf', e.target.value)}
+                              onFocus={() => {
+                                if (!isDragging) {
+                                  setSelection({ start: { row: rowIdx, col: hdmfColIdx }, end: { row: rowIdx, col: hdmfColIdx } })
+                                }
+                              }}
+                              className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
+                            />
+                          </td>
+                          <td
+                            onMouseDown={(e) => handleCellMouseDown(rowIdx, taxColIdx, e)}
+                            onMouseEnter={() => handleCellMouseEnter(rowIdx, taxColIdx)}
+                            className={`p-0 border-r border-gray-300 text-right relative transition-colors ${getCellSelectionStyle(rowIdx, taxColIdx)}`}
+                          >
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.tax === 0 ? '' : r.tax ?? ''}
+                              placeholder="-"
+                              onChange={(e) => handleCellChange(r.emp.id, 'deductions', 'tax', e.target.value)}
+                              onFocus={() => {
+                                if (!isDragging) {
+                                  setSelection({ start: { row: rowIdx, col: taxColIdx }, end: { row: rowIdx, col: taxColIdx } })
+                                }
+                              }}
+                              className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
+                            />
+                          </td>
+                        </>
+                      )
+                    })()}
+                    <td className="p-2 border-r border-gray-300 text-right font-mono text-gray-800 bg-gray-50/50">
+                      {formatCurrency(r.totalPrimaryDeductions)}
                     </td>
-                    <td className="p-3 pr-4 border-r border-[#B0DCDA] bg-red-50/30">
-                      <CellMoney val={res.tax_withheld || 0} colorClass="text-red-500" />
+                    <td className="p-2 border-r border-gray-300 text-right font-mono text-gray-800">
+                      {formatCurrency(r.netPrimaryDeductions)}
                     </td>
-                    <td className="p-3 pr-6 text-right bg-[#FBF8F8]/50 border-r border-transparent">
-                      <CellMoney val={res.net_pay || 0} colorClass="text-[#1B9387]" />
+                    <td className="p-2 border-r border-gray-300 text-right font-mono text-gray-800">
+                      {formatCurrency(r.totalNetDeductions)}
+                    </td>
+
+                    {/* ADJUSTMENTS */}
+                    {(() => {
+                      const mealColIdx = activeRateDefs.length + 5
+                      const licColIdx = activeRateDefs.length + 6
+                      const adjColIdx = activeRateDefs.length + 7
+                      const silColIdx = activeRateDefs.length + 8
+                      return (
+                        <>
+                          <td
+                            onMouseDown={(e) => handleCellMouseDown(rowIdx, mealColIdx, e)}
+                            onMouseEnter={() => handleCellMouseEnter(rowIdx, mealColIdx)}
+                            className={`p-0 border-r border-gray-300 text-right relative transition-colors ${getCellSelectionStyle(rowIdx, mealColIdx)}`}
+                          >
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.meal === 0 ? '' : r.meal ?? ''}
+                              placeholder="-"
+                              onChange={(e) => handleCellChange(r.emp.id, 'adjustments', 'meal', e.target.value)}
+                              onFocus={() => {
+                                if (!isDragging) {
+                                  setSelection({ start: { row: rowIdx, col: mealColIdx }, end: { row: rowIdx, col: mealColIdx } })
+                                }
+                              }}
+                              className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
+                            />
+                          </td>
+                          <td
+                            onMouseDown={(e) => handleCellMouseDown(rowIdx, licColIdx, e)}
+                            onMouseEnter={() => handleCellMouseEnter(rowIdx, licColIdx)}
+                            className={`p-0 border-r border-gray-300 text-right relative transition-colors ${getCellSelectionStyle(rowIdx, licColIdx)}`}
+                          >
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.license === 0 ? '' : r.license ?? ''}
+                              placeholder="-"
+                              onChange={(e) => handleCellChange(r.emp.id, 'adjustments', 'license', e.target.value)}
+                              onFocus={() => {
+                                if (!isDragging) {
+                                  setSelection({ start: { row: rowIdx, col: licColIdx }, end: { row: rowIdx, col: licColIdx } })
+                                }
+                              }}
+                              className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
+                            />
+                          </td>
+                          <td
+                            onMouseDown={(e) => handleCellMouseDown(rowIdx, adjColIdx, e)}
+                            onMouseEnter={() => handleCellMouseEnter(rowIdx, adjColIdx)}
+                            className={`p-0 border-r border-gray-300 text-right relative transition-colors ${getCellSelectionStyle(rowIdx, adjColIdx)}`}
+                          >
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.adjustmentVal === 0 ? '' : r.adjustmentVal ?? ''}
+                              placeholder="-"
+                              onChange={(e) => handleCellChange(r.emp.id, 'adjustments', 'adj', e.target.value)}
+                              onFocus={() => {
+                                if (!isDragging) {
+                                  setSelection({ start: { row: rowIdx, col: adjColIdx }, end: { row: rowIdx, col: adjColIdx } })
+                                }
+                              }}
+                              className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
+                            />
+                          </td>
+                          <td
+                            onMouseDown={(e) => handleCellMouseDown(rowIdx, silColIdx, e)}
+                            onMouseEnter={() => handleCellMouseEnter(rowIdx, silColIdx)}
+                            className={`p-0 border-r border-gray-300 text-right relative transition-colors ${getCellSelectionStyle(rowIdx, silColIdx)}`}
+                          >
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.sil === 0 ? '' : r.sil ?? ''}
+                              placeholder="-"
+                              onChange={(e) => handleCellChange(r.emp.id, 'adjustments', 'sil', e.target.value)}
+                              onFocus={() => {
+                                if (!isDragging) {
+                                  setSelection({ start: { row: rowIdx, col: silColIdx }, end: { row: rowIdx, col: silColIdx } })
+                                }
+                              }}
+                              className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
+                            />
+                          </td>
+                        </>
+                      )
+                    })()}
+                    <td className="p-2 text-right font-mono font-black text-gray-900 bg-emerald-50/50">
+                      {formatCurrency(r.netTotal)}
                     </td>
                   </tr>
                 )
               })
             )}
           </tbody>
+
+          {/* SPREADSHEET FOOTER (TOTALS ROW) */}
+          <tfoot>
+            <tr className="bg-[#B8CCE4] font-black text-gray-900 border-t-2 border-gray-500 text-[11px]">
+              <td className="p-2 border-r border-gray-400 sticky left-0 z-30 bg-[#B8CCE4]">
+                TOTALS
+              </td>
+              <td className="p-2 border-r border-gray-400 sticky left-[140px] z-30 bg-[#B8CCE4]">
+                {calculatedRows.length} Employee(s)
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono sticky left-[240px] z-30 bg-[#B8CCE4]">
+                {formatCurrency(summaryTotals.monthlySalary)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono sticky left-[330px] z-30 bg-[#B8CCE4] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)]">
+                —
+              </td>
+
+              {/* Active Hours Totals */}
+              {activeRateDefs.map((def) => (
+                <td key={def.key} className="p-1 border-r border-gray-400 text-center font-mono font-bold">
+                  {formatHour(summaryTotals.hours[def.key])}
+                </td>
+              ))}
+
+              <td className="p-2 border-r border-gray-400 text-right font-mono">—</td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono">—</td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono font-black">
+                {formatCurrency(summaryTotals.grossPay)}
+              </td>
+
+              <td className="p-2 border-r border-gray-400 text-center font-mono">
+                {formatHour(summaryTotals.absentDays)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono">
+                {formatCurrency(summaryTotals.absentDeduction)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono font-black">
+                {formatCurrency(summaryTotals.totalAfterAbsent)}
+              </td>
+
+              <td className="p-2 border-r border-gray-400 text-right font-mono">
+                {formatCurrency(summaryTotals.sss)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono">
+                {formatCurrency(summaryTotals.philhealth)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono">
+                {formatCurrency(summaryTotals.hdmf)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono">
+                {formatCurrency(summaryTotals.tax)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono font-black">
+                {formatCurrency(summaryTotals.totalPrimaryDeductions)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono font-black">
+                {formatCurrency(summaryTotals.netPrimaryDeductions)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono font-black">
+                {formatCurrency(summaryTotals.netPrimaryDeductions)}
+              </td>
+
+              <td className="p-2 border-r border-gray-400 text-right font-mono">
+                {formatCurrency(summaryTotals.meal)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono">
+                {formatCurrency(summaryTotals.license)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono">
+                {formatCurrency(summaryTotals.adjustmentVal)}
+              </td>
+              <td className="p-2 border-r border-gray-400 text-right font-mono">
+                {formatCurrency(summaryTotals.sil)}
+              </td>
+              <td className="p-2 text-right font-mono font-black bg-emerald-100 text-emerald-950 text-sm">
+                {formatCurrency(summaryTotals.netTotal)}
+              </td>
+            </tr>
+          </tfoot>
         </table>
       </div>
 
-      <div className="sticky bottom-0 bg-[#FBF8F8] border-t border-[#B0DCDA] p-5 px-6 flex justify-between items-center shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)] z-40 shrink-0">
-        <div className="grid grid-cols-4 gap-8 text-sm w-2/3">
-          <div>
-            <p className="text-gray-500 uppercase text-[10px] font-extrabold tracking-widest">Total Gross</p>
-            <p className="font-mono text-gray-800 font-bold text-lg mt-1 tabular-nums">{formatCurrency(totalGross)}</p>
-          </div>
-          <div>
-            <p className="text-orange-500 uppercase text-[10px] font-extrabold tracking-widest">Total Deductions</p>
-            <p className="font-mono text-orange-500 font-bold text-lg mt-1 tabular-nums">{formatCurrency(totalDeductions)}</p>
-          </div>
-          <div>
-            <p className="text-red-500 uppercase text-[10px] font-extrabold tracking-widest">Total Tax W/H</p>
-            <p className="font-mono text-red-500 font-bold text-lg mt-1 tabular-nums">{formatCurrency(totalTax)}</p>
-          </div>
-          <div>
-            <p className="text-[#1B9387] uppercase text-[10px] font-extrabold tracking-widest">Total Net Payout</p>
-            <p className="font-mono text-[#1B9387] font-black text-2xl mt-0.5 tabular-nums">{formatCurrency(totalNet)}</p>
+      {/* MANAGER OVERRIDE PIN MODAL */}
+      {showPinModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm p-4 animate-in fade-in">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden border border-amber-300">
+            <div className="bg-amber-500 p-4 text-white flex items-center gap-2">
+              <ShieldCheck size={20} />
+              <h3 className="font-bold text-sm tracking-wide uppercase">Period Lock Override</h3>
+            </div>
+            <div className="p-5 space-y-4">
+              <p className="text-xs text-gray-600 font-medium">
+                The selected payroll cutoff date falls within a locked period (on or before {lockDate}).
+                Enter Manager Override PIN to post.
+              </p>
+              {pinError && <p className="text-xs text-red-600 font-bold">{pinError}</p>}
+              <input
+                type="password"
+                maxLength={6}
+                autoFocus
+                placeholder="Enter 6-digit PIN"
+                value={overridePin}
+                onChange={(e) => setOverridePin(e.target.value)}
+                className="w-full text-center tracking-[0.5em] font-mono font-bold text-lg p-2.5 border border-gray-300 rounded-md focus:border-amber-500 outline-none"
+              />
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowPinModal(false)}
+                  className="px-3 py-1.5 text-xs font-bold text-gray-600 hover:bg-gray-100 rounded cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handlePostPayroll(overridePin)}
+                  className="px-4 py-1.5 text-xs font-bold bg-amber-500 hover:bg-amber-600 text-white rounded cursor-pointer"
+                >
+                  Authorize & Post
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-        <button
-          onClick={handleProcessPayroll}
-          disabled={loading || activeEmployees.length === 0}
-          className="px-10 py-4 bg-[#1B9387] hover:bg-[#28958B] disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-lg font-bold transition shadow-md tracking-wide cursor-pointer uppercase text-sm flex items-center gap-2"
-        >
-          {loading ? <><span className="animate-spin text-lg">↻</span> Processing...</> : 'Post Payroll'}
-        </button>
-      </div>
+      )}
 
-      {showPinModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 print:hidden">
-          <div className="bg-white rounded-lg shadow-xl w-[400px] overflow-hidden flex flex-col">
-            <div className="bg-red-50 p-4 border-b border-red-100 flex items-center gap-3">
-              <svg className="w-6 h-6 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-4a2 2 0 00-2-2H6a2 2 0 00-2 2v4a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-              </svg>
-              <h3 className="text-red-800 font-bold">Manager Override Required</h3>
-            </div>
-            <div className="p-6 flex flex-col gap-4">
-              <p className="text-sm text-gray-600">
-                You are attempting to post payroll to a locked period (on or before <span className="font-bold">{lockDate}</span>).
-              </p>
-              <div>
-                <label className="block text-xs font-bold text-gray-700 uppercase mb-2">Override PIN</label>
-                <input
-                  type="password"
-                  value={overridePin}
-                  onChange={(e) => setOverridePin(e.target.value)}
-                  className="w-full bg-white border border-gray-300 rounded-md p-3 text-lg tracking-widest text-center font-mono focus:border-red-500 focus:ring-2 focus:ring-red-50 outline-none transition"
-                  placeholder="••••"
-                  autoFocus
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') confirmProcessPayroll(overridePin)
-                    if (e.key === 'Escape') setShowPinModal(false)
-                  }}
-                />
+      {/* Saved Drafts Modal */}
+      {showDraftsModal && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="px-5 py-3.5 border-b border-gray-200 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2">
+                <FolderOpen className="w-5 h-5 text-indigo-600" />
+                <h3 className="text-sm font-bold text-slate-800">Saved Payroll Drafts</h3>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">
+                  {draftsList.length}
+                </span>
               </div>
-              {pinError && (
-                <div className="text-red-500 text-sm font-medium bg-red-50 p-2 rounded border border-red-100">
-                  {pinError}
+              <button
+                type="button"
+                onClick={() => setShowDraftsModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-1 rounded-md hover:bg-gray-200/50 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 overflow-y-auto flex-1">
+              {draftsList.length === 0 ? (
+                <div className="py-12 text-center text-gray-500">
+                  <FolderOpen className="w-10 h-10 mx-auto text-gray-300 mb-2" />
+                  <p className="text-sm font-medium">No saved drafts found</p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    Click &quot;Save Draft&quot; in the payroll cutoff bar to save your work in progress.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {draftsList.map((draft) => {
+                    const cutoffLabel =
+                      draft.cutoff === '1ST_HALF'
+                        ? '1st Half (1st–15th)'
+                        : draft.cutoff === '2ND_HALF'
+                          ? `2nd Half (16th–${getDaysInMonth(draft.year, draft.month)}th)`
+                          : 'Custom Range'
+                    const savedDateFormatted = new Date(draft.savedAt).toLocaleString([], {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })
+
+                    return (
+                      <div
+                        key={draft.id}
+                        className="p-3.5 border border-slate-200 hover:border-indigo-300 rounded-lg bg-slate-50/50 hover:bg-indigo-50/20 transition-colors flex items-center justify-between gap-4"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-xs font-bold text-slate-800">
+                              {MONTH_NAMES[draft.month - 1]} {draft.year}
+                            </span>
+                            <span className="text-[11px] px-2 py-0.5 rounded bg-blue-100 text-blue-700 font-semibold">
+                              {cutoffLabel}
+                            </span>
+                            <span className="text-[11px] text-gray-500">
+                              Ref: {draft.refSequence}
+                            </span>
+                          </div>
+                          <p className="text-xs text-slate-600 truncate">{draft.description}</p>
+                          <div className="flex items-center gap-4 mt-2 text-[11px] text-gray-500">
+                            <span>
+                              Employees:{' '}
+                              <strong className="text-slate-700">
+                                {Object.keys(draft.rowInputs || {}).length}
+                              </strong>
+                            </span>
+                            <span>
+                              Date:{' '}
+                              <strong className="text-slate-700">{draft.payrollDate}</strong>
+                            </span>
+                            <span>
+                              Saved:{' '}
+                              <strong className="text-slate-700">{savedDateFormatted}</strong>
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => handleResumeDraft(draft)}
+                            className="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded shadow-sm transition-colors cursor-pointer"
+                          >
+                            Resume
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteDraft(draft.id, e)}
+                            className="p-1.5 text-gray-400 hover:text-rose-600 hover:bg-rose-50 rounded transition-colors cursor-pointer"
+                            title="Delete Draft"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
               )}
             </div>
-            <div className="bg-gray-50 p-4 border-t flex justify-end gap-3">
+
+            <div className="px-5 py-3 border-t border-gray-200 bg-gray-50 flex justify-between items-center text-xs text-gray-500">
+              <span>Auto-saves changes when working in a period cutoff.</span>
               <button
-                onClick={() => setShowPinModal(false)}
-                className="px-4 py-2 text-gray-600 hover:bg-gray-200 rounded-md font-medium transition"
-                disabled={loading}
+                type="button"
+                onClick={() => setShowDraftsModal(false)}
+                className="px-3 py-1.5 font-medium text-slate-700 bg-white border border-gray-300 rounded hover:bg-gray-100 cursor-pointer"
               >
-                Cancel
-              </button>
-              <button
-                onClick={() => confirmProcessPayroll(overridePin)}
-                disabled={loading || !overridePin}
-                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md font-bold transition disabled:opacity-50"
-              >
-                {loading ? 'Verifying...' : 'Approve & Post'}
+                Close
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* EXCEL SELECTION FLOATING STATUS BAR */}
+      {selectionStats && (
+        <div className="fixed bottom-6 right-8 bg-gray-900/95 text-white text-xs px-5 py-2.5 rounded-xl shadow-2xl backdrop-blur-md flex items-center gap-5 z-40 border border-gray-700 font-mono animate-in slide-in-from-bottom-2 duration-200">
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-400 font-bold uppercase text-[10px]">Average:</span>
+            <span className="text-emerald-400 font-extrabold">{selectionStats.avg.toFixed(2)}</span>
+          </div>
+          <span className="text-gray-600">|</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-400 font-bold uppercase text-[10px]">Count:</span>
+            <span className="text-sky-400 font-extrabold">{selectionStats.count}</span>
+          </div>
+          <span className="text-gray-600">|</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-gray-400 font-bold uppercase text-[10px]">Sum:</span>
+            <span className="text-amber-400 font-extrabold">
+              {selectionStats.sum.toLocaleString('en-US', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+              })}
+            </span>
           </div>
         </div>
       )}
     </div>
   )
 }
+

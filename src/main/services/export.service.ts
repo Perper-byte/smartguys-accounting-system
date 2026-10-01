@@ -2,7 +2,7 @@
 import { dialog, BrowserWindow } from 'electron'
 import * as fs from 'fs'
 import * as ExcelJS from 'exceljs'
-import { ReportsService } from './reports.service'
+import { ReportsService, resolvePeriodDateRange } from './reports.service'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
@@ -169,32 +169,20 @@ export class ExportService {
   /**
    * Generates an Excel spreadsheet for the Trial Balance and prompts user to save
    */
-  static async exportTrialBalanceToExcel(year?: number, month?: number) {
-    // 1. Setup the Date Filters and the Subtitle Text
-    let endDate
-    let dateText = 'All-Time'
-    let filenameSuffix = new Date().toISOString().split('T')[0]
+  static async exportTrialBalanceToExcel(year?: number, month?: number, quarter?: string) {
+    const dateRange = resolvePeriodDateRange(year, month, quarter)
+    const suffix = quarter ? `${quarter}_${year || new Date().getFullYear()}` : year && month ? `${year}_${month}` : 'All_Time'
 
-    if (year && month) {
-      endDate = new Date(year, month, 0, 23, 59, 59)
-      const monthName = new Date(2000, month - 1, 1).toLocaleString('en-US', { month: 'long' })
-      dateText = `As of ${monthName} ${year}`
-      filenameSuffix = `${year}_${month}`
-    }
+    const data = await ReportsService.getTrialBalance(undefined, dateRange.endDate)
 
-    // 2. Fetch the filtered data!
-    const data = await ReportsService.getTrialBalance(undefined, endDate)
-
-    // 3. Prompt user where to save the file
     const { filePath } = await dialog.showSaveDialog({
       title: 'Export Trial Balance',
-      defaultPath: `Trial_Balance_${filenameSuffix}.xlsx`,
+      defaultPath: `Trial_Balance_${suffix}.xlsx`,
       filters: [{ name: 'Excel Worksheets', extensions: ['xlsx'] }]
     })
 
     if (!filePath) return { success: false, error: 'Export cancelled by user.' }
 
-    // 4. Build the Excel Workbook
     const workbook = new ExcelJS.Workbook()
     const worksheet = workbook.addWorksheet('Trial Balance')
 
@@ -205,10 +193,10 @@ export class ExportService {
     titleCell.font = { name: 'Arial', size: 14, bold: true }
     titleCell.alignment = { horizontal: 'center' }
 
-    // Subtitle Header with the Date!
+    // Subtitle Header
     worksheet.mergeCells('A2:D2')
     const subtitleCell = worksheet.getCell('A2')
-    subtitleCell.value = `Trial Balance Report - ${dateText}` // 🔥 Added the Date Text here!
+    subtitleCell.value = `Trial Balance Report - As of ${dateRange.label}`
     subtitleCell.font = { name: 'Arial', size: 11, italic: true }
     subtitleCell.alignment = { horizontal: 'center' }
 
@@ -230,16 +218,528 @@ export class ExportService {
 
     worksheet.getColumn(3).numFmt = '_("₱"* #,##0.00_);_("₱"* (#,##0.00);_("₱"* "-"??_);_(@_)'
     worksheet.getColumn(4).numFmt = '_("₱"* #,##0.00_);_("₱"* (#,##0.00);_("₱"* "-"??_);_(@_)'
-
     worksheet.getColumn(1).alignment = { horizontal: 'center' }
-
     worksheet.columns.forEach((col) => {
       col.width = 25
     })
 
     const buffer = await workbook.xlsx.writeBuffer()
     fs.writeFileSync(filePath, Buffer.from(buffer))
+    return { success: true, filePath }
+  }
 
+  /**
+   * Generates an Excel spreadsheet for the Income Statement
+   */
+  static async exportIncomeStatementToExcel(year?: number, month?: number, quarter?: string) {
+    const dateRange = resolvePeriodDateRange(year, month, quarter)
+    const suffix = quarter ? `${quarter}_${year || new Date().getFullYear()}` : year && month ? `${year}_${month}` : 'All_Time'
+
+    const data = await ReportsService.getIncomeStatement(year, month, quarter)
+
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Export Income Statement',
+      defaultPath: `Income_Statement_${suffix}.xlsx`,
+      filters: [{ name: 'Excel Worksheets', extensions: ['xlsx'] }]
+    })
+
+    if (!filePath) return { success: false, error: 'Export cancelled by user.' }
+
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Income Statement')
+
+    // Title Header
+    worksheet.mergeCells('A1:B1')
+    const titleCell = worksheet.getCell('A1')
+    titleCell.value = 'SmartGuys Community Healthcare Inc.'
+    titleCell.font = { name: 'Arial', size: 14, bold: true }
+    titleCell.alignment = { horizontal: 'center' }
+
+    // Subtitle Header
+    worksheet.mergeCells('A2:B2')
+    const subtitleCell = worksheet.getCell('A2')
+    subtitleCell.value = `Income Statement - For the period: ${dateRange.label}`
+    subtitleCell.font = { name: 'Arial', size: 11, italic: true }
+    subtitleCell.alignment = { horizontal: 'center' }
+
+    worksheet.addRow([])
+
+    // Revenues Section
+    const revHeader = worksheet.addRow(['REVENUES', ''])
+    revHeader.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1B9387' } }
+
+    if (data.revenue.length === 0) {
+      worksheet.addRow(['No revenue recorded', 0])
+    } else {
+      data.revenue.forEach((rev: any) => {
+        worksheet.addRow([`   ${rev.name}`, rev.amount])
+      })
+    }
+
+    const totalRevRow = worksheet.addRow(['Total Revenue', data.totalRevenue])
+    totalRevRow.font = { name: 'Arial', size: 11, bold: true }
+    totalRevRow.getCell(2).border = { top: { style: 'thin' } }
+
+    worksheet.addRow([])
+
+    // Expenses Section
+    const expHeader = worksheet.addRow(['OPERATING EXPENSES', ''])
+    expHeader.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1B9387' } }
+
+    if (data.expenses.length === 0) {
+      worksheet.addRow(['No operating expenses recorded', 0])
+    } else {
+      data.expenses.forEach((exp: any) => {
+        worksheet.addRow([`   ${exp.name}`, exp.amount])
+      })
+    }
+
+    const totalExpRow = worksheet.addRow(['Total Operating Expenses', data.totalExpenses])
+    totalExpRow.font = { name: 'Arial', size: 11, bold: true }
+    totalExpRow.getCell(2).border = { top: { style: 'thin' } }
+
+    worksheet.addRow([])
+
+    // Net Income Row
+    const netIncomeRow = worksheet.addRow(['NET INCOME (LOSS)', data.netIncome])
+    netIncomeRow.font = { name: 'Arial', size: 12, bold: true }
+    netIncomeRow.getCell(1).border = { top: { style: 'thin' }, bottom: { style: 'double' } }
+    netIncomeRow.getCell(2).border = { top: { style: 'thin' }, bottom: { style: 'double' } }
+
+    worksheet.getColumn(2).numFmt = '_("₱"* #,##0.00_);_("₱"* (#,##0.00);_("₱"* "-"??_);_(@_)'
+    worksheet.getColumn(1).width = 45
+    worksheet.getColumn(2).width = 25
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    fs.writeFileSync(filePath, Buffer.from(buffer))
+    return { success: true, filePath }
+  }
+
+  /**
+   * Generates an Excel spreadsheet for the Balance Sheet
+   */
+  static async exportBalanceSheetToExcel(year?: number, month?: number, quarter?: string) {
+    const dateRange = resolvePeriodDateRange(year, month, quarter)
+    const suffix = quarter ? `${quarter}_${year || new Date().getFullYear()}` : year && month ? `${year}_${month}` : 'All_Time'
+
+    const data = await ReportsService.getBalanceSheet(year, month, quarter)
+
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Export Balance Sheet',
+      defaultPath: `Balance_Sheet_${suffix}.xlsx`,
+      filters: [{ name: 'Excel Worksheets', extensions: ['xlsx'] }]
+    })
+
+    if (!filePath) return { success: false, error: 'Export cancelled by user.' }
+
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Balance Sheet')
+
+    // Title Header
+    worksheet.mergeCells('A1:B1')
+    const titleCell = worksheet.getCell('A1')
+    titleCell.value = 'SmartGuys Community Healthcare Inc.'
+    titleCell.font = { name: 'Arial', size: 14, bold: true }
+    titleCell.alignment = { horizontal: 'center' }
+
+    // Subtitle Header
+    worksheet.mergeCells('A2:B2')
+    const subtitleCell = worksheet.getCell('A2')
+    subtitleCell.value = `Balance Sheet - As of ${dateRange.label}`
+    subtitleCell.font = { name: 'Arial', size: 11, italic: true }
+    subtitleCell.alignment = { horizontal: 'center' }
+
+    worksheet.addRow([])
+
+    // Assets Section
+    const assetsHeader = worksheet.addRow(['ASSETS', ''])
+    assetsHeader.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1B9387' } }
+
+    if (data.assets.length === 0) {
+      worksheet.addRow(['No assets recorded', 0])
+    } else {
+      data.assets.forEach((asset: any) => {
+        worksheet.addRow([`   ${asset.name}`, asset.amount])
+      })
+    }
+
+    const totalAssetsRow = worksheet.addRow(['Total Assets', data.totalAssets])
+    totalAssetsRow.font = { name: 'Arial', size: 11, bold: true }
+    totalAssetsRow.getCell(2).border = { top: { style: 'thin' }, bottom: { style: 'double' } }
+
+    worksheet.addRow([])
+
+    // Liabilities Section
+    const liabHeader = worksheet.addRow(['LIABILITIES', ''])
+    liabHeader.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1B9387' } }
+
+    if (data.liabilities.length === 0) {
+      worksheet.addRow(['No liabilities recorded', 0])
+    } else {
+      data.liabilities.forEach((lia: any) => {
+        worksheet.addRow([`   ${lia.name}`, lia.amount])
+      })
+    }
+
+    const totalLiabRow = worksheet.addRow(['Total Liabilities', data.totalLiabilities])
+    totalLiabRow.font = { name: 'Arial', size: 11, bold: true }
+    totalLiabRow.getCell(2).border = { top: { style: 'thin' } }
+
+    worksheet.addRow([])
+
+    // Equity Section
+    const equityHeader = worksheet.addRow(['EQUITY', ''])
+    equityHeader.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1B9387' } }
+
+    data.equity.forEach((eq: any) => {
+      worksheet.addRow([`   ${eq.name}`, eq.amount])
+    })
+    worksheet.addRow(['   Accumulated Net Income / Loss', data.netIncome])
+
+    const totalEquityRow = worksheet.addRow(['Total Equity', data.totalEquity + data.netIncome])
+    totalEquityRow.font = { name: 'Arial', size: 11, bold: true }
+    totalEquityRow.getCell(2).border = { top: { style: 'thin' } }
+
+    worksheet.addRow([])
+
+    // Total Liabilities & Equity Row
+    const totalLiabEquityRow = worksheet.addRow(['TOTAL LIABILITIES & EQUITY', data.totalLiabilitiesAndEquity])
+    totalLiabEquityRow.font = { name: 'Arial', size: 12, bold: true }
+    totalLiabEquityRow.getCell(1).border = { top: { style: 'thin' }, bottom: { style: 'double' } }
+    totalLiabEquityRow.getCell(2).border = { top: { style: 'thin' }, bottom: { style: 'double' } }
+
+    worksheet.getColumn(2).numFmt = '_("₱"* #,##0.00_);_("₱"* (#,##0.00);_("₱"* "-"??_);_(@_)'
+    worksheet.getColumn(1).width = 45
+    worksheet.getColumn(2).width = 25
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    fs.writeFileSync(filePath, Buffer.from(buffer))
+    return { success: true, filePath }
+  }
+
+  /**
+   * Generates an Excel spreadsheet for the Statement of Cash Flows
+   */
+  static async exportCashFlowToExcel(year?: number, month?: number, quarter?: string) {
+    const dateRange = resolvePeriodDateRange(year, month, quarter)
+    const suffix = quarter ? `${quarter}_${year || new Date().getFullYear()}` : year && month ? `${year}_${month}` : 'All_Time'
+
+    const data = await ReportsService.getCashFlowStatement(year, month, quarter)
+
+    const { filePath } = await dialog.showSaveDialog({
+      title: 'Export Cash Flow Statement',
+      defaultPath: `Cash_Flow_Statement_${suffix}.xlsx`,
+      filters: [{ name: 'Excel Worksheets', extensions: ['xlsx'] }]
+    })
+
+    if (!filePath) return { success: false, error: 'Export cancelled by user.' }
+
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('Cash Flow Statement')
+
+    // Title Header
+    worksheet.mergeCells('A1:B1')
+    const titleCell = worksheet.getCell('A1')
+    titleCell.value = 'SmartGuys Community Healthcare Inc.'
+    titleCell.font = { name: 'Arial', size: 14, bold: true }
+    titleCell.alignment = { horizontal: 'center' }
+
+    // Subtitle Header
+    worksheet.mergeCells('A2:B2')
+    const subtitleCell = worksheet.getCell('A2')
+    subtitleCell.value = `Statement of Cash Flows - For the period: ${dateRange.label}`
+    subtitleCell.font = { name: 'Arial', size: 11, italic: true }
+    subtitleCell.alignment = { horizontal: 'center' }
+
+    worksheet.addRow([])
+
+    // Operating Section
+    const opHeader = worksheet.addRow(['CASH FLOWS FROM OPERATING ACTIVITIES', ''])
+    opHeader.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1B9387' } }
+
+    if (data.operating?.details?.length === 0) {
+      worksheet.addRow(['No operating activities in this period', 0])
+    } else {
+      data.operating?.details?.forEach((item: any) => {
+        worksheet.addRow([`   ${item.description}`, item.amount])
+      })
+    }
+
+    const netOpRow = worksheet.addRow(['Net Cash from Operating Activities', data.operating?.net || 0])
+    netOpRow.font = { name: 'Arial', size: 11, bold: true }
+    netOpRow.getCell(2).border = { top: { style: 'thin' } }
+
+    worksheet.addRow([])
+
+    // Investing Section
+    const invHeader = worksheet.addRow(['CASH FLOWS FROM INVESTING ACTIVITIES', ''])
+    invHeader.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1B9387' } }
+
+    if (data.investing?.details?.length === 0) {
+      worksheet.addRow(['No investing activities in this period', 0])
+    } else {
+      data.investing?.details?.forEach((item: any) => {
+        worksheet.addRow([`   ${item.description}`, item.amount])
+      })
+    }
+
+    const netInvRow = worksheet.addRow(['Net Cash from Investing Activities', data.investing?.net || 0])
+    netInvRow.font = { name: 'Arial', size: 11, bold: true }
+    netInvRow.getCell(2).border = { top: { style: 'thin' } }
+
+    worksheet.addRow([])
+
+    // Financing Section
+    const finHeader = worksheet.addRow(['CASH FLOWS FROM FINANCING ACTIVITIES', ''])
+    finHeader.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1B9387' } }
+
+    if (data.financing?.details?.length === 0) {
+      worksheet.addRow(['No financing activities in this period', 0])
+    } else {
+      data.financing?.details?.forEach((item: any) => {
+        worksheet.addRow([`   ${item.description}`, item.amount])
+      })
+    }
+
+    const netFinRow = worksheet.addRow(['Net Cash from Financing Activities', data.financing?.net || 0])
+    netFinRow.font = { name: 'Arial', size: 11, bold: true }
+    netFinRow.getCell(2).border = { top: { style: 'thin' } }
+
+    worksheet.addRow([])
+
+    // Net Increase in Cash Row
+    const netCashRow = worksheet.addRow(['NET INCREASE (DECREASE) IN CASH', data.netIncreaseInCash || 0])
+    netCashRow.font = { name: 'Arial', size: 12, bold: true }
+    netCashRow.getCell(1).border = { top: { style: 'thin' }, bottom: { style: 'double' } }
+    netCashRow.getCell(2).border = { top: { style: 'thin' }, bottom: { style: 'double' } }
+
+    worksheet.getColumn(2).numFmt = '_("₱"* #,##0.00_);_("₱"* (#,##0.00);_("₱"* "-"??_);_(@_)'
+    worksheet.getColumn(1).width = 45
+    worksheet.getColumn(2).width = 25
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    fs.writeFileSync(filePath, Buffer.from(buffer))
+    return { success: true, filePath }
+  }
+
+  /**
+   * Unified dispatcher for financial statement Excel exports
+   */
+  static async exportFinancialStatementToExcel(
+    statementType: 'trial' | 'income' | 'balance' | 'cash-flow',
+    year?: number,
+    month?: number,
+    quarter?: string
+  ) {
+    if (statementType === 'trial') {
+      return await this.exportTrialBalanceToExcel(year, month, quarter)
+    } else if (statementType === 'income') {
+      return await this.exportIncomeStatementToExcel(year, month, quarter)
+    } else if (statementType === 'balance') {
+      return await this.exportBalanceSheetToExcel(year, month, quarter)
+    } else if (statementType === 'cash-flow') {
+      return await this.exportCashFlowToExcel(year, month, quarter)
+    }
+    return { success: false, error: `Unknown statement type: ${statementType}` }
+  }
+
+  /**
+   * Export Master Employee Directory to Excel (.xlsx)
+   */
+  static async exportEmployeesToExcel(employees?: any[]) {
+    const defaultFilename = `Employee_Directory_${new Date().toISOString().split('T')[0]}.xlsx`
+    const { filePath, canceled } = await dialog.showSaveDialog({
+      title: 'Export Employee Directory to Excel',
+      defaultPath: defaultFilename,
+      filters: [{ name: 'Excel Files', extensions: ['xlsx'] }]
+    })
+
+    if (canceled || !filePath) return { success: false, canceled: true }
+
+    let empList = employees
+    if (!empList || empList.length === 0) {
+      empList = await prisma.employee.findMany({
+        orderBy: [{ is_active: 'desc' }, { last_name: 'asc' }]
+      })
+    }
+
+    const workbook = new ExcelJS.Workbook()
+    workbook.creator = 'SmartGuys Accounting System'
+    workbook.created = new Date()
+
+    const worksheet = workbook.addWorksheet('Employees', {
+      views: [{ showGridLines: true }]
+    })
+
+    // Title Block
+    worksheet.mergeCells('A1:L1')
+    worksheet.getCell('A1').value = 'SMARTGUYS COMMUNITY HEALTHCARE INC.'
+    worksheet.getCell('A1').font = { name: 'Arial', size: 14, bold: true, color: { argb: 'FF1B9387' } }
+    worksheet.getCell('A1').alignment = { vertical: 'middle', horizontal: 'center' }
+
+    worksheet.mergeCells('A2:L2')
+    worksheet.getCell('A2').value = `MASTER EMPLOYEE DIRECTORY — Exported on ${new Date().toLocaleDateString('en-PH', { dateStyle: 'long' })}`
+    worksheet.getCell('A2').font = { name: 'Arial', size: 10, italic: true, color: { argb: 'FF666666' } }
+    worksheet.getCell('A2').alignment = { vertical: 'middle', horizontal: 'center' }
+
+    worksheet.addRow([])
+
+    const headers = [
+      'ID',
+      'First Name',
+      'Last Name',
+      'Position',
+      'Status',
+      'Monthly Salary',
+      'Daily Rate (26d)',
+      'Hourly Rate (8h)',
+      'TIN',
+      'SSS Number',
+      'PhilHealth Number',
+      'Pag-IBIG Number'
+    ]
+
+    const headerRow = worksheet.addRow(headers)
+    headerRow.height = 26
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1B9387' }
+      }
+      cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } }
+      cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }
+      cell.border = {
+        top: { style: 'thin', color: { argb: 'FFB0DCDA' } },
+        bottom: { style: 'medium', color: { argb: 'FF0D6158' } },
+        left: { style: 'thin', color: { argb: 'FFB0DCDA' } },
+        right: { style: 'thin', color: { argb: 'FFB0DCDA' } }
+      }
+    })
+
+    const currencyFmt = '_("₱"* #,##0.00_);_("₱"* (#,##0.00);_("₱"* "-"??_);_(@_)'
+
+    empList.forEach((emp: any) => {
+      const salary = Number(emp.monthly_salary || 0)
+      const daily = salary / 26
+      const hourly = daily / 8
+      const isActive = emp.is_active !== false
+
+      const r = worksheet.addRow([
+        emp.id,
+        emp.first_name,
+        emp.last_name,
+        emp.position,
+        isActive ? 'Active' : 'Archived',
+        salary,
+        daily,
+        hourly,
+        emp.tin || '',
+        emp.sss_no || '',
+        emp.philhealth_no || '',
+        emp.pagibig_no || ''
+      ])
+
+      r.height = 20
+      r.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }
+      r.getCell(5).alignment = { horizontal: 'center', vertical: 'middle' }
+      r.getCell(6).numFmt = currencyFmt
+      r.getCell(7).numFmt = currencyFmt
+      r.getCell(8).numFmt = currencyFmt
+
+      r.eachCell((cell) => {
+        cell.font = { name: 'Arial', size: 9 }
+        cell.border = {
+          bottom: { style: 'thin', color: { argb: 'FFE5E7EB' } },
+          right: { style: 'thin', color: { argb: 'FFE5E7EB' } }
+        }
+      })
+    })
+
+    const colWidths = [8, 18, 18, 24, 12, 18, 16, 16, 18, 16, 18, 18]
+    colWidths.forEach((w, i) => {
+      worksheet.getColumn(i + 1).width = w
+    })
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    fs.writeFileSync(filePath, Buffer.from(buffer))
+    return { success: true, filePath }
+  }
+
+  /**
+   * Save ready-to-fill Employee Import Template
+   */
+  static async downloadEmployeeTemplate() {
+    const defaultFilename = `Employee_Import_Template.xlsx`
+    const { filePath, canceled } = await dialog.showSaveDialog({
+      title: 'Save Employee Import Template',
+      defaultPath: defaultFilename,
+      filters: [{ name: 'Excel Files', extensions: ['xlsx'] }]
+    })
+
+    if (canceled || !filePath) return { success: false, canceled: true }
+
+    const workbook = new ExcelJS.Workbook()
+    workbook.creator = 'SmartGuys Accounting System'
+    const worksheet = workbook.addWorksheet('Employee Template', {
+      views: [{ showGridLines: true }]
+    })
+
+    const headers = [
+      'First Name',
+      'Last Name',
+      'Position',
+      'Monthly Salary',
+      'TIN',
+      'SSS Number',
+      'PhilHealth Number',
+      'Pag-IBIG Number'
+    ]
+    const headerRow = worksheet.addRow(headers)
+    headerRow.height = 26
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1B9387' }
+      }
+      cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: 'FFFFFFFF' } }
+      cell.alignment = { vertical: 'middle', horizontal: 'center' }
+    })
+
+    const sample1 = worksheet.addRow([
+      'Juan',
+      'Dela Cruz',
+      'Staff Nurse',
+      25000,
+      '123-456-789-000',
+      '34-1234567-8',
+      '12-345678901-2',
+      '1234-5678-9012'
+    ])
+    const sample2 = worksheet.addRow([
+      'Maria',
+      'Santos',
+      'Medical Technologist',
+      28000,
+      '987-654-321-000',
+      '09-8765432-1',
+      '98-765432109-8',
+      '9876-5432-1098'
+    ])
+
+    const currencyFmt = '#,##0.00'
+    sample1.getCell(4).numFmt = currencyFmt
+    sample2.getCell(4).numFmt = currencyFmt
+
+    const colWidths = [18, 18, 24, 18, 18, 16, 18, 18]
+    colWidths.forEach((w, i) => {
+      worksheet.getColumn(i + 1).width = w
+    })
+
+    const buffer = await workbook.xlsx.writeBuffer()
+    fs.writeFileSync(filePath, Buffer.from(buffer))
     return { success: true, filePath }
   }
 }
+

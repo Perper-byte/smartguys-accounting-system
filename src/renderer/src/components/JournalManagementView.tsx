@@ -6,13 +6,10 @@ import {
   Download,
   Plus,
   FileText,
-  X,
-  Paperclip,
-  Image as ImageIcon,
-  File as FileIcon
+  Paperclip
 } from 'lucide-react'
 import { JournalEntryForm } from './JournalEntryForm'
-import { AttachmentPreviewModal } from './AttachmentPreviewModal'
+import { JournalEntryModal } from './JournalEntryModal'
 import { cleanDescription } from '../utils/formatters'
 
 export function JournalManagementView({ userId }: { userId: string }) {
@@ -30,7 +27,6 @@ export function JournalManagementView({ userId }: { userId: string }) {
   // View States
   const [isCreatingNew, setIsCreatingNew] = useState(false)
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null)
-  const [previewAttachment, setPreviewAttachment] = useState<any | null>(null)
 
   const fetchEntries = async () => {
     setLoading(true)
@@ -282,230 +278,11 @@ export function JournalManagementView({ userId }: { userId: string }) {
         </div>
       </div>
 
-      {/* ========================================== */}
-      {/* JUANTax STYLE MODAL WITH ATTACHMENTS         */}
-      {/* ========================================== */}
       {selectedEntry && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#f4f7f6] rounded-xl shadow-2xl w-full max-w-4xl flex flex-col relative animate-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh]">
-            {/* MODAL HEADER */}
-            <div className="bg-white p-5 border-b border-gray-200 flex justify-between items-start shrink-0">
-              <div>
-                <h2 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-3">
-                  Journal: {selectedEntry.reference_no}
-                </h2>
-                <div className="mt-2">{renderStatusBadge(selectedEntry.status)}</div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button className="p-2 border border-gray-200 rounded text-gray-500 hover:bg-gray-50 transition">
-                  <Download size={16} />
-                </button>
-                <button
-                  onClick={() => setSelectedEntry(null)}
-                  className="p-2 border border-transparent rounded text-gray-400 hover:text-gray-800 hover:bg-gray-100 transition cursor-pointer"
-                >
-                  <X size={20} />
-                </button>
-              </div>
-            </div>
-
-            {/* MODAL BODY (SCROLLABLE) */}
-            <div className="p-6 overflow-y-auto space-y-6">
-              {/* CARD 1: TOP SUMMARY */}
-              <div className="flex gap-6">
-                <div className="flex-1 bg-white border border-gray-200 rounded-xl p-5 grid grid-cols-4 gap-4 shadow-sm">
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
-                      Type
-                    </p>
-                    <p className="font-bold text-sm text-gray-800">
-                      {selectedEntry.reference_no.startsWith('JV')
-                        ? 'Manual Journal'
-                        : 'System Journal'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
-                      Contact
-                    </p>
-                    <p className="font-bold text-sm text-[#1B9387] underline decoration-[#1B9387]/30 underline-offset-4 cursor-pointer">
-                      {selectedEntry.payee?.name || '—'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
-                      Status
-                    </p>
-                    <p className="font-bold text-sm text-gray-800">
-                      {selectedEntry.status === 'ACTIVE'
-                        ? 'Recorded'
-                        : selectedEntry.status.replace('_', ' ')}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
-                      Date
-                    </p>
-                    <p className="font-bold text-sm text-gray-800">
-                      {new Date(selectedEntry.date).toLocaleDateString('en-GB')}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="w-64 bg-white border border-gray-200 rounded-xl p-5 flex flex-col justify-center items-end shadow-sm border-l-4 border-l-[#1B9387]">
-                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1">
-                    Total (PHP)
-                  </p>
-                  <p className="text-3xl font-black font-mono text-gray-900">
-                    {formatCurrency(
-                      selectedEntry.lines?.reduce((s: number, l: any) => s + Number(l.debit), 0) ||
-                        0
-                    )}
-                  </p>
-                </div>
-              </div>
-
-              {/* CARD 2: JOURNAL LINES TABLE */}
-              <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-                <table className="w-full text-left text-sm">
-                  <thead className="bg-gray-50 border-b border-gray-200 text-[10px] uppercase font-extrabold text-gray-500 tracking-wider">
-                    <tr>
-                      <th className="p-4">Account</th>
-                      <th className="p-4">Description</th>
-                      <th className="p-4 text-right">Debit (PHP)</th>
-                      <th className="p-4 text-right">Credit (PHP)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {selectedEntry.lines?.map((line: any) => (
-                      <tr key={line.id}>
-                        <td className="p-4 font-bold text-gray-800">
-                          <span className="font-mono text-[#1B9387] mr-2">
-                            {line.account?.code}
-                          </span>
-                          {line.account?.name}
-                        </td>
-                        <td className="p-4 text-gray-500">-</td>
-                        <td className="p-4 text-right font-mono text-gray-800">
-                          {formatCurrency(Number(line.debit))}
-                        </td>
-                        <td className="p-4 text-right font-mono text-gray-800">
-                          {formatCurrency(Number(line.credit))}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* CARD 3 & 4: NOTES AND TOTALS */}
-              <div className="flex gap-6 items-start">
-                <div className="flex-1 space-y-6">
-                  {/* INTERNAL NOTES */}
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
-                      Internal Notes
-                    </p>
-                    <div className="bg-white border border-gray-200 rounded-lg p-4 text-sm text-gray-700 min-h-[80px] shadow-sm">
-                      {cleanDescription(selectedEntry.description) || (
-                        <span className="text-gray-400 italic">No notes provided.</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* ATTACHMENTS VIEW ZONE */}
-                  <div>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 flex items-center gap-1">
-                      <Paperclip size={12} /> Attachments ({selectedEntry.attachments?.length || 0})
-                    </p>
-
-                    <div className="bg-white border border-dashed border-gray-300 rounded-lg p-4 shadow-sm min-h-[100px] flex flex-col gap-3">
-                      {selectedEntry.attachments && selectedEntry.attachments.length > 0 ? (
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                          {selectedEntry.attachments.map((att: any) => (
-                            <div
-                              key={att.id}
-                              onClick={() => {
-                                setPreviewAttachment({
-                                  name: att.fileName,
-                                  data: att.fileData,
-                                  type: att.fileType
-                                })
-                              }}
-                              className="flex flex-col items-center justify-center p-3 border border-gray-200 rounded-lg hover:bg-[#E9FAFA] hover:border-[#1B9387] transition cursor-pointer group text-center"
-                            >
-                              {att.fileType?.includes('image') ? (
-                                <ImageIcon
-                                  size={24}
-                                  className="text-[#1B9387] mb-2 group-hover:scale-110 transition-transform"
-                                />
-                              ) : (
-                                <FileIcon
-                                  size={24}
-                                  className="text-[#1B9387] mb-2 group-hover:scale-110 transition-transform"
-                                />
-                              )}
-                              <span
-                                className="text-xs font-bold text-gray-700 truncate w-full px-2"
-                                title={att.fileName}
-                              >
-                                {att.fileName}
-                              </span>
-                              <span className="text-[9px] text-[#1B9387] font-extrabold mt-1 uppercase tracking-wider">
-                                Click to Preview
-                              </span>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center text-gray-400 py-4">
-                          <span className="text-xs font-medium">No attachments uploaded</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* TOTAL SUMMARY */}
-                <div className="w-80 bg-gray-200 rounded-xl p-5 shrink-0">
-                  <div className="flex justify-between text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2">
-                    <span></span>
-                    <div className="flex gap-8 text-right">
-                      <span className="w-24">Debit (PHP)</span>
-                      <span className="w-24">Credit (PHP)</span>
-                    </div>
-                  </div>
-                  <div className="flex justify-between items-center pt-2 border-t border-gray-300">
-                    <span className="text-sm font-black text-gray-800">Journal Amount</span>
-                    <div className="flex gap-8 text-right font-mono font-black text-gray-900 text-base">
-                      <span className="w-24">
-                        {formatCurrency(
-                          selectedEntry.lines?.reduce(
-                            (s: number, l: any) => s + Number(l.debit),
-                            0
-                          ) || 0
-                        )}
-                      </span>
-                      <span className="w-24">
-                        {formatCurrency(
-                          selectedEntry.lines?.reduce(
-                            (s: number, l: any) => s + Number(l.credit),
-                            0
-                          ) || 0
-                        )}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {previewAttachment && (
-        <AttachmentPreviewModal
-          attachment={previewAttachment}
-          onClose={() => setPreviewAttachment(null)}
+        <JournalEntryModal
+          entry={selectedEntry}
+          onClose={() => setSelectedEntry(null)}
+          onVoidSuccess={fetchEntries}
         />
       )}
     </div>

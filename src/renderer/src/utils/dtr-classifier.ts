@@ -24,6 +24,9 @@ export interface OvertimeHours {
   special_holiday_rest_day_night: number;
   special_holiday_rest_day_night_ot: number;
   legal_holiday: number;
+  legal_holiday_ot?: number;
+  legal_holiday_night?: number;
+  legal_holiday_night_ot?: number;
 }
 
 export interface AttendanceDemerits {
@@ -65,7 +68,10 @@ export function classifyDailyPunch(punch: DailyPunchLog): { baseHours: number; o
     special_holiday_rest_day_ot: 0,
     special_holiday_rest_day_night: 0,
     special_holiday_rest_day_night_ot: 0,
-    legal_holiday: 0
+    legal_holiday: 0,
+    legal_holiday_ot: 0,
+    legal_holiday_night: 0,
+    legal_holiday_night_ot: 0
   };
   const demerits: AttendanceDemerits = {
     late_minutes: 0,
@@ -174,7 +180,10 @@ export function classifyDailyPunch(punch: DailyPunchLog): { baseHours: number; o
       baseHours = 0;
       break;
     case 'LEGAL_HOLIDAY':
-      overtimeHours.legal_holiday = hoursBase + hoursBaseNd + hoursOt + hoursOtNd; // Simplification, usually needs more fields
+      overtimeHours.legal_holiday = hoursBase;
+      overtimeHours.legal_holiday_night = hoursBaseNd;
+      overtimeHours.legal_holiday_ot = hoursOt;
+      overtimeHours.legal_holiday_night_ot = hoursOtNd;
       baseHours = 0;
       break;
   }
@@ -199,7 +208,10 @@ export function aggregateDtrRecords(records: DailyPunchLog[]): { totalHours: Ove
     special_holiday_rest_day_ot: 0,
     special_holiday_rest_day_night: 0,
     special_holiday_rest_day_night_ot: 0,
-    legal_holiday: 0
+    legal_holiday: 0,
+    legal_holiday_ot: 0,
+    legal_holiday_night: 0,
+    legal_holiday_night_ot: 0
   };
   const totalDemerits: AttendanceDemerits = {
     late_minutes: 0,

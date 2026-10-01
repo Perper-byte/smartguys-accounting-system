@@ -824,6 +824,36 @@ export const LedgerService = {
         }));
     },
 
+    async getJournalEntryById(idOrRef: string) {
+        const entry = await prisma.journalEntry.findFirst({
+            where: {
+                OR: [
+                    { id: idOrRef },
+                    { reference_no: idOrRef }
+                ]
+            },
+            include: {
+                payee: true,
+                lines: {
+                    include: { account: true },
+                    orderBy: { debit: 'desc' }
+                },
+                attachments: true
+            }
+        });
+
+        if (!entry) return null;
+
+        return {
+            ...entry,
+            lines: entry.lines.map(line => ({
+                ...line,
+                debit: Number(line.debit),
+                credit: Number(line.credit)
+            }))
+        };
+    },
+
     async requestVoid(entryId: string, reason: string) {
         return await prisma.journalEntry.update({
             where: { id: entryId },

@@ -248,6 +248,95 @@ export const PayrollService = {
     }
   },
 
+  async bulkImportEmployees(records: any[], updateExisting: boolean = true) {
+    try {
+      let createdCount = 0
+      let updatedCount = 0
+
+      for (const item of records) {
+        if (!item.first_name || !item.last_name) continue
+
+        const searchConditions: any[] = [
+          {
+            AND: [
+              { first_name: { equals: item.first_name } },
+              { last_name: { equals: item.last_name } }
+            ]
+          }
+        ]
+        if (item.tin && String(item.tin).trim().length > 3) {
+          searchConditions.push({ tin: String(item.tin).trim() })
+        }
+        if (item.sss_no && String(item.sss_no).trim().length > 3) {
+          searchConditions.push({ sss_no: String(item.sss_no).trim() })
+        }
+
+        const existing = await prisma.employee.findFirst({
+          where: { OR: searchConditions }
+        })
+
+        if (existing) {
+          if (updateExisting) {
+            await prisma.employee.update({
+              where: { id: existing.id },
+              data: {
+                position: item.position || existing.position,
+                monthly_salary: item.monthly_salary !== undefined ? Number(item.monthly_salary) : existing.monthly_salary,
+                tin: item.tin !== undefined ? (item.tin || null) : existing.tin,
+                sss_no: item.sss_no !== undefined ? (item.sss_no || null) : existing.sss_no,
+                philhealth_no: item.philhealth_no !== undefined ? (item.philhealth_no || null) : existing.philhealth_no,
+                pagibig_no: item.pagibig_no !== undefined ? (item.pagibig_no || null) : existing.pagibig_no,
+                is_active: item.is_active !== undefined ? Boolean(item.is_active) : existing.is_active
+              }
+            })
+            updatedCount++
+          }
+        } else {
+          await prisma.employee.create({
+            data: {
+              first_name: String(item.first_name).trim(),
+              last_name: String(item.last_name).trim(),
+              position: item.position ? String(item.position).trim() : 'Staff',
+              monthly_salary: Number(item.monthly_salary || 0),
+              tin: item.tin ? String(item.tin).trim() : null,
+              sss_no: item.sss_no ? String(item.sss_no).trim() : null,
+              philhealth_no: item.philhealth_no ? String(item.philhealth_no).trim() : null,
+              pagibig_no: item.pagibig_no ? String(item.pagibig_no).trim() : null,
+              is_active: item.is_active !== undefined ? Boolean(item.is_active) : true
+            }
+          })
+          createdCount++
+        }
+      }
+
+      return { success: true, createdCount, updatedCount }
+    } catch (error: any) {
+      console.error('Failed to bulk import employees:', error)
+      return { success: false, error: error.message }
+    }
+  },
+
+  async ensurePayrollAccounts(tx: any) {
+    const requiredAccounts = [
+      { code: '5100', name: 'Salaries and Wages Expense', type_id: 'type-expense' },
+      { code: '5110', name: 'Employer Statutory Contributions Expense', type_id: 'type-expense' },
+      { code: '2040', name: 'Salaries / Net Payroll Payable', type_id: 'type-liability' },
+      { code: '2041', name: 'SSS & EC Premium Payable', type_id: 'type-liability' },
+      { code: '2042', name: 'PhilHealth Premium Payable', type_id: 'type-liability' },
+      { code: '2043', name: 'Pag-IBIG Premium Payable', type_id: 'type-liability' },
+      { code: '2051', name: 'Withholding Tax Payable - Compensation', type_id: 'type-liability' },
+      { code: '1210', name: 'Advances to Officers & Employees', type_id: 'type-asset' }
+    ]
+
+    for (const acc of requiredAccounts) {
+      await tx.account.upsert({
+        where: { code: acc.code },
+        update: {},
+        create: acc
+      })
+    }
+  },
+
   async processPayroll(data: any) {
     try {
       const entryDate = new Date(data.date)
@@ -260,6 +349,8 @@ export const PayrollService = {
       }
 
       return await prisma.$transaction(async (tx) => {
+        await PayrollService.ensurePayrollAccounts(tx)
+
         let totalGross = 0
         let totalSSSEe = 0
         let totalPhilhealthEe = 0

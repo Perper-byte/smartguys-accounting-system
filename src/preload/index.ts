@@ -28,6 +28,7 @@ export const api = {
   getPatientTransactions: (args: any) => ipcRenderer.invoke('get-patient-transactions', args),
   getAccountLedger: (accountId: string) => ipcRenderer.invoke('ledger:getAccountLedger', accountId),
   getAllJournalEntries: () => ipcRenderer.invoke('ledger:getAllJournalEntries'),
+  getJournalEntryById: (idOrRef: string) => ipcRenderer.invoke('ledger:getJournalEntryById', idOrRef),
   getFullLedgerReport: (startDate: string, endDate: string) =>
     ipcRenderer.invoke('get-full-ledger-report', startDate, endDate),
 
@@ -124,18 +125,22 @@ export const api = {
   getInvoiceTracker: () => ipcRenderer.invoke('get-invoice-tracker'),
 
   // Financial Reports
-  getTrialBalance: (year?: number, month?: number) =>
-    ipcRenderer.invoke('reports:getTrialBalance', year, month),
-  getIncomeStatement: (year?: number, month?: number) =>
-    ipcRenderer.invoke('reports:getIncomeStatement', year, month),
-  getBalanceSheet: (year?: number, month?: number) =>
-    ipcRenderer.invoke('reports:getBalanceSheet', year, month),
-  getCashFlowStatement: (year?: number, month?: number) =>
-    ipcRenderer.invoke('reports:getCashFlowStatement', year, month),
+  getTrialBalance: (year?: number, month?: number, quarter?: string) =>
+    ipcRenderer.invoke('reports:getTrialBalance', year, month, quarter),
+  getIncomeStatement: (year?: number, month?: number, quarter?: string) =>
+    ipcRenderer.invoke('reports:getIncomeStatement', year, month, quarter),
+  getBalanceSheet: (year?: number, month?: number, quarter?: string) =>
+    ipcRenderer.invoke('reports:getBalanceSheet', year, month, quarter),
+  getCashFlowStatement: (year?: number, month?: number, quarter?: string) =>
+    ipcRenderer.invoke('reports:getCashFlowStatement', year, month, quarter),
 
   // Exporters
-  exportTrialBalanceExcel: (year?: number, month?: number) =>
-    ipcRenderer.invoke('export:trialBalanceExcel', year, month),
+  exportFinancialStatementExcel: (statementType: string, year?: number, month?: number, quarter?: string) =>
+    ipcRenderer.invoke('export:financialStatementExcel', statementType, year, month, quarter),
+  exportTrialBalanceExcel: (year?: number, month?: number, quarter?: string) =>
+    ipcRenderer.invoke('export:trialBalanceExcel', year, month, quarter),
+  exportEmployeesExcel: (employees?: any[]) => ipcRenderer.invoke('export:employeesExcel', employees),
+  downloadEmployeeTemplate: () => ipcRenderer.invoke('export:downloadEmployeeTemplate'),
   exportPayslipPDF: (payslipId: string) => ipcRenderer.invoke('export:payslipPDF', payslipId),
   exportBatchPayslipsPDF: (journalEntryId: string) => ipcRenderer.invoke('export:batchPayslipsPDF', journalEntryId),
   exportPDF: (filename: string) => ipcRenderer.invoke('export:printToPDF', filename),
@@ -148,6 +153,8 @@ export const api = {
   batchCalculatePayroll: (employeeInputs: any[]) => ipcRenderer.invoke('payroll:batchCalculate', employeeInputs),
   getEmployees: () => ipcRenderer.invoke('get-employees'),
   createEmployee: (data: any) => ipcRenderer.invoke('create-employee', data),
+  bulkImportEmployees: (records: any[], updateExisting: boolean) =>
+    ipcRenderer.invoke('payroll:bulkImportEmployees', records, updateExisting),
   processPayroll: (data: any) => ipcRenderer.invoke('process-payroll', data),
   toggleEmployeeStatus: (id: string, isActive: boolean) =>
     ipcRenderer.invoke('toggle-employee-status', id, isActive),

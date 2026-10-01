@@ -2,6 +2,7 @@
 import * as React from 'react'
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { cleanDescription } from '../utils/formatters'
+import { JournalEntryModal } from './JournalEntryModal'
 
 const getLocalDateString = (date: Date) => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0]
@@ -17,11 +18,43 @@ export const GeneralLedgerView: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState('')
   const today = new Date()
-  // Change this to Jan 1st so past data isn't hidden when a new month starts!
-  const firstDay = new Date(today.getFullYear(), 0, 1)
+  const currentYear = today.getFullYear()
+  const [selectedYear, setSelectedYear] = useState<number>(currentYear)
+  const [selectedPeriod, setSelectedPeriod] = useState<
+    'ALL_YEAR' | 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'CUSTOM'
+  >('ALL_YEAR')
 
-  const [startDate, setStartDate] = useState(getLocalDateString(firstDay))
-  const [endDate, setEndDate] = useState(getLocalDateString(today))
+  // Default to Jan 1st of current year to Dec 31st
+  const [startDate, setStartDate] = useState(`${currentYear}-01-01`)
+  const [endDate, setEndDate] = useState(`${currentYear}-12-31`)
+
+  const applyPeriod = (
+    period: 'ALL_YEAR' | 'Q1' | 'Q2' | 'Q3' | 'Q4' | 'CUSTOM',
+    year: number = selectedYear
+  ) => {
+    setSelectedPeriod(period)
+    if (period === 'ALL_YEAR') {
+      setStartDate(`${year}-01-01`)
+      setEndDate(`${year}-12-31`)
+    } else if (period === 'Q1') {
+      setStartDate(`${year}-01-01`)
+      setEndDate(`${year}-03-31`)
+    } else if (period === 'Q2') {
+      setStartDate(`${year}-04-01`)
+      setEndDate(`${year}-06-30`)
+    } else if (period === 'Q3') {
+      setStartDate(`${year}-07-01`)
+      setEndDate(`${year}-09-30`)
+    } else if (period === 'Q4') {
+      setStartDate(`${year}-10-01`)
+      setEndDate(`${year}-12-31`)
+    }
+  }
+
+  const handleYearChange = (newYear: number) => {
+    setSelectedYear(newYear)
+    applyPeriod(selectedPeriod === 'CUSTOM' ? 'ALL_YEAR' : selectedPeriod, newYear)
+  }
 
   const [journalFilter, setJournalFilter] = useState<string>('ALL')
 
@@ -272,7 +305,13 @@ export const GeneralLedgerView: React.FC = () => {
         ? singleLedgerData.accountName.replace(/[^a-zA-Z0-9]/g, '_')
         : 'Full_Ledger'
       const journalPrefix = journalFilter === 'ALL' ? 'General_Ledger' : `${journalFilter}_Journal`
-      const filename = `${journalPrefix}_${cleanAccountName}.pdf`
+      const periodSuffix =
+        selectedPeriod === 'ALL_YEAR'
+          ? `Year_${selectedYear}`
+          : selectedPeriod !== 'CUSTOM'
+            ? `${selectedPeriod}_${selectedYear}`
+            : `${startDate}_to_${endDate}`
+      const filename = `${journalPrefix}_${cleanAccountName}_${periodSuffix}.pdf`
 
       const result = await api.exportPDF(filename)
 
@@ -329,8 +368,13 @@ export const GeneralLedgerView: React.FC = () => {
           <h2 className="text-2xl font-extrabold text-gray-800 tracking-tight">Ledger</h2>
           <p className="text-sm font-medium text-gray-600 mt-1">SmartGuys Clinic</p>
           <p className="text-sm text-gray-500 mt-0.5">
-            For the period of {startDate ? formatVerboseDate(startDate) : 'Start'} to{' '}
-            {endDate ? formatVerboseDate(endDate) : 'End'}
+            {selectedPeriod === 'ALL_YEAR' ? (
+              <span>For Full Year {selectedYear} ({formatVerboseDate(`${selectedYear}-01-01`)} to {formatVerboseDate(`${selectedYear}-12-31`)})</span>
+            ) : selectedPeriod !== 'CUSTOM' ? (
+              <span>For {selectedPeriod} {selectedYear} ({formatVerboseDate(startDate)} to {formatVerboseDate(endDate)})</span>
+            ) : (
+              <span>For the period of {startDate ? formatVerboseDate(startDate) : 'Start'} to {endDate ? formatVerboseDate(endDate) : 'End'}</span>
+            )}
           </p>
         </div>
         <div className="flex gap-2 print:hidden">
@@ -353,6 +397,108 @@ export const GeneralLedgerView: React.FC = () => {
           {status.msg}
         </div>
       )}
+
+      {/* PERIOD & QUARTER PRESETS BAR */}
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 print:hidden bg-gray-50/80 p-3 rounded-xl border border-gray-200">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-1.5">
+            <label className="text-[10px] font-black text-gray-500 uppercase tracking-wider">
+              Year:
+            </label>
+            <select
+              value={selectedYear}
+              onChange={(e) => handleYearChange(Number(e.target.value))}
+              className="bg-white border border-gray-300 rounded px-2.5 py-1 text-xs font-bold text-gray-800 outline-none focus:border-[#1B9387] cursor-pointer shadow-xs"
+            >
+              {[currentYear + 1, currentYear, currentYear - 1, currentYear - 2, currentYear - 3, currentYear - 4].map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="h-4 w-px bg-gray-300" />
+
+          {/* QUARTER PILLS */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] font-black text-gray-500 uppercase tracking-wider mr-1">
+              Quarter:
+            </span>
+            <div className="inline-flex rounded-lg shadow-xs bg-gray-200/80 p-0.5">
+              <button
+                type="button"
+                onClick={() => applyPeriod('ALL_YEAR')}
+                className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                  selectedPeriod === 'ALL_YEAR'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+                }`}
+              >
+                Full Year
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPeriod('Q1')}
+                className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                  selectedPeriod === 'Q1'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+                }`}
+                title="Quarter 1: January 1 - March 31"
+              >
+                Q1 (Jan-Mar)
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPeriod('Q2')}
+                className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                  selectedPeriod === 'Q2'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+                }`}
+                title="Quarter 2: April 1 - June 30"
+              >
+                Q2 (Apr-Jun)
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPeriod('Q3')}
+                className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                  selectedPeriod === 'Q3'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+                }`}
+                title="Quarter 3: July 1 - September 30"
+              >
+                Q3 (Jul-Sep)
+              </button>
+              <button
+                type="button"
+                onClick={() => applyPeriod('Q4')}
+                className={`px-3 py-1 text-xs font-bold rounded-md transition cursor-pointer ${
+                  selectedPeriod === 'Q4'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-700 hover:text-[#1B9387] hover:bg-white/60'
+                }`}
+                title="Quarter 4: October 1 - December 31"
+              >
+                Q4 (Oct-Dec)
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {selectedPeriod !== 'CUSTOM' ? (
+          <span className="text-[11px] font-black text-[#1B9387] bg-[#E9FAFA] border border-[#B0DCDA] px-2.5 py-1 rounded-md">
+            Active: {selectedPeriod === 'ALL_YEAR' ? `Full Year ${selectedYear}` : `${selectedPeriod} ${selectedYear}`}
+          </span>
+        ) : (
+          <span className="text-[11px] font-bold text-gray-500 bg-gray-100 border border-gray-200 px-2.5 py-1 rounded-md">
+            Custom Range
+          </span>
+        )}
+      </div>
 
       {/* CONTROLS (Hidden during Print) */}
       <div
@@ -413,7 +559,10 @@ export const GeneralLedgerView: React.FC = () => {
           <input
             type="date"
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => {
+              setStartDate(e.target.value)
+              setSelectedPeriod('CUSTOM')
+            }}
             className="bg-gray-50 border border-gray-200 rounded-md p-2.5 text-sm text-gray-700 font-medium outline-none focus:border-[#1B9387] cursor-pointer"
           />
         </div>
@@ -425,7 +574,10 @@ export const GeneralLedgerView: React.FC = () => {
           <input
             type="date"
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => {
+              setEndDate(e.target.value)
+              setSelectedPeriod('CUSTOM')
+            }}
             className="bg-gray-50 border border-gray-200 rounded-md p-2.5 text-sm text-gray-700 font-medium outline-none focus:border-[#1B9387] cursor-pointer"
           />
         </div>
@@ -637,126 +789,20 @@ export const GeneralLedgerView: React.FC = () => {
         </div>
       )}
 
-      {/* ---> DRILL-DOWN MODAL <--- */}
+      {/* ---> DRILL-DOWN MODAL: FULL JOURNAL ENTRY MODAL <--- */}
       {selectedTx && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm print:hidden p-4">
-          <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-2xl p-8 w-full max-w-lg animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-4 mb-5">
-              <div className="flex items-center space-x-3">
-                <h3 className="text-xl font-extrabold text-gray-800 tracking-wide uppercase">
-                  Transaction Details
-                </h3>
-                {renderStatusBadge(selectedTx.status)}
-              </div>
-              <button
-                onClick={() => {
-                  setSelectedTx(null)
-                  setShowVoidInput(false)
-                }}
-                className="text-gray-400 hover:text-red-500 font-bold text-xl cursor-pointer transition"
-              >
-                ×
-              </button>
-            </div>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-[#FBF8F8] p-3 rounded-lg border border-[#B0DCDA] shadow-inner">
-                  <p className="text-[10px] text-gray-500 uppercase font-extrabold tracking-widest mb-1">
-                    Date
-                  </p>
-                  <p className="text-sm text-gray-800 font-mono font-bold">
-                    {formatDate(selectedTx.date)}
-                  </p>
-                </div>
-
-                <div className="bg-[#E9FAFA] p-3 rounded-lg border border-[#1B9387]/30 shadow-inner relative group">
-                  <div className="flex justify-between items-center mb-1">
-                    <p className="text-[10px] text-[#1B9387] uppercase font-extrabold tracking-widest">
-                      Reference No.
-                    </p>
-                  </div>
-                  <p className="text-sm text-[#1B9387] font-black font-mono">
-                    {selectedTx.referenceNo}
-                  </p>
-                </div>
-              </div>
-
-              <div className="bg-[#FBF8F8] p-4 rounded-lg border border-[#B0DCDA] shadow-inner">
-                <p className="text-[10px] text-gray-500 uppercase font-extrabold tracking-widest mb-1">
-                  Description
-                </p>
-                <p className="text-sm text-gray-800 font-medium">{cleanDescription(selectedTx.description)}</p>
-              </div>
-
-              <div className="bg-white p-5 rounded-lg border border-[#B0DCDA] shadow-sm">
-                <p className="text-[10px] text-gray-500 uppercase font-extrabold tracking-widest mb-3 border-b border-gray-100 pb-2">
-                  Line Impact
-                </p>
-                <div className="flex justify-between mb-2">
-                  <span className="text-sm font-extrabold text-gray-600 uppercase tracking-wider">
-                    Debit:
-                  </span>
-                  <span className="text-sm font-mono font-bold text-blue-600">
-                    {formatCurrency(selectedTx.debit)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-sm font-extrabold text-gray-600 uppercase tracking-wider">
-                    Credit:
-                  </span>
-                  <span className="text-sm font-mono font-bold text-red-500">
-                    {formatCurrency(selectedTx.credit)}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 pt-5 border-t border-gray-100 flex justify-between items-center min-h-[40px]">
-              <div className="flex-1 mr-4">
-                {(!selectedTx.status || selectedTx.status === 'ACTIVE') && !showVoidInput && (
-                  <button
-                    onClick={() => setShowVoidInput(true)}
-                    className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200 rounded-md text-xs font-bold transition-colors cursor-pointer uppercase tracking-wider shadow-sm"
-                  >
-                    ⚠️ Request Void
-                  </button>
-                )}
-                {showVoidInput && (
-                  <div className="flex space-x-2">
-                    <input
-                      type="text"
-                      autoFocus
-                      placeholder="Reason..."
-                      value={voidReason}
-                      onChange={(e) => setVoidReason(e.target.value)}
-                      className="flex-1 bg-[#FBF8F8] border border-red-200 rounded px-3 py-1.5 text-xs text-gray-800 font-medium outline-none focus:border-red-400 focus:ring-1 focus:ring-red-100"
-                    />
-                    <button
-                      onClick={submitVoidRequest}
-                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded text-xs font-bold cursor-pointer shadow-sm"
-                    >
-                      Submit
-                    </button>
-                    <button
-                      onClick={() => setShowVoidInput(false)}
-                      className="bg-white hover:bg-gray-50 border border-gray-300 text-gray-600 px-3 py-1.5 rounded text-xs font-bold cursor-pointer shadow-sm"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-              </div>
-              {!showVoidInput && (
-                <button
-                  onClick={() => setSelectedTx(null)}
-                  className="px-6 py-2.5 bg-[#FBF8F8] border border-[#B0DCDA] hover:bg-gray-100 text-gray-600 rounded-md font-bold transition-colors text-sm cursor-pointer shadow-sm"
-                >
-                  Close
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <JournalEntryModal
+          entryId={selectedTx.entryId || selectedTx.id}
+          referenceNo={selectedTx.referenceNo}
+          onClose={() => {
+            setSelectedTx(null)
+            setShowVoidInput(false)
+          }}
+          onVoidSuccess={() => {
+            if (selectedAccountId) fetchSingleLedger(selectedAccountId)
+            else fetchFullReport()
+          }}
+        />
       )}
     </div>
   )
