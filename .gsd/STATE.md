@@ -1,14 +1,23 @@
-﻿# Project State
+# Project State
 
-> **Last Updated**: 2026-09-30
+> **Last Updated**: 2026-10-02
 
 ## Current Position
-- **Milestone**: v1.0 — DOLE-Compliant HR & Payroll System — COMPLETE 🎉
-- **All Phases**: Phase 1, Phase 2, Phase 3, Phase 4 all Verified ✅
-- **Status**: Production Ready
+- **Milestone**: v1.0 — DOLE & Statutory Compliance Enhancements
+- **Active Task**: Statutory contributions dynamic auto-triggering on hours input
+- **Status**: Stable & Verified (`npm run build` exits 0)
 
-## Project Summary
-- **Phase 1**: Database schema extended with 16 DOLE multiplier combination rates, allowances, loans, and statutory tables.
-- **Phase 2**: Full Gross-to-Net computation engine with SSS (15% split/WISP), PhilHealth (5% split), Pag-IBIG Circular 460, BIR TRAIN Law graduated tax brackets, and attendance demerit formulas.
-- **Phase 3**: Overhauled interactive PayrollView with 5-tab workspace, 16-column DOLE overtime & night diff grid, dynamic rate settings editor modal, and DTR CSV import.
-- **Phase 4**: Headless payslip PDF generator (single & batch), automated GL journal entry auto-posting with strict debits/credits balance, and period lock protection with bcrypt manager override PIN.
+## Context Health: Snapshot
+- **Warning Indicators**: None active (no 3-strike failures, no circular loops, build passing cleanly).
+- **Recent Completed Items**:
+  1. Updated SSS, PhilHealth (5%), Pag-IBIG (₱200 cap), and BIR TRAIN withholding calculations to 2026 standards.
+  2. Fixed Prisma `systemSetting.update` validation crash.
+  3. Added Excel-like editable grid and modal for SSS contribution brackets.
+  4. Enabled toggling of statutory rate deductions.
+  5. Fixed statutory deductions (SSS, PhilHealth, Pag-IBIG, Tax) to dynamically auto-trigger once hours/earnings are input, staying at 0 when no hours are worked.
+- **Files Modified**:
+  - `src/renderer/src/components/payroll/PayrollGridTab.tsx`: Dynamic deduction triggering based on active hours/earnings.
+  - `src/main/services/payroll.service.ts`: Whitelisted schema fields on system setting updates.
+  - `src/renderer/src/components/payroll/DtrImportTab.tsx`: Range filtering and accurate hours mapping.
+  - `src/renderer/src/utils/statutory-rates.ts`: 2026 statutory rates and formulas.
+- **Next Steps**: User acceptance / review on payroll grid interaction.

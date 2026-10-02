@@ -182,7 +182,7 @@ export function calculateSSSContribution(monthlySalary: number): SSSContribution
   const wisp_ee = wisp_msc * 0.05;
   const wisp_er = wisp_msc * 0.10;
   
-  const ec = msc >= 20000 ? 30 : 10;
+  const ec = msc >= 15000 ? 30 : 10;
   
   const total_ee = regular_ee + wisp_ee;
   const total_er = regular_er + wisp_er + ec;

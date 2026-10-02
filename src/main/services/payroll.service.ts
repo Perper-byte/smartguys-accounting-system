@@ -154,15 +154,48 @@ export const PayrollService = {
 
   async updatePayrollSettings(multipliers: Partial<Record<string, number>>) {
     try {
+      const allowedKeys = new Set([
+        'regular_ot_rate',
+        'regular_night_rate',
+        'regular_night_ot_rate',
+        'rest_day_rate',
+        'rest_day_ot_rate',
+        'rest_day_night_rate',
+        'rest_day_night_ot_rate',
+        'special_holiday_rate',
+        'special_holiday_ot_rate',
+        'special_holiday_night_rate',
+        'special_holiday_night_ot_rate',
+        'special_holiday_rest_day_rate',
+        'special_holiday_rest_day_ot_rate',
+        'special_holiday_rest_day_night_rate',
+        'special_holiday_rest_day_night_ot_rate',
+        'legal_holiday_rate',
+        'lock_date',
+        'auto_lock_day',
+        'override_pin'
+      ]);
+
+      const filteredData: Record<string, any> = {};
+      for (const [k, v] of Object.entries(multipliers)) {
+        if (allowedKeys.has(k) && v !== undefined) {
+          filteredData[k] = v;
+        }
+      }
+
+      if (Object.keys(filteredData).length === 0) {
+        return { success: true };
+      }
+
       const settings = await prisma.systemSetting.findFirst();
       if (!settings) {
         await prisma.systemSetting.create({
-          data: multipliers as any
+          data: filteredData as any
         });
       } else {
         await prisma.systemSetting.update({
           where: { id: settings.id },
-          data: multipliers as any
+          data: filteredData as any
         });
       }
       return { success: true };
@@ -320,6 +353,7 @@ export const PayrollService = {
     const requiredAccounts = [
       { code: '5100', name: 'Salaries and Wages Expense', type_id: 'type-expense' },
       { code: '5110', name: 'Employer Statutory Contributions Expense', type_id: 'type-expense' },
+      { code: '5120', name: 'Allowances Expense', type_id: 'type-expense' },
       { code: '2040', name: 'Salaries / Net Payroll Payable', type_id: 'type-liability' },
       { code: '2041', name: 'SSS & EC Premium Payable', type_id: 'type-liability' },
       { code: '2042', name: 'PhilHealth Premium Payable', type_id: 'type-liability' },
@@ -352,6 +386,7 @@ export const PayrollService = {
         await PayrollService.ensurePayrollAccounts(tx)
 
         let totalGross = 0
+        let totalAllowances = 0
         let totalSSSEe = 0
         let totalPhilhealthEe = 0
         let totalPagibigEe = 0
@@ -364,6 +399,7 @@ export const PayrollService = {
 
         for (const emp of data.employees) {
           totalGross += Number(emp.gross_pay || 0)
+          totalAllowances += Number(emp.other_earnings || emp.otherEarnings || emp.allowances || 0)
           totalSSSEe += Number(emp.sss || 0)
           totalPhilhealthEe += Number(emp.philhealth || 0)
           totalPagibigEe += Number(emp.pagibig || 0)
@@ -371,7 +407,8 @@ export const PayrollService = {
           totalPhilhealthEr += Number(emp.philhealth_er || 0)
           totalPagibigEr += Number(emp.pagibig_er || 0)
           totalTax += Number(emp.tax_withheld || 0)
-          totalLoanDeductions += Number(emp.cash_advance || 0) + Number(emp.other_deductions || 0) + Number(emp.license_fee || 0)
+          // Account 1210 represents employee advances/loans only. Do NOT treat absences as loan repayments.
+          totalLoanDeductions += Number(emp.cash_advance || 0) + Number(emp.license_fee || 0)
           totalNet += Number(emp.net_pay || 0)
 
           if (emp.processedLoans) {
@@ -396,13 +433,18 @@ export const PayrollService = {
         // 1. DEBIT: Salaries and Wages Expense (5100)
         lines.push({ account_id: '5100', debit: totalGross, credit: 0 })
 
-        // 2. DEBIT: Employer Statutory Contributions Expense (5110)
+        // 2. DEBIT: Allowances Expense (5120)
+        if (totalAllowances > 0) {
+          lines.push({ account_id: '5120', debit: totalAllowances, credit: 0 })
+        }
+
+        // 3. DEBIT: Employer Statutory Contributions Expense (5110)
         const totalErStatutory = totalSSSEr + totalPhilhealthEr + totalPagibigEr
         if (totalErStatutory > 0) {
           lines.push({ account_id: '5110', debit: totalErStatutory, credit: 0 })
         }
 
-        // 3. CREDIT: Salaries / Net Payroll Payable (2040)
+        // 4. CREDIT: Salaries / Net Payroll Payable (2040)
         if (totalNet > 0) {
           lines.push({ account_id: '2040', debit: 0, credit: totalNet })
         }

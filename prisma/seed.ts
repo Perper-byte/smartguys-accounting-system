@@ -83,7 +83,8 @@ async function main() {
     { code: '5080', name: 'Transportation & Delivery Expense', type_id: 'type-expense' },
     { code: '5090', name: 'Miscellaneous Expense', type_id: 'type-expense' },
     { code: '5100', name: 'Salaries and Wages Expense', type_id: 'type-expense' },
-    { code: '5110', name: 'Employer Statutory Contributions Expense', type_id: 'type-expense' }
+    { code: '5110', name: 'Employer Statutory Contributions Expense', type_id: 'type-expense' },
+    { code: '5120', name: 'Allowances Expense', type_id: 'type-expense' }
   ]
   for (const acc of accounts) {
     await prisma.account.upsert({ where: { code: acc.code }, update: { name: acc.name }, create: acc })

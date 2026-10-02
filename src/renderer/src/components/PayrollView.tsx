@@ -90,10 +90,11 @@ export function PayrollView({ userId }: { userId: string }) {
   }
 
   useEffect(() => {
-    if (view === 'GRID') {
-      fetchEmployees()
-      fetchNextSeq()
-    }
+    fetchEmployees()
+    fetchNextSeq()
+  }, [])
+
+  useEffect(() => {
     if (view === 'DIRECTORY') fetchEmployees()
     if (view === 'HISTORY') fetchHistory()
   }, [view])
@@ -326,7 +327,8 @@ export function PayrollView({ userId }: { userId: string }) {
         {/* ========================================== */}
         {/* RUN PAYROLL TAB: CLINIC EXCEL SPREADSHEET */}
         {/* ========================================== */}
-        {view === 'GRID' && (
+        {/* Keep PayrollGridTab mounted in DOM so working hours and inputs are NEVER wiped when switching tabs */}
+        <div className={view === 'GRID' ? 'flex-1 flex flex-col min-h-0' : 'hidden'}>
           <PayrollGridTab
             employees={employees}
             userId={userId}
@@ -334,15 +336,15 @@ export function PayrollView({ userId }: { userId: string }) {
             dtrUpdates={dtrAppliedUpdates || undefined}
             onClearDtr={() => setDtrAppliedUpdates(null)}
           />
-        )}
+        </div>
 
-         {/* SETTINGS TAB */}
+        {/* SETTINGS TAB */}
         {view === 'SETTINGS' && <PayrollSettingsTab />}
 
-         {/* IMPORT TAB */}
+        {/* IMPORT TAB */}
         {view === 'IMPORT' && <DtrImportTab employees={employees} onApply={handleImportApply} />}
 
-         {/* HISTORY TAB */}
+        {/* HISTORY TAB */}
         {view === 'HISTORY' && <PayrollHistoryTab payrollHistory={payrollHistory} />}
 
         {/* DIRECTORY TAB (Overhauled UI)     */}

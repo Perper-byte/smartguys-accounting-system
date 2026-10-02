@@ -8,87 +8,146 @@ import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
 function buildPayslipHTML(payslip: any): string {
+  const emp = payslip.employee || {}
+  const monthlySalary = emp.monthly_salary ? Number(emp.monthly_salary) : 0
+  const semiMonthlyRate = monthlySalary > 0 ? monthlySalary / 2 : 0
+  const dailyRate = monthlySalary > 0 ? monthlySalary / 26 : 0
+  const hourlyRate = dailyRate > 0 ? dailyRate / 8 : 0
+  const empIdFormatted = emp.id ? `EMP-${String(emp.id).padStart(4, '0')}` : '—'
+  const payDateFormatted = new Date(payslip.date).toLocaleDateString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric'
+  })
+
+  const fmt = (num: any) =>
+    `₱ ${Number(num || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+
+  const totalDeductionsWithTax = Number(payslip.total_deductions || 0) + Number(payslip.tax_withheld || 0)
+
   return `
-    <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; color: #333;">
-      <h2 style="text-align: center; margin-bottom: 5px;">SmartGuys Community Healthcare Inc.</h2>
-      <h3 style="text-align: center; margin-top: 0; color: #666;">Payslip</h3>
-      
-      <div style="display: flex; justify-content: space-between; margin-top: 30px; margin-bottom: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; padding: 30px; max-width: 780px; margin: 0 auto; color: #1e293b; font-size: 11px; line-height: 1.4;">
+      <!-- CLINIC HEADER -->
+      <div style="border-bottom: 2px solid #1B9387; padding-bottom: 12px; margin-bottom: 16px; display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
-          <strong>Employee:</strong> ${payslip.employee.first_name} ${payslip.employee.last_name}<br>
-          <strong>Position:</strong> ${payslip.employee.position}<br>
-          <strong>Reference No:</strong> ${payslip.reference_no}
+          <h2 style="font-size: 16px; font-weight: 900; margin: 0; color: #0f172a; letter-spacing: -0.2px;">SMARTGUYS CLINIC & COMMUNITY HEALTHCARE</h2>
+          <p style="font-size: 10px; color: #64748b; margin: 3px 0 0 0; font-weight: 500;">Official Employee Compensation & Payroll Voucher</p>
         </div>
         <div style="text-align: right;">
-          <strong>Date:</strong> ${new Date(payslip.date).toISOString().split('T')[0]}<br>
+          <span style="display: inline-block; background-color: #E9FAFA; border: 1px solid #B0DCDA; color: #1B9387; font-weight: 900; font-size: 10px; padding: 3px 8px; border-radius: 4px; font-family: monospace;">${payslip.reference_no}</span>
+          <p style="font-size: 10px; color: #64748b; margin: 4px 0 0 0; font-family: monospace;">Pay Date: ${payDateFormatted}</p>
         </div>
       </div>
 
-      <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+      <!-- EMPLOYEE METADATA PROFILE -->
+      <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 8px;">
+          <tr>
+            <td style="width: 40%; vertical-align: top;">
+              <span style="font-size: 8px; font-weight: 800; text-transform: uppercase; color: #94a3b8; display: block; letter-spacing: 0.5px;">Employee Name</span>
+              <strong style="font-size: 13px; color: #0f172a;">${emp.first_name || ''} ${emp.last_name || ''}</strong>
+            </td>
+            <td style="width: 35%; vertical-align: top;">
+              <span style="font-size: 8px; font-weight: 800; text-transform: uppercase; color: #94a3b8; display: block; letter-spacing: 0.5px;">Position / Designation</span>
+              <strong style="font-size: 12px; color: #1B9387;">${emp.position || 'Staff'}</strong>
+            </td>
+            <td style="width: 25%; vertical-align: top; text-align: right;">
+              <span style="font-size: 8px; font-weight: 800; text-transform: uppercase; color: #94a3b8; display: block; letter-spacing: 0.5px;">Employee ID</span>
+              <strong style="font-family: monospace; font-size: 11px; color: #1e293b;">${empIdFormatted}</strong>
+            </td>
+          </tr>
+        </table>
+
+        <!-- STATUTORY IDS -->
+        <table style="width: 100%; border-collapse: collapse; border-top: 1px solid #e2e8f0; border-bottom: 1px solid #e2e8f0; padding-top: 6px; padding-bottom: 6px; margin-bottom: 8px; font-family: monospace; font-size: 9.5px;">
+          <tr>
+            <td style="width: 25%; padding: 4px 0;"><span style="color: #94a3b8;">TIN:</span> <strong>${emp.tin || '—'}</strong></td>
+            <td style="width: 25%; padding: 4px 0;"><span style="color: #94a3b8;">SSS:</span> <strong>${emp.sss_no || '—'}</strong></td>
+            <td style="width: 25%; padding: 4px 0;"><span style="color: #94a3b8;">PhilHealth:</span> <strong>${emp.philhealth_no || '—'}</strong></td>
+            <td style="width: 25%; padding: 4px 0; text-align: right;"><span style="color: #94a3b8;">Pag-IBIG:</span> <strong>${emp.pagibig_no || '—'}</strong></td>
+          </tr>
+        </table>
+
+        <!-- RATES BASIS -->
+        <table style="width: 100%; border-collapse: collapse; font-family: monospace; font-size: 9.5px;">
+          <tr>
+            <td style="width: 25%;"><span style="color: #94a3b8;">Monthly:</span> <strong>${fmt(monthlySalary)}</strong></td>
+            <td style="width: 25%;"><span style="color: #94a3b8;">Semi-Mo:</span> <strong>${fmt(semiMonthlyRate)}</strong></td>
+            <td style="width: 25%;"><span style="color: #94a3b8;">Daily (26d):</span> <strong>${fmt(dailyRate)}</strong></td>
+            <td style="width: 25%; text-align: right;"><span style="color: #94a3b8;">Hourly:</span> <strong>${fmt(hourlyRate)}</strong></td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- ITEMIZED TABLES: EARNINGS VS DEDUCTIONS -->
+      <table style="width: 100%; border-collapse: separate; border-spacing: 12px 0; margin-left: -12px; margin-right: -12px; margin-bottom: 16px;">
         <tr>
-          <td style="width: 50%; vertical-align: top; padding-right: 10px;">
-            <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">Earnings</h4>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-              <span>Base Pay</span>
-              <span>₱ ${Number(payslip.base_pay).toFixed(2)}</span>
+          <!-- EARNINGS -->
+          <td style="width: 50%; vertical-align: top; border: 1px solid #dbeafe; border-radius: 8px; padding: 12px; background-color: #ffffff;">
+            <div style="border-bottom: 1px solid #bfdbfe; padding-bottom: 6px; margin-bottom: 8px; display: flex; justify-content: space-between;">
+              <span style="font-weight: 900; text-transform: uppercase; color: #1d4ed8; font-size: 9.5px; letter-spacing: 0.5px;">Earnings & Additions</span>
+              <span style="background-color: #eff6ff; color: #1e40af; font-size: 8.5px; font-weight: 800; padding: 1px 4px; border-radius: 3px;">CREDIT</span>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-              <span>Overtime</span>
-              <span>₱ ${Number(payslip.overtime).toFixed(2)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-              <span>Night Differential</span>
-              <span>₱ ${Number(payslip.night_diff).toFixed(2)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-              <span>Other Earnings</span>
-              <span>₱ ${Number(payslip.other_earnings).toFixed(2)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 10px; border-top: 1px solid #eee; padding-top: 5px;">
-              <span>Gross Pay</span>
-              <span>₱ ${Number(payslip.gross_pay).toFixed(2)}</span>
-            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
+              <tr><td style="padding: 3px 0; color: #475569;">Basic Semi-Monthly Pay</td><td style="text-align: right; font-family: monospace; font-weight: bold; color: #0f172a;">${fmt(payslip.base_pay)}</td></tr>
+              <tr><td style="padding: 3px 0; color: #475569;">Overtime Pay (DOLE)</td><td style="text-align: right; font-family: monospace; font-weight: bold; color: #0f172a;">${fmt(payslip.overtime)}</td></tr>
+              <tr><td style="padding: 3px 0; color: #475569;">Night Differential</td><td style="text-align: right; font-family: monospace; font-weight: bold; color: #0f172a;">${fmt(payslip.night_diff)}</td></tr>
+              <tr><td style="padding: 3px 0; color: #475569;">Other Allowances / Adj.</td><td style="text-align: right; font-family: monospace; font-weight: bold; color: #0f172a;">${fmt(payslip.other_earnings)}</td></tr>
+              <tr style="border-top: 2px solid #bfdbfe; font-weight: 900;">
+                <td style="padding: 8px 0 2px 0; color: #1e3a8a;">GROSS EARNINGS</td>
+                <td style="padding: 8px 0 2px 0; text-align: right; font-family: monospace; font-size: 11.5px; color: #1d4ed8;">${fmt(payslip.gross_pay)}</td>
+              </tr>
+            </table>
           </td>
-          
-          <td style="width: 50%; vertical-align: top; padding-left: 10px; border-left: 1px solid #eee;">
-            <h4 style="border-bottom: 1px solid #ccc; padding-bottom: 5px; margin-bottom: 10px;">Deductions</h4>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-              <span>SSS</span>
-              <span>₱ ${Number(payslip.sss).toFixed(2)}</span>
+
+          <!-- DEDUCTIONS -->
+          <td style="width: 50%; vertical-align: top; border: 1px solid #fed7aa; border-radius: 8px; padding: 12px; background-color: #ffffff;">
+            <div style="border-bottom: 1px solid #fdba74; padding-bottom: 6px; margin-bottom: 8px; display: flex; justify-content: space-between;">
+              <span style="font-weight: 900; text-transform: uppercase; color: #c2410c; font-size: 9.5px; letter-spacing: 0.5px;">Itemized Deductions</span>
+              <span style="background-color: #fff7ed; color: #9a3412; font-size: 8.5px; font-weight: 800; padding: 1px 4px; border-radius: 3px;">DEBIT</span>
             </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-              <span>PhilHealth</span>
-              <span>₱ ${Number(payslip.philhealth).toFixed(2)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-              <span>Pag-IBIG</span>
-              <span>₱ ${Number(payslip.pagibig).toFixed(2)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-              <span>Cash Advance / Loans</span>
-              <span>₱ ${Number(payslip.cash_advance).toFixed(2)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
-              <span>Other Deductions</span>
-              <span>₱ ${Number(payslip.other_deductions).toFixed(2)}</span>
-            </div>
-            <div style="display: flex; justify-content: space-between; font-weight: bold; margin-top: 10px; border-top: 1px solid #eee; padding-top: 5px;">
-              <span>Total Deductions</span>
-              <span>₱ ${Number(payslip.total_deductions).toFixed(2)}</span>
-            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 10.5px;">
+              <tr><td style="padding: 2px 0; color: #475569;">SSS Contribution (EE)</td><td style="text-align: right; font-family: monospace; font-weight: bold; color: #0f172a;">${fmt(payslip.sss)}</td></tr>
+              <tr><td style="padding: 2px 0; color: #475569;">PhilHealth (EE)</td><td style="text-align: right; font-family: monospace; font-weight: bold; color: #0f172a;">${fmt(payslip.philhealth)}</td></tr>
+              <tr><td style="padding: 2px 0; color: #475569;">Pag-IBIG / HDMF (EE)</td><td style="text-align: right; font-family: monospace; font-weight: bold; color: #0f172a;">${fmt(payslip.pagibig)}</td></tr>
+              <tr><td style="padding: 2px 0; color: #475569;">Cash Advance / Vale</td><td style="text-align: right; font-family: monospace; font-weight: bold; color: #0f172a;">${fmt(payslip.cash_advance)}</td></tr>
+              <tr><td style="padding: 2px 0; color: #475569;">Professional License Fee</td><td style="text-align: right; font-family: monospace; font-weight: bold; color: #0f172a;">${fmt(payslip.license_fee)}</td></tr>
+              <tr><td style="padding: 2px 0; color: #475569;">Other Demerits / Deductions</td><td style="text-align: right; font-family: monospace; font-weight: bold; color: #0f172a;">${fmt(payslip.other_deductions)}</td></tr>
+              <tr style="color: #dc2626; font-weight: bold;"><td style="padding: 2px 0;">BIR Withholding Tax</td><td style="text-align: right; font-family: monospace;">${fmt(payslip.tax_withheld)}</td></tr>
+              <tr style="border-top: 2px solid #fdba74; font-weight: 900;">
+                <td style="padding: 8px 0 2px 0; color: #7c2d12;">TOTAL DEDUCTIONS</td>
+                <td style="padding: 8px 0 2px 0; text-align: right; font-family: monospace; font-size: 11.5px; color: #c2410c;">${fmt(totalDeductionsWithTax)}</td>
+              </tr>
+            </table>
           </td>
         </tr>
       </table>
 
-      <div style="display: flex; justify-content: space-between; margin-bottom: 20px; font-weight: bold;">
-        <span>Withholding Tax</span>
-        <span>₱ ${Number(payslip.tax_withheld).toFixed(2)}</span>
+      <!-- NET TAKE HOME PAY -->
+      <div style="background-color: #E9FAFA; border: 2px solid #1B9387; border-radius: 8px; padding: 14px 18px; margin-bottom: 24px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <span style="font-size: 10px; font-weight: 900; text-transform: uppercase; color: #1B9387; letter-spacing: 0.5px; display: block;">Net Take-Home Pay</span>
+          <span style="font-size: 9px; color: #64748b;">Credited to Employee Payroll Account</span>
+        </div>
+        <div style="text-align: right;">
+          <span style="font-size: 20px; font-weight: 900; font-family: monospace; color: #1B9387; letter-spacing: -0.5px;">${fmt(payslip.net_pay)}</span>
+        </div>
       </div>
 
-      <div style="display: flex; justify-content: space-between; padding: 15px; background-color: #f8f9fa; border: 1px solid #ddd; font-weight: bold; font-size: 1.2em;">
-        <span>NET PAY</span>
-        <span>₱ ${Number(payslip.net_pay).toFixed(2)}</span>
-      </div>
+      <!-- SIGNATURE SECTION -->
+      <table style="width: 100%; border-collapse: collapse; margin-top: 20px; border-top: 1px solid #cbd5e1; padding-top: 15px;">
+        <tr>
+          <td style="width: 45%; vertical-align: bottom; text-align: center; padding-top: 35px;">
+            <div style="border-bottom: 1px solid #475569; width: 85%; margin: 0 auto 4px auto;"></div>
+            <span style="font-size: 8.5px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Certified Correct By (HR / Payroll Officer)</span>
+          </td>
+          <td style="width: 10%;"></td>
+          <td style="width: 45%; vertical-align: bottom; text-align: center; padding-top: 35px;">
+            <div style="border-bottom: 1px solid #475569; width: 85%; margin: 0 auto 4px auto;"></div>
+            <span style="font-size: 8.5px; font-weight: bold; text-transform: uppercase; color: #475569; letter-spacing: 0.5px;">Received & Acknowledged By Employee</span>
+          </td>
+        </tr>
+      </table>
     </div>
   `
 }

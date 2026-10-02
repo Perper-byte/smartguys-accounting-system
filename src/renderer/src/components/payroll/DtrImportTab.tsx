@@ -37,6 +37,9 @@ export function DtrImportTab({
   const [error, setError] = useState<string | null>(null)
   const [successMsg, setSuccessMsg] = useState<string | null>(null)
   const [fileName, setFileName] = useState<string | null>(null)
+  const [filterStartDate, setFilterStartDate] = useState<string>('')
+  const [filterEndDate, setFilterEndDate] = useState<string>('')
+  const [rawData, setRawData] = useState<any[] | null>(null)
 
   useEffect(() => {
     const handleConfigUpdate = (e: any) => {
@@ -90,7 +93,8 @@ export function DtrImportTab({
           setError('File appears to be empty or has no readable table data.')
           return
         }
-        processData(data)
+        setRawData(data)
+        processData(data, filterStartDate, filterEndDate)
       } catch (err: any) {
         setError('Failed to parse file: ' + (err?.message || 'Invalid format.'))
       }
@@ -98,7 +102,7 @@ export function DtrImportTab({
     reader.readAsBinaryString(file)
   }
 
-  const processData = (data: any[]) => {
+  const processData = (data: any[], startFilter?: string, endFilter?: string) => {
     const mapping = templateConfig.columnMapping
     const firstRow = data[0] || {}
     const keys = Object.keys(firstRow).map((k) => k.toLowerCase())
@@ -180,9 +184,15 @@ export function DtrImportTab({
       const timeOutStr = getRowVal(row, mapping.timeOut, ['time out', 'time_out', 'out', 'clock out', 'out time'])
       const shiftType = getRowVal(row, mapping.shiftType, ['shift', 'shift type', 'shifttype']) || 'REGULAR'
 
-      if (!employeeLogs[cleanName]) employeeLogs[cleanName] = []
+      const sDate = startFilter !== undefined ? startFilter : filterStartDate
+      const eDate = endFilter !== undefined ? endFilter : filterEndDate
 
       const date = dateStr ? new Date(dateStr) : new Date()
+      if (!isNaN(date.getTime())) {
+        if (sDate && date < new Date(sDate + 'T00:00:00')) return
+        if (eDate && date > new Date(eDate + 'T23:59:59')) return
+      }
+
       let timeIn: Date | null = null
       let timeOut: Date | null = null
 
@@ -198,6 +208,8 @@ export function DtrImportTab({
           timeOut.setDate(timeOut.getDate() + 1) // next day shift
         }
       }
+
+      if (!employeeLogs[cleanName]) employeeLogs[cleanName] = []
 
       employeeLogs[cleanName].push({
         date,
@@ -407,6 +419,57 @@ export function DtrImportTab({
           >
             Customize Template Columns &rarr;
           </button>
+        </div>
+
+        {/* OPTIONAL CUTOFF DATE RANGE FILTER */}
+        <div className="mb-4 p-4 bg-sky-50/60 border border-sky-200 rounded-lg flex flex-wrap items-center justify-between gap-3 text-xs">
+          <div>
+            <div className="font-bold text-gray-800">Cutoff Date Filter (Optional)</div>
+            <p className="text-gray-500 text-[11px]">
+              Filter out punches outside this pay period so past/future records do not inflate hours.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-600 font-medium text-[11px]">From:</span>
+              <input
+                type="date"
+                value={filterStartDate}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setFilterStartDate(val)
+                  if (rawData) processData(rawData, val, filterEndDate)
+                }}
+                className="px-2 py-1 text-xs bg-white border border-gray-300 rounded focus:ring-1 focus:ring-[#1B9387] outline-none"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-600 font-medium text-[11px]">To:</span>
+              <input
+                type="date"
+                value={filterEndDate}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setFilterEndDate(val)
+                  if (rawData) processData(rawData, filterStartDate, val)
+                }}
+                className="px-2 py-1 text-xs bg-white border border-gray-300 rounded focus:ring-1 focus:ring-[#1B9387] outline-none"
+              />
+            </div>
+            {(filterStartDate || filterEndDate) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFilterStartDate('')
+                  setFilterEndDate('')
+                  if (rawData) processData(rawData, '', '')
+                }}
+                className="px-2 py-1 text-[11px] font-bold text-gray-600 hover:text-red-600 hover:bg-gray-100 rounded transition"
+              >
+                Clear
+              </button>
+            )}
+          </div>
         </div>
 
         {/* FILE DROPZONE */}

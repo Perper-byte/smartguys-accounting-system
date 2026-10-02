@@ -31,6 +31,14 @@ import {
   savePayrollDraft,
   deletePayrollDraft
 } from '../../utils/payroll-periods'
+import {
+  calculateTRAINWithholdingTax,
+  getStatutoryEnabledConfig,
+  StatutoryEnabledConfig,
+  calculateSSS2026,
+  calculatePhilHealth2026,
+  calculatePagIbig2026
+} from '../../utils/statutory-rates'
 
 export interface DOLEHourRates {
   reg: number
@@ -78,15 +86,23 @@ export function PayrollGridTab({
   const [description, setDescription] = useState(initialDetails.defaultMemo)
   const [loading, setLoading] = useState(false)
 
+  // Check for existing draft for the initial period
+  const initialDraft = findDraftForCutoff(now.getFullYear(), now.getMonth() + 1, initialCutoff)
+
   // Drafts management
   const [draftsList, setDraftsList] = useState<PayrollDraft[]>(getPayrollDrafts())
   const [showDraftsModal, setShowDraftsModal] = useState(false)
-  const [draftSavedStatus, setDraftSavedStatus] = useState<string | null>(null)
+  const [draftSavedStatus, setDraftSavedStatus] = useState<string | null>(
+    initialDraft
+      ? `Draft loaded (${new Date(initialDraft.savedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})`
+      : null
+  )
   const autoSaveTimerRef = useRef<any>(null)
 
   // Active DOLE rates & multipliers
   const [activeRateKeys, setActiveRateKeys] = useState<string[]>(getActiveDoleRateKeys())
   const [doleMultipliers, setDoleMultipliers] = useState<Record<string, number>>(getDoleMultipliers())
+  const [statutoryEnabled, setStatutoryEnabled] = useState<StatutoryEnabledConfig>(getStatutoryEnabledConfig())
 
   // Period lock management
   const [lockDate, setLockDate] = useState<string | null>(null)
@@ -97,7 +113,7 @@ export function PayrollGridTab({
 
   // Employee row in-cell state
   // key: emp.id -> { hours: DOLEHourRates, absentDays: number, deductions: { sss, philhealth, hdmf, tax }, adjustments: { meal, license, adj, sil } }
-  const [rowInputs, setRowInputs] = useState<Record<number, any>>({})
+  const [rowInputs, setRowInputs] = useState<Record<number, any>>(initialDraft?.rowInputs || {})
   const [overrides, setOverrides] = useState<Record<number, Record<string, boolean>>>({})
 
   // Listen for DOLE settings updates from Settings tab
@@ -116,10 +132,18 @@ export function PayrollGridTab({
     }
     window.addEventListener('smartguys:payroll-drafts-updated', handleDraftsUpdate)
 
+    const handleStatutoryUpdate = () => {
+      setStatutoryEnabled(getStatutoryEnabledConfig())
+      // Trigger state bump so calculatedRows re-runs with new statutory settings/brackets
+      setRowInputs((prev) => ({ ...prev }))
+    }
+    window.addEventListener('smartguys:statutory-rates-updated', handleStatutoryUpdate)
+
     return () => {
       window.removeEventListener('smartguys:dole-rates-updated', handleRatesUpdate)
       window.removeEventListener('smartguys:dole-multipliers-updated', handleMultUpdate)
       window.removeEventListener('smartguys:payroll-drafts-updated', handleDraftsUpdate)
+      window.removeEventListener('smartguys:statutory-rates-updated', handleStatutoryUpdate)
     }
   }, [])
 
@@ -216,7 +240,11 @@ export function PayrollGridTab({
       handleSaveDraft(false) // background autosave
     }, 2000)
     return () => {
-      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current)
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current)
+        // Immediately persist current state to draft storage
+        handleSaveDraft(false)
+      }
     }
   }, [rowInputs, date, description, refSequence, cutoffType, selectedYear, selectedMonth])
 
@@ -267,6 +295,16 @@ export function PayrollGridTab({
         const mealAllowance =
           emp.allowances?.reduce((sum: number, a: any) => sum + Number(a.amount || 0), 0) || 500
 
+        // Dynamic statutory deductions based on employee monthly salary & cutoff
+        const divisor = cutoffType === 'CUSTOM' ? 1 : 2
+        const sssCalc = calculateSSS2026(monthly)
+        const phCalc = calculatePhilHealth2026(monthly)
+        const piCalc = calculatePagIbig2026(monthly)
+
+        const defaultSss = statutoryEnabled.sss ? Math.round((sssCalc.totalEE / divisor) * 100) / 100 : 0
+        const defaultPh = statutoryEnabled.philhealth ? Math.round((phCalc.eeShare / divisor) * 100) / 100 : 0
+        const defaultHdmf = statutoryEnabled.pagibig ? Math.round((piCalc.eeShare / divisor) * 100) / 100 : 0
+
         newInputs[emp.id] = {
           monthlySalary: monthly,
           dailyRate,
@@ -291,9 +329,9 @@ export function PayrollGridTab({
           },
           absentDays: 0,
           deductions: {
-            sss: 500,
-            philhealth: 225,
-            hdmf: 100,
+            sss: 0,
+            philhealth: 0,
+            hdmf: 0,
             tax: 0
           },
           adjustments: {
@@ -308,7 +346,7 @@ export function PayrollGridTab({
     })
 
     if (changed) setRowInputs(newInputs)
-  }, [employees])
+  }, [employees, cutoffType, statutoryEnabled])
 
   // Apply DTR import updates if received
   const [dtrAppliedBanner, setDtrAppliedBanner] = useState<number | null>(null)
@@ -536,12 +574,60 @@ export function PayrollGridTab({
       const absentDeduction = Math.round(absentDays * dailyRate * 100) / 100
       const totalAfterAbsent = Math.round((grossPay - absentDeduction) * 100) / 100
 
+      // Total hours worked across all DOLE categories
+      const totalHoursWorked = Object.values(hours).reduce((sum, h) => sum + (Number(h) || 0), 0)
+      const hasHoursOrPay = totalHoursWorked > 0 || grossPay > 0
+
       // Deductions
       const ded = inp.deductions || {}
-      const sss = Number(ded.sss) || 0
-      const philhealth = Number(ded.philhealth) || 0
-      const hdmf = Number(ded.hdmf) || 0
-      const tax = Number(ded.tax) || 0
+      // Check if user has explicitly typed an override, or if enabled in statutory settings
+      const isSssOverridden = Boolean(overrides[emp.id]?.sss)
+      const isPhOverridden = Boolean(overrides[emp.id]?.philhealth)
+      const isHdmfOverridden = Boolean(overrides[emp.id]?.hdmf)
+
+      const divisor = cutoffType === 'CUSTOM' ? 1 : 2
+      const sssCalc = calculateSSS2026(monthly)
+      const phCalc = calculatePhilHealth2026(monthly)
+      const hdmfCalc = calculatePagIbig2026(monthly)
+
+      const sssComputed = hasHoursOrPay ? Math.round((sssCalc.totalEE / divisor) * 100) / 100 : 0
+      const phComputed = hasHoursOrPay ? Math.round((phCalc.eeShare / divisor) * 100) / 100 : 0
+      const hdmfComputed = hasHoursOrPay ? Math.round((hdmfCalc.eeShare / divisor) * 100) / 100 : 0
+
+      // Exact statutory employer shares (counterparts) for semi-monthly / monthly
+      const sssErComputed = hasHoursOrPay ? Math.round((sssCalc.totalER / divisor) * 100) / 100 : 0
+      const phErComputed = hasHoursOrPay ? Math.round((phCalc.erShare / divisor) * 100) / 100 : 0
+      const hdmfErComputed = hasHoursOrPay ? Math.round((hdmfCalc.erShare / divisor) * 100) / 100 : 0
+
+      const sss = !statutoryEnabled.sss
+        ? (isSssOverridden ? Number(ded.sss) || 0 : 0)
+        : (isSssOverridden ? Number(ded.sss) || 0 : (hasHoursOrPay ? sssComputed : (Number(ded.sss) || 0)))
+
+      const philhealth = !statutoryEnabled.philhealth
+        ? (isPhOverridden ? Number(ded.philhealth) || 0 : 0)
+        : (isPhOverridden ? Number(ded.philhealth) || 0 : (hasHoursOrPay ? phComputed : (Number(ded.philhealth) || 0)))
+
+      const hdmf = !statutoryEnabled.pagibig
+        ? (isHdmfOverridden ? Number(ded.hdmf) || 0 : 0)
+        : (isHdmfOverridden ? Number(ded.hdmf) || 0 : (hasHoursOrPay ? hdmfComputed : (Number(ded.hdmf) || 0)))
+
+      const sss_er = !statutoryEnabled.sss ? 0 : sssErComputed
+      const philhealth_er = !statutoryEnabled.philhealth ? 0 : phErComputed
+      const pagibig_er = !statutoryEnabled.pagibig ? 0 : hdmfErComputed
+
+      // Auto-compute BIR Withholding Tax unless manually overridden by user or disabled
+      const isTaxOverridden = Boolean(overrides[emp.id]?.tax)
+      let tax = Number(ded.tax) || 0
+      if (!isTaxOverridden) {
+        if (!statutoryEnabled.withholdingTax || !hasHoursOrPay) {
+          tax = 0
+        } else {
+          // Taxable income = Gross Earnings (after absent) - mandatory statutory contributions
+          const taxableIncome = Math.max(0, totalAfterAbsent - (sss + philhealth + hdmf))
+          const taxPeriod = cutoffType === 'CUSTOM' ? 'MONTHLY' : 'SEMI_MONTHLY'
+          tax = calculateTRAINWithholdingTax(taxableIncome, taxPeriod).totalTax
+        }
+      }
 
       const totalPrimaryDeductions = Math.round((sss + philhealth + hdmf + tax) * 100) / 100
       const netPrimaryDeductions = Math.round((totalAfterAbsent - totalPrimaryDeductions) * 100) / 100
@@ -571,7 +657,11 @@ export function PayrollGridTab({
         sss,
         philhealth,
         hdmf,
+        sss_er,
+        philhealth_er,
+        pagibig_er,
         tax,
+        isTaxOverridden,
         totalPrimaryDeductions,
         netPrimaryDeductions,
         totalNetDeductions,
@@ -582,7 +672,7 @@ export function PayrollGridTab({
         netTotal
       }
     })
-  }, [employees, rowInputs])
+  }, [employees, rowInputs, overrides, doleMultipliers, cutoffType, statutoryEnabled])
 
   // Summary Totals across all rows
   const summaryTotals = useMemo(() => {
@@ -874,21 +964,25 @@ export function PayrollGridTab({
       const api = (window as any).api || (window as any).electronAPI
       const payrollItems = calculatedRows.map((r) => ({
         id: r.emp.id,
-        basePay: r.grossPay,
-        gross: r.grossPay,
-        gross_pay: r.grossPay,
+        basePay: r.totalAfterAbsent,
+        gross: r.totalAfterAbsent,
+        gross_pay: r.totalAfterAbsent,
+        raw_gross_pay: r.grossPay,
+        absent_deduction: r.absentDeduction,
         sss: r.sss,
         philhealth: r.philhealth,
         pagibig: r.hdmf,
-        sss_er: r.sss * 1.5,
-        philhealth_er: r.philhealth,
-        pagibig_er: r.hdmf,
+        sss_er: r.sss_er,
+        philhealth_er: r.philhealth_er,
+        pagibig_er: r.pagibig_er,
         tax: r.tax,
         tax_withheld: r.tax,
         cash_advance: 0,
         license_fee: r.license,
-        other_deductions: r.absentDeduction,
+        other_deductions: 0,
         otherEarnings: r.meal + r.adjustmentVal + r.sil,
+        other_earnings: r.meal + r.adjustmentVal + r.sil,
+        allowances: r.meal + r.adjustmentVal + r.sil,
         net: r.netTotal,
         net_pay: r.netTotal,
         processedLoans: []
