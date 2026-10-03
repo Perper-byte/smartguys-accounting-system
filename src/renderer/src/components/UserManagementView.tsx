@@ -29,6 +29,26 @@ const MODULES = [
   { id: 'services', label: 'Services & Pricing' }
 ]
 
+// Default access mapping based on roles
+const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
+  CASHIER: [
+    'billing', 'collections', 'directory', 'history'
+  ],
+  ACCOUNTANT: [
+    'billing', 'collections', 'directory', 'disbursement', 'payouts', 'aging', 'aged-payables', 
+    'tracker', 'history', 'journal', 'adjusting', 'ledger', 'reconciliation', 'books', 
+    'statements', 'bir', 'coa', 'inventory', 'services'
+  ],
+  MANAGER: [
+    'billing', 'collections', 'directory', 'disbursement', 'payouts', 'aging', 'aged-payables', 
+    'tracker', 'history', 'payroll', 'journal', 'adjusting', 'ledger', 'reconciliation', 
+    'books', 'analytics', 'statements', 'bir', 'voids', 'coa', 'inventory', 'services'
+  ],
+  IT_PERSONNEL: [
+    'directory', 'audit', 'users', 'backup', 'services', 'inventory'
+  ]
+}
+
 // 🔥 FIXED: Component now accepts currentUser so it knows who is doing the actions
 export default function UserManagementView({ currentUser }: { currentUser?: any }) {
   const [users, setUsers] = useState<any[]>([])
@@ -53,10 +73,14 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
   } | null>(null)
   const [userToReset, setUserToReset] = useState<{ id: string; username: string } | null>(null)
   const [newPassword, setNewPassword] = useState('')
+  
+  // Expanded to remember the role and if they have custom permissions applied
   const [userToEditPerms, setUserToEditPerms] = useState<{
     id: string
     username: string
+    role: string
     perms: string[]
+    hasCustom: boolean
   } | null>(null)
 
   // Default to the current logged in user, fallback to 'SYSTEM' just in case
@@ -191,6 +215,14 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
     } else {
       setUserToEditPerms({ ...userToEditPerms, perms: [...current, moduleId] })
     }
+  }
+
+  const resetToRoleDefaults = () => {
+    if (!userToEditPerms) return
+    setUserToEditPerms({
+      ...userToEditPerms,
+      perms: [...(ROLE_DEFAULT_PERMISSIONS[userToEditPerms.role] || [])]
+    })
   }
 
   const filteredUsers = users.filter((u) =>
@@ -385,13 +417,19 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
                         </td>
                         <td className="p-4 text-right space-x-2">
                           <button
-                            onClick={() =>
+                            onClick={() => {
+                              const existingPerms = u.permissions && u.permissions.length > 0
+                                ? u.permissions
+                                : [...(ROLE_DEFAULT_PERMISSIONS[u.role] || [])]
+                                
                               setUserToEditPerms({
                                 id: u.id,
                                 username: u.username,
-                                perms: u.permissions || []
+                                role: u.role,
+                                perms: existingPerms,
+                                hasCustom: hasCustomPerms
                               })
-                            }
+                            }}
                             className="text-[10px] font-extrabold uppercase tracking-wider px-3 py-1.5 rounded-md transition cursor-pointer shadow-sm bg-white border border-gray-300 text-[#1B9387] hover:bg-[#E9FAFA]"
                           >
                             Access
@@ -424,14 +462,21 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
       {userToEditPerms && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-2xl p-8 w-full max-w-2xl max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
-            <div className="border-b border-gray-100 pb-4 mb-4 shrink-0">
-              <h3 className="text-xl font-extrabold text-gray-800 uppercase tracking-wide">
-                Custom Access: {userToEditPerms.username}
-              </h3>
-              <p className="text-sm text-gray-500 font-medium mt-1">
-                Check boxes to explicitly grant access. If you leave all boxes unchecked, the user
-                will revert to their default Role permissions.
-              </p>
+            <div className="border-b border-gray-100 pb-4 mb-4 shrink-0 flex justify-between items-start">
+              <div>
+                <h3 className="text-xl font-extrabold text-gray-800 uppercase tracking-wide">
+                  Custom Access: {userToEditPerms.username}
+                </h3>
+                <p className="text-sm text-gray-500 font-medium mt-1">
+                  Check boxes to explicitly grant access to specific modules.
+                </p>
+              </div>
+              <button 
+                onClick={resetToRoleDefaults}
+                className="text-[10px] font-extrabold uppercase tracking-wider bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 py-1.5 rounded-md transition shadow-sm border border-gray-300 cursor-pointer"
+              >
+                Reset to Default
+              </button>
             </div>
 
             <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
