@@ -467,18 +467,36 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('acknowledge-cashier-disbursement', async (e, entryId, userId, note) => {
     try {
-      return typeof (LedgerService as any).acknowledgeCashierDisbursement === 'function'
-        ? await (LedgerService as any).acknowledgeCashierDisbursement(entryId, userId, note)
-        : { success: false }
+      const result =
+        typeof (LedgerService as any).acknowledgeCashierDisbursement === 'function'
+          ? await (LedgerService as any).acknowledgeCashierDisbursement(entryId, userId, note)
+          : { success: false }
+      if (result && (result as any).success) {
+        await AuditService.logAction(
+          userId || 'SYSTEM',
+          'CASHIER DISBURSEMENT',
+          `Acknowledged voucher ID: ${entryId}${note ? ` (Note: ${note})` : ''}`
+        )
+      }
+      return result
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
   ipcMain.handle('update-disbursement-attachment', async (e, entryId, attachment) => {
     try {
-      return typeof (LedgerService as any).updateDisbursementAttachment === 'function'
-        ? await (LedgerService as any).updateDisbursementAttachment(entryId, attachment)
-        : { success: false }
+      const result =
+        typeof (LedgerService as any).updateDisbursementAttachment === 'function'
+          ? await (LedgerService as any).updateDisbursementAttachment(entryId, attachment)
+          : { success: false }
+      if (result && (result as any).success) {
+        await AuditService.logAction(
+          'SYSTEM',
+          'CASHIER DISBURSEMENT',
+          `Updated receipt attachment for voucher ID: ${entryId}`
+        )
+      }
+      return result
     } catch (err: any) {
       return { success: false, error: err.message }
     }
@@ -649,27 +667,42 @@ app.whenReady().then(() => {
   })
   ipcMain.handle('create-inventory-item', async (e, data) => {
     try {
-      return typeof InventoryService.createItem === 'function'
-        ? await InventoryService.createItem(data)
-        : { success: false }
+      const result =
+        typeof InventoryService.createItem === 'function'
+          ? await InventoryService.createItem(data)
+          : { success: false }
+      if (result && (result as any).success) {
+        await AuditService.logAction('SYSTEM', 'INVENTORY', `Created inventory item: ${data.code} - ${data.name}`)
+      }
+      return result
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
   ipcMain.handle('update-inventory-item', async (e, id, data) => {
     try {
-      return typeof InventoryService.updateItem === 'function'
-        ? await InventoryService.updateItem(id, data)
-        : { success: false }
+      const result =
+        typeof InventoryService.updateItem === 'function'
+          ? await InventoryService.updateItem(id, data)
+          : { success: false }
+      if (result && (result as any).success) {
+        await AuditService.logAction('SYSTEM', 'INVENTORY', `Updated inventory item ID: ${id} (${data.code} - ${data.name})`)
+      }
+      return result
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
   ipcMain.handle('delete-inventory-item', async (e, id) => {
     try {
-      return typeof InventoryService.deleteItem === 'function'
-        ? await InventoryService.deleteItem(id)
-        : { success: false }
+      const result =
+        typeof InventoryService.deleteItem === 'function'
+          ? await InventoryService.deleteItem(id)
+          : { success: false }
+      if (result && (result as any).success) {
+        await AuditService.logAction('SYSTEM', 'INVENTORY', `Deleted inventory item ID: ${id}`)
+      }
+      return result
     } catch (err: any) {
       return { success: false, error: err.message }
     }
@@ -881,6 +914,11 @@ app.whenReady().then(() => {
           pagibig_no: data.pagibig || null
         }
       })
+      await AuditService.logAction(
+        'SYSTEM',
+        'HR RECORD',
+        `Updated employee ID ${id}: ${data.firstName} ${data.lastName} (${data.position || 'Staff'}, Salary: ₱${Number(data.monthlySalary || 0).toLocaleString()})`
+      )
       return { success: true }
     } catch (error: any) {
       return { success: false, error: error.message }
@@ -1045,6 +1083,18 @@ app.whenReady().then(() => {
       return typeof TaxService.generate1601EQ === 'function'
         ? await TaxService.generate1601EQ(year, quarter)
         : { error: 'Backend function missing' }
+    } catch (err: any) {
+      return { error: err.message }
+    }
+  })
+  ipcMain.handle('tax:generate1601C', async (e, year, month) => {
+    try {
+      const result =
+        typeof TaxService.generate1601C === 'function'
+          ? await TaxService.generate1601C(year, month)
+          : { error: 'Backend function missing' }
+      await AuditService.logAction('SYSTEM', 'TAX COMPLIANCE', `Generated BIR Form 1601-C`)
+      return result
     } catch (err: any) {
       return { error: err.message }
     }

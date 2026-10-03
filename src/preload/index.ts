@@ -180,6 +180,8 @@ export const api = {
     ipcRenderer.invoke('tax:generate0619E', year, month),
   generate1601EQ: (year: number, quarter: number) =>
     ipcRenderer.invoke('tax:generate1601EQ', year, quarter),
+  generate1601C: (year: number, month: number) =>
+    ipcRenderer.invoke('tax:generate1601C', year, month),
 
   // Dashboard Analytics
   getTodayStats: () => ipcRenderer.invoke('get-today-stats'),

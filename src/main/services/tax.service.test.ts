@@ -59,4 +59,21 @@ describe('Sprint 4 - Week 1: BIR Tax Compliance Engine', () => {
       )
     }
   })
+
+  test('👥 Form 1601-C: Should calculate monthly compensation withholding tax breakdown', async () => {
+    const form1601C = await TaxService.generate1601C(currentYear, currentMonth)
+
+    expect(form1601C).toHaveProperty('totalGrossCompensation')
+    expect(form1601C).toHaveProperty('totalNonTaxableCompensation')
+    expect(form1601C).toHaveProperty('totalTaxableCompensation')
+    expect(form1601C).toHaveProperty('totalTaxRequiredWithheld')
+    expect(form1601C).toHaveProperty('employees')
+    expect(Array.isArray(form1601C.employees)).toBe(true)
+
+    // Taxable + Non-taxable must equal Gross
+    expect(form1601C.totalTaxableCompensation + form1601C.totalNonTaxableCompensation).toBeCloseTo(
+      form1601C.totalGrossCompensation,
+      1
+    )
+  })
 })

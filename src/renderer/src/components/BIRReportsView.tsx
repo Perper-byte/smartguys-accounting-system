@@ -16,8 +16,8 @@ export const BIRReportsView: React.FC = () => {
   const [loading, setLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
 
-  // 🔥 ADDED '0619E' to the view states
-  const [view, setView] = useState<'2550Q' | '0619E' | '1601EQ' | 'relief'>('2550Q')
+  // 🔥 ADDED '0619E' and '1601C' to the view states
+  const [view, setView] = useState<'2550Q' | '0619E' | '1601EQ' | '1601C' | 'relief'>('2550Q')
 
   const fetchTaxData = async () => {
     setLoading(true)
@@ -33,7 +33,15 @@ export const BIRReportsView: React.FC = () => {
         setTaxData(data)
         setReliefData(null)
       }
-      // 2. Quarterly EWT (1601-EQ / 1604-E)
+      // 2. Monthly Compensation Tax (1601-C)
+      else if (view === '1601C') {
+        if (!api?.generate1601C) throw new Error('Missing backend API for 1601-C.')
+        const data = await api.generate1601C(year, month)
+        if (data?.error) throw new Error(data.error)
+        setTaxData(data)
+        setReliefData(null)
+      }
+      // 3. Quarterly EWT (1601-EQ / 1604-E)
       else if (view === '1601EQ') {
         if (!api?.generate1601EQ) throw new Error('Missing backend API for 1601-EQ.')
         const data = await api.generate1601EQ(year, quarter)
@@ -41,7 +49,7 @@ export const BIRReportsView: React.FC = () => {
         setTaxData(data)
         setReliefData(null)
       }
-      // 3. Quarterly VAT & RELIEF (2550Q)
+      // 4. Quarterly VAT & RELIEF (2550Q)
       else {
         if (!api?.generate2550Q || !api?.generateRelief) {
           throw new Error('Tax service is unavailable.')
@@ -150,8 +158,8 @@ export const BIRReportsView: React.FC = () => {
               <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
                 Period
               </label>
-              {/* 🔥 DYNAMIC DROPDOWN: Shows Months for 0619-E, Quarters for everything else */}
-              {view === '0619E' ? (
+              {/* 🔥 DYNAMIC DROPDOWN: Shows Months for 0619-E and 1601-C, Quarters for everything else */}
+              {view === '0619E' || view === '1601C' ? (
                 <select
                   value={month}
                   onChange={(e) => setMonth(Number(e.target.value))}
@@ -205,6 +213,12 @@ export const BIRReportsView: React.FC = () => {
             className={`px-5 py-2 text-xs font-bold rounded-md transition uppercase tracking-wider cursor-pointer ${view === '1601EQ' ? 'bg-[#1B9387] text-white shadow-md' : 'text-gray-500 hover:text-[#1B9387] hover:bg-[#E9FAFA]'}`}
           >
             {quarter === 0 ? 'Form 1604-E (Annual EWT)' : 'Form 1601-EQ (Quarterly EWT)'}
+          </button>
+          <button
+            onClick={() => setView('1601C')}
+            className={`px-5 py-2 text-xs font-bold rounded-md transition uppercase tracking-wider cursor-pointer ${view === '1601C' ? 'bg-[#1B9387] text-white shadow-md' : 'text-gray-500 hover:text-[#1B9387] hover:bg-[#E9FAFA]'}`}
+          >
+            Form 1601-C (Compensation)
           </button>
           <button
             onClick={() => setView('relief')}
@@ -561,7 +575,132 @@ export const BIRReportsView: React.FC = () => {
         )}
 
         {/* ============================================================ */}
-        {/* 4. RELIEF / SLSP DAT FILE GENERATOR */}
+        {/* 4. FORM 1601-C VIEW (MONTHLY WITHHOLDING TAX - COMPENSATION) */}
+        {/* ============================================================ */}
+        {!loading && taxData && view === '1601C' && (
+          <div className="space-y-6 animate-in fade-in duration-300 flex-1 min-h-0 flex flex-col">
+            <div className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm shrink-0">
+              <h3 className="text-lg font-extrabold text-gray-800 mb-1">
+                Form 1601-C Summary (Compensation Withholding Tax)
+              </h3>
+              <p className="text-sm text-gray-500 font-medium mb-6">
+                Monthly remittance of taxes withheld on compensation for {getMonthName(month)}{' '}
+                {year}.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                  <span className="text-[10px] font-extrabold uppercase text-gray-400 tracking-wider block mb-1">
+                    Total Gross Compensation
+                  </span>
+                  <span className="font-mono text-xl font-bold text-gray-800">
+                    {formatCurrency(taxData.totalGrossCompensation) || '₱ 0.00'}
+                  </span>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                  <span className="text-[10px] font-extrabold uppercase text-gray-400 tracking-wider block mb-1">
+                    Non-Taxable Statutory (SSS/PH/HDMF)
+                  </span>
+                  <span className="font-mono text-xl font-bold text-emerald-600">
+                    {formatCurrency(taxData.totalNonTaxableCompensation) || '₱ 0.00'}
+                  </span>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                  <span className="text-[10px] font-extrabold uppercase text-gray-400 tracking-wider block mb-1">
+                    Taxable Compensation
+                  </span>
+                  <span className="font-mono text-xl font-bold text-blue-600">
+                    {formatCurrency(taxData.totalTaxableCompensation) || '₱ 0.00'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="bg-[#E9FAFA]/50 border border-[#B0DCDA] rounded-xl p-6 flex justify-between items-center">
+                <div>
+                  <h3 className="text-lg font-black text-[#1B9387] uppercase tracking-wider">
+                    Total Tax Required to be Withheld
+                  </h3>
+                  <p className="text-xs text-[#1B9387]/70 font-bold mt-1 uppercase tracking-widest">
+                    Amount to remit to BIR for {getMonthName(month)} (Account 2051: {formatCurrency(taxData.glTotalTaxWithheld) || '₱ 0.00'})
+                  </p>
+                </div>
+                <span className="text-3xl font-black font-mono text-[#1B9387] tabular-nums">
+                  {formatCurrency(taxData.totalTaxRequiredWithheld) || (
+                    <span className="opacity-30">₱ 0.00</span>
+                  )}
+                </span>
+              </div>
+            </div>
+
+            <div className="bg-white border border-gray-200 rounded-xl overflow-hidden flex-1 flex flex-col shadow-sm">
+              <div className="bg-[#FBF8F8] border-b border-gray-200 p-4 flex justify-between items-center shrink-0">
+                <div>
+                  <h3 className="text-sm font-extrabold text-gray-800 uppercase tracking-wide">
+                    Employee Compensation Breakdown
+                  </h3>
+                  <p className="text-xs text-gray-500 font-medium mt-1">
+                    Itemized payroll compensation and tax withheld per employee.
+                  </p>
+                </div>
+                <span className="text-xs font-bold text-gray-500 bg-white border border-gray-200 px-3 py-1 rounded-md">
+                  {taxData.employeeCount || 0} Employees
+                </span>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="text-gray-500 text-[10px] font-extrabold uppercase tracking-wider bg-white border-b-2 border-gray-100 sticky top-0 shadow-[0_2px_5px_rgba(0,0,0,0.02)]">
+                    <tr>
+                      <th className="p-4 pl-6 text-left">Date</th>
+                      <th className="p-4 text-left">Employee Name</th>
+                      <th className="p-4 text-left">TIN</th>
+                      <th className="p-4 text-right">Gross Pay</th>
+                      <th className="p-4 text-right text-emerald-600">Non-Taxable</th>
+                      <th className="p-4 text-right text-blue-600">Taxable Pay</th>
+                      <th className="p-4 pr-6 text-right text-[#1B9387]">Tax Withheld</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {!taxData.employees || taxData.employees.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="p-16 text-center text-gray-400">
+                          <span className="block text-4xl mb-3 opacity-50">👥</span>
+                          <span className="italic font-medium text-sm">
+                            No payroll compensation recorded for this month.
+                          </span>
+                        </td>
+                      </tr>
+                    ) : (
+                      taxData.employees.map((emp: any, i: number) => (
+                        <tr key={i} className="hover:bg-gray-50 transition-colors">
+                          <td className="p-4 pl-6 text-gray-500 font-medium">
+                            {new Date(emp.date).toLocaleDateString()}
+                          </td>
+                          <td className="p-4 text-gray-800 font-extrabold">{emp.employeeName}</td>
+                          <td className="p-4 text-gray-500 font-mono font-bold">{emp.tin}</td>
+                          <td className="p-4 text-right text-gray-800 font-mono font-bold tabular-nums">
+                            {formatCurrency(emp.grossCompensation) || '-'}
+                          </td>
+                          <td className="p-4 text-right text-emerald-600 font-mono font-bold tabular-nums">
+                            {formatCurrency(emp.nonTaxableContributions) || '-'}
+                          </td>
+                          <td className="p-4 text-right text-blue-600 font-mono font-bold tabular-nums">
+                            {formatCurrency(emp.taxableCompensation) || '-'}
+                          </td>
+                          <td className="p-4 pr-6 text-right text-[#1B9387] font-black font-mono tabular-nums">
+                            {formatCurrency(emp.taxWithheld) || '-'}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* 5. RELIEF / SLSP DAT FILE GENERATOR */}
         {/* ============================================================ */}
         {!loading && reliefData && view === 'relief' && (
           <div className="space-y-6 animate-in fade-in duration-300 flex-1 min-h-0 flex flex-col">

@@ -14,7 +14,17 @@ import {
 } from 'lucide-react'
 import { cleanDescription } from '../utils/formatters'
 
-export function ReceivePaymentView({ userId }: { userId: string }) {
+interface ReceivePaymentViewProps {
+  userId: string
+  prefillData?: {
+    prefillEntity?: string
+    prefillAmount?: number
+    referenceNo?: string
+    payeeId?: string
+  }
+}
+
+export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewProps) {
   // --- States ---
   const [payees, setPayees] = useState<any[]>([])
   const [payeeId, setPayeeId] = useState('')
@@ -31,10 +41,6 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   // Payment & Deduction States
   const [amountReceived, setAmountReceived] = useState<number | ''>('')
   const [cwtAmount, setCwtAmount] = useState<number | ''>('')
-
-  // Bank Fees (MDR) & Write-offs (Short Payments)
-  const [bankFeeAmount, setBankFeeAmount] = useState<number | ''>('')
-  const [writeOffAmount, setWriteOffAmount] = useState<number | ''>('')
 
   const [paymentMethod, setPaymentMethod] = useState('')
   const [paymentReference, setPaymentReference] = useState('')
@@ -55,26 +61,25 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   // --- Computations ---
   const received = Number(amountReceived) || 0
   const tax = Number(cwtAmount) || 0
-  const fee = Number(bankFeeAmount) || 0
-  const writeOff = Number(writeOffAmount) || 0
 
   // Total value applied against the A/R
-  const totalCredit = received + tax + fee + writeOff
+  const totalCredit = received + tax
 
   const selectedTotal = unpaidInvoices
     .filter((inv) => checkedInvoiceIds.includes(inv.referenceNo))
     .reduce((sum, inv) => sum + inv.balance, 0)
 
   const targetAmount = selectedTotal > 0 ? selectedTotal : outstandingBalance
+  const remainingTarget = Math.max(0, targetAmount - totalCredit)
   const remainingBalance = Math.max(0, outstandingBalance - totalCredit)
+  const isPartialPayment = targetAmount > 0 && totalCredit > 0 && totalCredit < targetAmount - 0.009
 
-  // Validation
+  // Validation: Allow partial payment up to targetAmount (or total outstanding balance)
   const isValid =
     payeeId !== '' &&
     paymentMethod !== '' &&
     received > 0 &&
-    totalCredit <= outstandingBalance + 0.01 &&
-    refSequence.trim() !== ''
+    totalCredit <= targetAmount + 0.01
 
   // --- Effects ---
   useEffect(() => {
@@ -112,13 +117,25 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
     if (!successData) fetchNextSeq()
   }, [refPrefix, successData])
 
+  // Handle prefill data from A/R Invoice Tracker navigation
+  useEffect(() => {
+    if (prefillData?.prefillEntity && payees.length > 0) {
+      const match = payees.find(
+        (p) =>
+          p.name?.trim().toLowerCase() === prefillData.prefillEntity?.trim().toLowerCase() ||
+          p.id === prefillData.payeeId
+      )
+      if (match) {
+        setPayeeId(match.id)
+      }
+    }
+  }, [prefillData, payees])
+
   useEffect(() => {
     if (!payeeId) {
       setOutstandingBalance(0)
       setAmountReceived('')
       setCwtAmount('')
-      setBankFeeAmount('')
-      setWriteOffAmount('')
       setPaymentReference('')
       setUnpaidInvoices([])
       setCheckedInvoiceIds([])
@@ -141,11 +158,18 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
         )
 
         setUnpaidInvoices(pending)
-        setCheckedInvoiceIds([])
-        setAmountReceived('')
+
+        // If navigating with prefill invoice reference, pre-check it
+        if (prefillData?.referenceNo && pending.some((inv: any) => inv.referenceNo === prefillData.referenceNo)) {
+          setCheckedInvoiceIds([prefillData.referenceNo])
+          if (prefillData.prefillAmount) {
+            setAmountReceived(prefillData.prefillAmount)
+          }
+        } else {
+          setCheckedInvoiceIds([])
+          setAmountReceived('')
+        }
         setCwtAmount('')
-        setBankFeeAmount('')
-        setWriteOffAmount('')
       } catch (error) {
         console.error(error)
       } finally {
@@ -154,7 +178,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
     }
 
     fetchData()
-  }, [payeeId, payees])
+  }, [payeeId, payees, prefillData])
 
   // --- Handlers ---
   const handleToggleInvoice = (refNo: string) => {
@@ -172,18 +196,20 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
   }
 
   const handleAutoComputeTax = () => {
-    if (targetAmount > 0) {
+    if (received > 0) {
+      const gross = received / 0.98
+      const computedTax = gross * 0.02
+      setCwtAmount(Number(computedTax.toFixed(2)))
+    } else if (targetAmount > 0) {
       const computedTax = targetAmount * 0.02
-      const currentDeductions = fee + writeOff
-      const netAmount = targetAmount - computedTax - currentDeductions
+      const netAmount = targetAmount - computedTax
       setCwtAmount(Number(computedTax.toFixed(2)))
       setAmountReceived(netAmount > 0 ? Number(netAmount.toFixed(2)) : 0)
     }
   }
 
   const handleExactAmount = () => {
-    const currentDeductions = tax + fee + writeOff
-    const netAmount = targetAmount - currentDeductions
+    const netAmount = targetAmount - tax
     setAmountReceived(netAmount > 0 ? Number(netAmount.toFixed(2)) : targetAmount)
   }
 
@@ -204,16 +230,16 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
       lines.push({ accountId: debitAccount, debit: received, credit: 0 })
 
       if (tax > 0) lines.push({ accountId: '1310', debit: tax, credit: 0 })
-      if (fee > 0) lines.push({ accountId: '6000', debit: fee, credit: 0 })
-      if (writeOff > 0) lines.push({ accountId: '4050', debit: writeOff, credit: 0 })
 
       lines.push({ accountId: '1200', debit: 0, credit: totalCredit })
 
       const selectedName = payees.find((p) => p.id === payeeId)?.name
-      const fullReferenceNo = `${refPrefix}${refSequence.padStart(3, '0')}`
+      const fullReferenceNo = `${refPrefix}${(refSequence || '1').padStart(3, '0')}`
 
       const invList = checkedInvoiceIds.length > 0 ? ` [Invs: ${checkedInvoiceIds.join(', ')}]` : ''
-      const description = `Collection of A/R from ${selectedName}${invList} via ${paymentMethod} ${paymentReference ? `(Ref: ${paymentReference})` : ''}`
+      const isPartial = targetAmount > 0 && totalCredit < targetAmount - 0.009
+      const partialTag = isPartial ? ' [PARTIAL PAYMENT]' : ''
+      const description = `Collection of A/R from ${selectedName}${invList}${partialTag} via ${paymentMethod} ${paymentReference ? `(Ref: ${paymentReference})` : ''}`
 
       const entryData = {
         date: new Date().toISOString(),
@@ -239,12 +265,11 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
         name: selectedName,
         amount: received,
         tax: tax,
-        fee: fee,
-        writeOff: writeOff,
         method: paymentMethod,
         ref: paymentReference,
         remaining: remainingBalance,
-        invoicesCovered: checkedInvoiceIds
+        invoicesCovered: checkedInvoiceIds,
+        isPartial: isPartial
       })
     } catch (error) {
       console.error(error)
@@ -323,32 +348,19 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               </span>
             </div>
 
-            {(successData.tax > 0 || successData.fee > 0 || successData.writeOff > 0) && (
-              <div className="border-t border-slate-200 pt-3 space-y-2">
-                {successData.tax > 0 && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-500">2% Withholding Tax</span>
-                    <span className="text-slate-600 font-mono">
-                      ₱ {successData.tax.toLocaleString()}
-                    </span>
-                  </div>
-                )}
-                {successData.fee > 0 && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-500">Bank/MDR Fee</span>
-                    <span className="text-slate-600 font-mono">
-                      ₱ {successData.fee.toLocaleString()}
-                    </span>
-                  </div>
-                )}
-                {successData.writeOff > 0 && (
-                  <div className="flex justify-between text-xs">
-                    <span className="text-slate-500">Dispute/Write-off</span>
-                    <span className="text-slate-600 font-mono">
-                      ₱ {successData.writeOff.toLocaleString()}
-                    </span>
-                  </div>
-                )}
+            {successData.isPartial && (
+              <div className="flex justify-between text-xs bg-amber-50 text-amber-800 p-2 rounded border border-amber-200 font-bold">
+                <span>Payment Type</span>
+                <span>PARTIAL PAYMENT</span>
+              </div>
+            )}
+
+            {successData.tax > 0 && (
+              <div className="border-t border-slate-200 pt-3 flex justify-between text-xs">
+                <span className="text-slate-500">2% Withholding Tax Credit</span>
+                <span className="text-slate-600 font-mono">
+                  ₱ {successData.tax.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                </span>
               </div>
             )}
 
@@ -546,6 +558,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                         <th className="p-3">Reference No.</th>
                         <th className="p-3">Date</th>
                         <th className="p-3">Patient & Details</th>
+                        <th className="p-3 text-center">Status</th>
                         <th className="p-3 text-right">Invoice Total</th>
                         <th className="p-3 text-right text-red-500">Balance Due</th>
                       </tr>
@@ -573,7 +586,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                           </td>
                           <td className="p-3 text-xs w-1/3">
                             <div
-                              className="flex flex-col max-w-[250px] overflow-hidden"
+                              className="flex flex-col max-w-[220px] overflow-hidden"
                               title={cleanDescription(inv.description)}
                             >
                               <span className="text-slate-800 font-bold truncate">
@@ -589,6 +602,17 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                                 </span>
                               )}
                             </div>
+                          </td>
+                          <td className="p-3 text-center">
+                            {inv.status === 'Partially Paid' || (inv.paid > 0) ? (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
+                                Partial (₱{Number(inv.paid || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} paid)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700 border border-red-200">
+                                Unpaid
+                              </span>
+                            )}
                           </td>
                           <td className="p-3 text-right font-mono text-slate-400 text-xs">
                             ₱ {inv.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -615,79 +639,53 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               )}
 
               <div className="space-y-10">
-                {/* Method & Receipt Row */}
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      Official Receipt No.
-                    </label>
-                    <div className="flex shadow-sm rounded-md">
-                      <span className="bg-slate-50 border border-slate-300 border-r-0 rounded-l-lg px-4 py-3 text-sm font-bold text-slate-500 select-none flex flex-col justify-center">
-                        {refPrefix}
-                      </span>
-                      <div className="relative w-full flex">
-                        <input
-                          type="text"
-                          required
-                          value={refSequence}
-                          onChange={(e) => setRefSequence(e.target.value)}
-                          placeholder="000"
-                          className="w-full bg-white border border-slate-300 rounded-r-lg p-3 text-base font-mono text-slate-800 focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition"
-                        />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-slate-400 uppercase tracking-wider font-bold select-none pointer-events-none">
-                          Auto-Generated
-                        </span>
-                      </div>
-                    </div>
+                {/* Payment Method */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                    Payment Method
+                  </label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('CASH')}
+                      className={`flex justify-center items-center gap-2 cursor-pointer py-3.5 text-xs font-bold rounded-lg border transition-all ${paymentMethod === 'CASH' ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}
+                    >
+                      <Wallet size={16} /> CASH
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('GCASH')}
+                      className={`flex justify-center items-center gap-2 cursor-pointer py-3.5 text-xs font-bold rounded-lg border transition-all ${paymentMethod === 'GCASH' ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}
+                    >
+                      <Smartphone size={16} /> E-WALLET
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentMethod('BANK')}
+                      className={`flex justify-center items-center gap-2 cursor-pointer py-3.5 text-xs font-bold rounded-lg border transition-all ${paymentMethod === 'BANK' ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}
+                    >
+                      <Landmark size={16} /> BANK
+                    </button>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                      Payment Method
-                    </label>
-                    <div className="grid grid-cols-3 gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod('CASH')}
-                        className={`flex justify-center items-center gap-2 cursor-pointer py-3 text-xs font-bold rounded-lg border transition-all ${paymentMethod === 'CASH' ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}
-                      >
-                        <Wallet size={16} /> CASH
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod('GCASH')}
-                        className={`flex justify-center items-center gap-2 cursor-pointer py-3 text-xs font-bold rounded-lg border transition-all ${paymentMethod === 'GCASH' ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}
-                      >
-                        <Smartphone size={16} /> E-WALLET
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setPaymentMethod('BANK')}
-                        className={`flex justify-center items-center gap-2 cursor-pointer py-3 text-xs font-bold rounded-lg border transition-all ${paymentMethod === 'BANK' ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-md' : 'bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50'}`}
-                      >
-                        <Landmark size={16} /> BANK
-                      </button>
+                  {(paymentMethod === 'GCASH' || paymentMethod === 'BANK') && (
+                    <div className="mt-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                      <input
+                        type="text"
+                        placeholder={
+                          paymentMethod === 'GCASH'
+                            ? 'Enter GCash/Maya Reference No.'
+                            : 'Enter Bank Transfer Ref No.'
+                        }
+                        value={paymentReference}
+                        onChange={(e) => setPaymentReference(e.target.value)}
+                        className="w-full bg-white border border-slate-300 rounded-lg p-3 text-sm text-slate-800 focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition shadow-sm"
+                      />
                     </div>
-
-                    {(paymentMethod === 'GCASH' || paymentMethod === 'BANK') && (
-                      <div className="mt-4 animate-in fade-in slide-in-from-top-2 duration-200">
-                        <input
-                          type="text"
-                          placeholder={
-                            paymentMethod === 'GCASH'
-                              ? 'Enter GCash/Maya Reference No.'
-                              : 'Enter Bank Transfer Ref No.'
-                          }
-                          value={paymentReference}
-                          onChange={(e) => setPaymentReference(e.target.value)}
-                          className="w-full bg-white border border-slate-300 rounded-lg p-3 text-sm text-slate-800 focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition shadow-sm"
-                        />
-                      </div>
-                    )}
-                  </div>
+                  )}
                 </div>
 
-                {/* Amounts & Deductions Grid */}
+                {/* Amounts & Tax Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start bg-slate-50/50 p-6 rounded-xl border border-slate-100">
                   {/* Amount Received (Primary) */}
                   <div>
@@ -701,7 +699,7 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                           onClick={handleExactAmount}
                           className={`text-[10px] font-bold px-3 py-1 rounded-full transition cursor-pointer ${checkedInvoiceIds.length > 0 ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
                         >
-                          Fill Remaining
+                          Fill Remaining (₱{targetAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })})
                         </button>
                       )}
                     </div>
@@ -721,111 +719,82 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                     </div>
                   </div>
 
-                  {/* Deductions (Secondary) */}
-                  <div className="space-y-4">
-                    {/* 🔥 FIXED: Native HTML 'title' tooltip for Tax */}
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <div
-                          className="flex items-center gap-1 cursor-help w-fit"
-                          title="Usually applicable only for HMOs and corporate accounts."
+                  {/* 2% Withholding Tax */}
+                  <div>
+                    <div className="flex justify-between items-center mb-2">
+                      <div
+                        className="flex items-center gap-1 cursor-help w-fit"
+                        title="Usually applicable only for HMOs and corporate accounts."
+                      >
+                        <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider">
+                          2% Withholding Tax <span className="lowercase font-normal text-slate-400">(HMO/Corp)</span>
+                        </label>
+                        <Info
+                          size={12}
+                          className="text-slate-400 hover:text-slate-600 transition"
+                        />
+                      </div>
+                      {targetAmount > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleAutoComputeTax}
+                          className="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-600 font-bold px-3 py-1 rounded-full transition cursor-pointer"
                         >
-                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                            2% Withholding Tax{' '}
-                            <span className="lowercase font-normal text-slate-400">(HMO/Corp)</span>
-                          </label>
-                          <Info
-                            size={12}
-                            className="text-slate-400 hover:text-slate-600 transition"
-                          />
-                        </div>
-                        {targetAmount > 0 && (
-                          <button
-                            type="button"
-                            onClick={handleAutoComputeTax}
-                            className="text-[10px] bg-slate-200 hover:bg-slate-300 text-slate-600 font-bold px-2 py-0.5 rounded transition cursor-pointer"
-                          >
-                            Auto-Compute
-                          </button>
-                        )}
-                      </div>
-                      <div className="relative rounded-lg">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-mono">
-                          ₱
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={cwtAmount}
-                          onChange={(e) => setCwtAmount(parseFloat(e.target.value) || '')}
-                          placeholder="0.00"
-                          className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-8 pr-3 text-sm text-slate-800 font-mono font-bold text-right focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
+                          Auto-Compute 2%
+                        </button>
+                      )}
                     </div>
-
-                    {/* 🔥 FIXED: Native HTML 'title' tooltip for Bank Fee */}
-                    <div>
-                      <div
-                        className="flex items-center gap-1 mb-1 cursor-help w-fit"
-                        title="e.g., Terminal fees subtracted by Maya/GCash before deposit."
-                      >
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                          Bank / MDR Fee
-                        </label>
-                        <Info
-                          size={12}
-                          className="text-slate-400 hover:text-slate-600 transition"
-                        />
-                      </div>
-                      <div className="relative rounded-lg">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-mono">
-                          ₱
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={bankFeeAmount}
-                          onChange={(e) => setBankFeeAmount(parseFloat(e.target.value) || '')}
-                          placeholder="0.00"
-                          className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-8 pr-3 text-sm text-slate-800 font-mono font-bold text-right focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
-                    </div>
-
-                    {/* 🔥 FIXED: Native HTML 'title' tooltip for Write-off */}
-                    <div>
-                      <div
-                        className="flex items-center gap-1 mb-1 cursor-help w-fit"
-                        title="Use this if an HMO short-pays due to disputes or invalid claims to clear the invoice."
-                      >
-                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                          Dispute / Write-Off
-                        </label>
-                        <Info
-                          size={12}
-                          className="text-slate-400 hover:text-slate-600 transition"
-                        />
-                      </div>
-                      <div className="relative rounded-lg">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400 font-mono">
-                          ₱
-                        </span>
-                        <input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={writeOffAmount}
-                          onChange={(e) => setWriteOffAmount(parseFloat(e.target.value) || '')}
-                          placeholder="0.00"
-                          className="w-full bg-white border border-slate-300 rounded-lg py-2 pl-8 pr-3 text-sm text-slate-800 font-mono font-bold text-right focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                        />
-                      </div>
+                    <div className="relative shadow-sm rounded-lg">
+                      <span className="absolute left-4 top-1/2 -translate-y-1/2 text-xl text-slate-400 font-mono">
+                        ₱
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={cwtAmount}
+                        onChange={(e) => setCwtAmount(parseFloat(e.target.value) || '')}
+                        placeholder="0.00"
+                        className="w-full bg-white border border-slate-300 rounded-lg py-5 pl-12 pr-6 text-2xl text-slate-800 font-mono font-bold text-right focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] outline-none transition placeholder:text-slate-300 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                      />
                     </div>
                   </div>
                 </div>
+
+                {/* Live Settlement Status Indicator */}
+                {totalCredit > 0 && (
+                  <div>
+                    {isPartialPayment ? (
+                      <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between text-xs text-amber-800 font-medium">
+                        <div className="flex items-center gap-2">
+                          <span className="bg-amber-200 text-amber-900 font-black px-2 py-0.5 rounded text-[10px] uppercase tracking-wider">
+                            Partial Payment
+                          </span>
+                          <span>
+                            Recording partial payment of <strong>₱{totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> against <strong>₱{targetAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> due.
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-amber-900">
+                          Remaining Unpaid: ₱{remainingTarget.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-800 font-medium">
+                        <div className="flex items-center gap-2">
+                          <span className="bg-emerald-200 text-emerald-900 font-black px-2 py-0.5 rounded text-[10px] uppercase tracking-wider">
+                            Full Settlement
+                          </span>
+                          <span>
+                            Recording full settlement of <strong>₱{totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>.
+                          </span>
+                        </div>
+                        <span className="font-mono font-bold text-emerald-900">
+                          Balance: ₱0.00
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Remaining Balance Summary Box */}
                 {payeeId && totalCredit > 0 && (
@@ -913,6 +882,11 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
               </div>
 
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-3 font-mono shadow-inner">
+                {isPartialPayment && (
+                  <div className="text-xs bg-amber-100 text-amber-900 px-3 py-1.5 rounded font-bold uppercase tracking-wider text-center">
+                    Partial Payment (Target: ₱{targetAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                  </div>
+                )}
                 <div className="flex justify-between text-emerald-600 font-bold">
                   <span>Actual Cash Received</span>
                   <span>₱ {received.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
@@ -923,26 +897,18 @@ export function ReceivePaymentView({ userId }: { userId: string }) {
                     <span>₱ {tax.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                   </div>
                 )}
-                {fee > 0 && (
-                  <div className="flex justify-between text-slate-500 text-xs">
-                    <span>Bank/MDR Fee</span>
-                    <span>₱ {fee.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-                {writeOff > 0 && (
-                  <div className="flex justify-between text-slate-500 text-xs">
-                    <span>Write-off / Discount</span>
-                    <span>
-                      ₱ {writeOff.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                )}
                 <div className="border-t border-slate-200 pt-3 flex justify-between text-indigo-700 font-bold text-base mt-2">
-                  <span>Total Value Cleared</span>
+                  <span>Total Applied Credit</span>
                   <span>
                     ₱ {totalCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                   </span>
                 </div>
+                {isPartialPayment && (
+                  <div className="flex justify-between text-amber-700 text-xs font-bold pt-1">
+                    <span>Remaining Unpaid</span>
+                    <span>₱ {remainingTarget.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
               </div>
             </div>
             <div className="px-6 py-5 bg-slate-50 border-t border-slate-100 flex gap-3">

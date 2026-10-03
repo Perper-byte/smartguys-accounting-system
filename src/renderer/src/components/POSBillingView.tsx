@@ -1540,23 +1540,7 @@ ${itemsSummary}
                   )}
                 </div>
 
-                {/* 🔥 UPDATED: Locked to INV- only, and made read-only */}
-                <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                    Invoice Number
-                  </label>
-                  <div className="flex shadow-sm rounded-xl">
-                    <span className="bg-gray-100 border border-gray-300 border-r-0 rounded-l-xl px-4 py-3.5 text-sm font-bold text-gray-500 select-none flex flex-col justify-center">
-                      INV-
-                    </span>
-                    <input
-                      type="text"
-                      readOnly
-                      value={invoiceSequence}
-                      className="w-full px-4 py-3.5 bg-gray-50 border border-gray-300 rounded-r-xl text-base font-mono font-bold text-gray-500 focus:outline-none cursor-not-allowed select-none"
-                    />
-                  </div>
-                </div>
+
               </div>
             </div>
 
