@@ -75,7 +75,11 @@ export function PayrollGridTab({
 }) {
   const now = new Date()
   const initialCutoff: CutoffType = now.getDate() <= 15 ? '1ST_HALF' : '2ND_HALF'
-  const initialDetails = getPayrollCutoffDetails(now.getFullYear(), now.getMonth() + 1, initialCutoff)
+  const initialDetails = getPayrollCutoffDetails(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    initialCutoff
+  )
 
   const [selectedYear, setSelectedYear] = useState<number>(now.getFullYear())
   const [selectedMonth, setSelectedMonth] = useState<number>(now.getMonth() + 1)
@@ -101,8 +105,11 @@ export function PayrollGridTab({
 
   // Active DOLE rates & multipliers
   const [activeRateKeys, setActiveRateKeys] = useState<string[]>(getActiveDoleRateKeys())
-  const [doleMultipliers, setDoleMultipliers] = useState<Record<string, number>>(getDoleMultipliers())
-  const [statutoryEnabled, setStatutoryEnabled] = useState<StatutoryEnabledConfig>(getStatutoryEnabledConfig())
+  const [doleMultipliers, setDoleMultipliers] =
+    useState<Record<string, number>>(getDoleMultipliers())
+  const [statutoryEnabled, setStatutoryEnabled] = useState<StatutoryEnabledConfig>(
+    getStatutoryEnabledConfig()
+  )
 
   // Period lock management
   const [lockDate, setLockDate] = useState<string | null>(null)
@@ -301,9 +308,15 @@ export function PayrollGridTab({
         const phCalc = calculatePhilHealth2026(monthly)
         const piCalc = calculatePagIbig2026(monthly)
 
-        const defaultSss = statutoryEnabled.sss ? Math.round((sssCalc.totalEE / divisor) * 100) / 100 : 0
-        const defaultPh = statutoryEnabled.philhealth ? Math.round((phCalc.eeShare / divisor) * 100) / 100 : 0
-        const defaultHdmf = statutoryEnabled.pagibig ? Math.round((piCalc.eeShare / divisor) * 100) / 100 : 0
+        const defaultSss = statutoryEnabled.sss
+          ? Math.round((sssCalc.totalEE / divisor) * 100) / 100
+          : 0
+        const defaultPh = statutoryEnabled.philhealth
+          ? Math.round((phCalc.eeShare / divisor) * 100) / 100
+          : 0
+        const defaultHdmf = statutoryEnabled.pagibig
+          ? Math.round((piCalc.eeShare / divisor) * 100) / 100
+          : 0
 
         newInputs[emp.id] = {
           monthlySalary: monthly,
@@ -368,18 +381,42 @@ export function PayrollGridTab({
               ot: u.otHours ?? u.overtimeHours?.regular_ot ?? next[empId].hours.ot,
               nd: u.ndHours ?? u.overtimeHours?.regular_night ?? next[empId].hours.nd,
               nd_ot: u.ndOtHours ?? u.overtimeHours?.regular_night_ot ?? next[empId].hours.nd_ot,
-              sun_reg: u.sunRegHours ?? u.sunHours ?? u.overtimeHours?.rest_day ?? next[empId].hours.sun_reg,
+              sun_reg:
+                u.sunRegHours ??
+                u.sunHours ??
+                u.overtimeHours?.rest_day ??
+                next[empId].hours.sun_reg,
               sun_ot: u.sunOtHours ?? u.overtimeHours?.rest_day_ot ?? next[empId].hours.sun_ot,
               sun_nd: u.sunNdHours ?? u.overtimeHours?.rest_day_night ?? next[empId].hours.sun_nd,
-              sun_nd_ot: u.sunNdOtHours ?? u.overtimeHours?.rest_day_night_ot ?? next[empId].hours.sun_nd_ot,
-              leg_reg: u.legRegHours ?? u.legHours ?? u.overtimeHours?.legal_holiday ?? next[empId].hours.leg_reg,
+              sun_nd_ot:
+                u.sunNdOtHours ?? u.overtimeHours?.rest_day_night_ot ?? next[empId].hours.sun_nd_ot,
+              leg_reg:
+                u.legRegHours ??
+                u.legHours ??
+                u.overtimeHours?.legal_holiday ??
+                next[empId].hours.leg_reg,
               leg_ot: u.legOtHours ?? u.overtimeHours?.legal_holiday_ot ?? next[empId].hours.leg_ot,
-              leg_nd: u.legNdHours ?? u.overtimeHours?.legal_holiday_night ?? next[empId].hours.leg_nd,
-              leg_nd_ot: u.legNdOtHours ?? u.overtimeHours?.legal_holiday_night_ot ?? next[empId].hours.leg_nd_ot,
-              spcl_reg: u.spclRegHours ?? u.spclHours ?? u.overtimeHours?.special_holiday ?? next[empId].hours.spcl_reg,
-              spcl_ot: u.spclOtHours ?? u.overtimeHours?.special_holiday_ot ?? next[empId].hours.spcl_ot,
-              spcl_nd: u.spclNdHours ?? u.overtimeHours?.special_holiday_night ?? next[empId].hours.spcl_nd,
-              spcl_nd_ot: u.spclNdOtHours ?? u.overtimeHours?.special_holiday_night_ot ?? next[empId].hours.spcl_nd_ot
+              leg_nd:
+                u.legNdHours ?? u.overtimeHours?.legal_holiday_night ?? next[empId].hours.leg_nd,
+              leg_nd_ot:
+                u.legNdOtHours ??
+                u.overtimeHours?.legal_holiday_night_ot ??
+                next[empId].hours.leg_nd_ot,
+              spcl_reg:
+                u.spclRegHours ??
+                u.spclHours ??
+                u.overtimeHours?.special_holiday ??
+                next[empId].hours.spcl_reg,
+              spcl_ot:
+                u.spclOtHours ?? u.overtimeHours?.special_holiday_ot ?? next[empId].hours.spcl_ot,
+              spcl_nd:
+                u.spclNdHours ??
+                u.overtimeHours?.special_holiday_night ??
+                next[empId].hours.spcl_nd,
+              spcl_nd_ot:
+                u.spclNdOtHours ??
+                u.overtimeHours?.special_holiday_night_ot ??
+                next[empId].hours.spcl_nd_ot
             },
             absentDays: u.absentDays ?? u.demerits?.absences_days ?? next[empId].absentDays
           }
@@ -401,6 +438,13 @@ export function PayrollGridTab({
   const sundayCount = activeRateDefs.filter((r) => r.group === 'SUNDAY').length
   const legalCount = activeRateDefs.filter((r) => r.group === 'LEGAL').length
   const specialCount = activeRateDefs.filter((r) => r.group === 'SPECIAL').length
+  const nonMultiplierColumnCount = 3 + 3 + 7 + 5
+  const frozenColumnLefts = {
+    name: 0,
+    position: 140,
+    monthlySalary: 240,
+    dailyRate: 330
+  } as const
 
   // Editable columns metadata mapping for 2D cell coordinate tracking
   interface EditableColumnMeta {
@@ -597,19 +641,39 @@ export function PayrollGridTab({
       // Exact statutory employer shares (counterparts) for semi-monthly / monthly
       const sssErComputed = hasHoursOrPay ? Math.round((sssCalc.totalER / divisor) * 100) / 100 : 0
       const phErComputed = hasHoursOrPay ? Math.round((phCalc.erShare / divisor) * 100) / 100 : 0
-      const hdmfErComputed = hasHoursOrPay ? Math.round((hdmfCalc.erShare / divisor) * 100) / 100 : 0
+      const hdmfErComputed = hasHoursOrPay
+        ? Math.round((hdmfCalc.erShare / divisor) * 100) / 100
+        : 0
 
       const sss = !statutoryEnabled.sss
-        ? (isSssOverridden ? Number(ded.sss) || 0 : 0)
-        : (isSssOverridden ? Number(ded.sss) || 0 : (hasHoursOrPay ? sssComputed : (Number(ded.sss) || 0)))
+        ? isSssOverridden
+          ? Number(ded.sss) || 0
+          : 0
+        : isSssOverridden
+          ? Number(ded.sss) || 0
+          : hasHoursOrPay
+            ? sssComputed
+            : Number(ded.sss) || 0
 
       const philhealth = !statutoryEnabled.philhealth
-        ? (isPhOverridden ? Number(ded.philhealth) || 0 : 0)
-        : (isPhOverridden ? Number(ded.philhealth) || 0 : (hasHoursOrPay ? phComputed : (Number(ded.philhealth) || 0)))
+        ? isPhOverridden
+          ? Number(ded.philhealth) || 0
+          : 0
+        : isPhOverridden
+          ? Number(ded.philhealth) || 0
+          : hasHoursOrPay
+            ? phComputed
+            : Number(ded.philhealth) || 0
 
       const hdmf = !statutoryEnabled.pagibig
-        ? (isHdmfOverridden ? Number(ded.hdmf) || 0 : 0)
-        : (isHdmfOverridden ? Number(ded.hdmf) || 0 : (hasHoursOrPay ? hdmfComputed : (Number(ded.hdmf) || 0)))
+        ? isHdmfOverridden
+          ? Number(ded.hdmf) || 0
+          : 0
+        : isHdmfOverridden
+          ? Number(ded.hdmf) || 0
+          : hasHoursOrPay
+            ? hdmfComputed
+            : Number(ded.hdmf) || 0
 
       const sss_er = !statutoryEnabled.sss ? 0 : sssErComputed
       const philhealth_er = !statutoryEnabled.philhealth ? 0 : phErComputed
@@ -630,7 +694,8 @@ export function PayrollGridTab({
       }
 
       const totalPrimaryDeductions = Math.round((sss + philhealth + hdmf + tax) * 100) / 100
-      const netPrimaryDeductions = Math.round((totalAfterAbsent - totalPrimaryDeductions) * 100) / 100
+      const netPrimaryDeductions =
+        Math.round((totalAfterAbsent - totalPrimaryDeductions) * 100) / 100
       const totalNetDeductions = netPrimaryDeductions
 
       // Adjustments
@@ -766,7 +831,8 @@ export function PayrollGridTab({
         let val = 0
         if (colMeta.category === 'hours') val = Number(rowData.hours[colMeta.field]) || 0
         else if (colMeta.category === 'absent') val = Number(rowData.absentDays) || 0
-        else if (colMeta.category === 'deductions') val = Number((rowData as any)[colMeta.field]) || 0
+        else if (colMeta.category === 'deductions')
+          val = Number((rowData as any)[colMeta.field]) || 0
         else if (colMeta.category === 'adjustments') {
           if (colMeta.field === 'adj') val = Number(rowData.adjustmentVal) || 0
           else val = Number((rowData as any)[colMeta.field]) || 0
@@ -807,7 +873,10 @@ export function PayrollGridTab({
                 empRow.absentDays = 0
               } else if (colMeta.category === 'deductions') {
                 empRow.deductions = { ...(empRow.deductions || {}), [colMeta.field]: 0 }
-                setOverrides((o) => ({ ...o, [empId]: { ...(o[empId] || {}), [colMeta.field]: true } }))
+                setOverrides((o) => ({
+                  ...o,
+                  [empId]: { ...(o[empId] || {}), [colMeta.field]: true }
+                }))
               } else if (colMeta.category === 'adjustments') {
                 empRow.adjustments = { ...(empRow.adjustments || {}), [colMeta.field]: 0 }
               }
@@ -838,7 +907,8 @@ export function PayrollGridTab({
             let val = 0
             if (colMeta.category === 'hours') val = Number(rowData.hours[colMeta.field]) || 0
             else if (colMeta.category === 'absent') val = Number(rowData.absentDays) || 0
-            else if (colMeta.category === 'deductions') val = Number((rowData as any)[colMeta.field]) || 0
+            else if (colMeta.category === 'deductions')
+              val = Number((rowData as any)[colMeta.field]) || 0
             else if (colMeta.category === 'adjustments') {
               if (colMeta.field === 'adj') val = Number(rowData.adjustmentVal) || 0
               else val = Number((rowData as any)[colMeta.field]) || 0
@@ -880,7 +950,10 @@ export function PayrollGridTab({
                   empRow.absentDays = num
                 } else if (colMeta.category === 'deductions') {
                   empRow.deductions = { ...(empRow.deductions || {}), [colMeta.field]: num }
-                  setOverrides((o) => ({ ...o, [empId]: { ...(o[empId] || {}), [colMeta.field]: true } }))
+                  setOverrides((o) => ({
+                    ...o,
+                    [empId]: { ...(o[empId] || {}), [colMeta.field]: true }
+                  }))
                 } else if (colMeta.category === 'adjustments') {
                   empRow.adjustments = { ...(empRow.adjustments || {}), [colMeta.field]: num }
                 }
@@ -1052,7 +1125,8 @@ export function PayrollGridTab({
           <div className="flex items-center gap-2">
             <Clock size={16} className="text-emerald-600 shrink-0" />
             <span>
-              Applied DTR timesheet logs for {dtrAppliedBanner} employee(s) into editable grid cells.
+              Applied DTR timesheet logs for {dtrAppliedBanner} employee(s) into editable grid
+              cells.
             </span>
           </div>
           <button
@@ -1086,7 +1160,12 @@ export function PayrollGridTab({
               }}
               className="bg-white border border-gray-300 rounded px-2.5 py-1 text-xs font-bold text-gray-800 outline-none focus:border-[#1B9387] cursor-pointer shadow-xs"
             >
-              {[now.getFullYear() + 1, now.getFullYear(), now.getFullYear() - 1, now.getFullYear() - 2].map((y) => (
+              {[
+                now.getFullYear() + 1,
+                now.getFullYear(),
+                now.getFullYear() - 1,
+                now.getFullYear() - 2
+              ].map((y) => (
                 <option key={y} value={y}>
                   {y}
                 </option>
@@ -1173,9 +1252,7 @@ export function PayrollGridTab({
         {/* DRAFT CONTROLS */}
         <div className="flex items-center gap-3">
           {draftSavedStatus && (
-            <span className="text-[11px] text-gray-500 font-mono italic">
-              {draftSavedStatus}
-            </span>
+            <span className="text-[11px] text-gray-500 font-mono italic">{draftSavedStatus}</span>
           )}
 
           <button
@@ -1277,7 +1354,9 @@ export function PayrollGridTab({
 
       {/* SPREADSHEET CONTAINER */}
       <div className="flex-1 overflow-auto bg-gray-100 relative">
-        <table className={`border-collapse text-[11px] whitespace-nowrap bg-white border border-gray-400 ${isDragging ? 'select-none' : ''}`}>
+        <table
+          className={`border-collapse text-[11px] whitespace-nowrap bg-white border border-gray-400 ${isDragging ? 'select-none' : ''}`}
+        >
           <thead>
             {/* ROW 1: DOLE CATEGORY GROUP HEADERS */}
             <tr className="bg-[#B8CCE4] text-center font-black uppercase tracking-wider text-gray-800 border-b border-gray-400">
@@ -1323,10 +1402,25 @@ export function PayrollGridTab({
 
             {/* ROW 2: YELLOW MULTIPLIER ROW (MATCHING CLINIC EXCEL EXACTLY) */}
             <tr className="bg-[#FFFF00] text-center font-bold text-gray-900 border-b border-gray-400 text-[10px]">
-              <th className="p-1 border-r border-gray-400 sticky left-0 z-30 bg-gray-100"></th>
-              <th className="p-1 border-r border-gray-400 sticky left-[140px] z-30 bg-gray-100"></th>
-              <th className="p-1 border-r border-gray-400 sticky left-[240px] z-30 bg-gray-100"></th>
-              <th className="p-1 border-r border-gray-400 text-right pr-2 sticky left-[330px] z-30 bg-gray-100 font-black">
+              <th
+                className="p-1 border-r border-gray-400 sticky z-30 min-w-[140px] w-[140px] max-w-[140px]"
+                style={{ left: `${frozenColumnLefts.name}px`, backgroundColor: '#FFFF00' }}
+              ></th>
+              <th
+                className="p-1 border-r border-gray-400 sticky z-30 min-w-[100px] w-[100px] max-w-[100px]"
+                style={{ left: `${frozenColumnLefts.position}px`, backgroundColor: '#FFFF00' }}
+              ></th>
+              <th
+                className="p-1 border-r border-gray-400 sticky z-30 min-w-[90px] w-[90px] max-w-[90px]"
+                style={{ left: `${frozenColumnLefts.monthlySalary}px`, backgroundColor: '#FFFF00' }}
+              ></th>
+              <th
+                className="p-1 border-r border-gray-400 text-right pr-2 sticky z-30 font-black min-w-[90px] w-[90px] max-w-[90px]"
+                style={{
+                  left: `${frozenColumnLefts.dailyRate}px`,
+                  backgroundColor: '#FFFF00'
+                }}
+              >
                 Multiplier:
               </th>
 
@@ -1337,6 +1431,7 @@ export function PayrollGridTab({
                   <th
                     key={r.key}
                     className="p-1 border-r border-gray-400 bg-[#FFFF00] min-w-[50px] font-mono"
+                    style={{ backgroundColor: '#FFFF00' }}
                     title={`${r.label}: ${mult}x`}
                   >
                     {mult.toFixed(3)}
@@ -1345,21 +1440,34 @@ export function PayrollGridTab({
               })}
 
               {/* Blank fillers for non-multiplier columns */}
-              <th colSpan={18} className="p-1 bg-gray-100 border-r border-gray-400"></th>
+              <th
+                colSpan={nonMultiplierColumnCount}
+                className="p-1 bg-[#FFFF00] border-r border-gray-400"
+                style={{ backgroundColor: '#FFFF00' }}
+              ></th>
             </tr>
 
             {/* ROW 3: DETAILED COLUMN HEADERS */}
             <tr className="bg-[#DCE6F1] font-black text-gray-700 uppercase tracking-tight text-[10px] border-b-2 border-gray-500">
-              <th className="p-2 border-r border-gray-400 sticky left-0 z-30 bg-[#DCE6F1] min-w-[140px] text-left">
+              <th className="p-2 border-r border-gray-400 sticky left-0 z-30 bg-[#DCE6F1] min-w-[140px] w-[140px] max-w-[140px] text-left">
                 NAME
               </th>
-              <th className="p-2 border-r border-gray-400 sticky left-[140px] z-30 bg-[#DCE6F1] min-w-[100px] text-left">
+              <th
+                className="p-2 border-r border-gray-400 sticky z-30 bg-[#DCE6F1] min-w-[100px] w-[100px] max-w-[100px] text-left"
+                style={{ left: `${frozenColumnLefts.position}px` }}
+              >
                 POSITION
               </th>
-              <th className="p-2 border-r border-gray-400 sticky left-[240px] z-30 bg-[#DCE6F1] min-w-[90px] text-right">
-                SALARY (Monthly)
+              <th
+                className="p-2 border-r border-gray-400 sticky z-30 bg-[#DCE6F1] min-w-[90px] w-[90px] max-w-[90px] text-right"
+                style={{ left: `${frozenColumnLefts.monthlySalary}px` }}
+              >
+                SALARY 
               </th>
-              <th className="p-2 border-r border-gray-400 sticky left-[330px] z-30 bg-[#DCE6F1] min-w-[90px] text-right shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)]">
+              <th
+                className="p-2 border-r border-gray-400 sticky z-30 bg-[#DCE6F1] min-w-[90px] w-[90px] max-w-[90px] text-right shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)]"
+                style={{ left: `${frozenColumnLefts.dailyRate}px` }}
+              >
                 DAILY RATE
               </th>
 
@@ -1375,16 +1483,26 @@ export function PayrollGridTab({
               ))}
 
               {/* Earnings */}
-              <th className="p-2 border-r border-gray-400 text-right min-w-[70px]">Total # of Days</th>
-              <th className="p-2 border-r border-gray-400 text-right min-w-[80px]">REGULAR HOURLY RATE</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[70px]">
+                Total # of Days
+              </th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[80px]">
+                REGULAR HOURLY RATE
+              </th>
               <th className="p-2 border-r border-gray-400 text-right min-w-[100px] bg-blue-50/70 font-black">
                 GROSS PAY (Hours x Rate x Multiplier)
               </th>
 
               {/* Demerits */}
-              <th className="p-2 border-r border-gray-400 text-center min-w-[60px]">Absent (days)</th>
-              <th className="p-2 border-r border-gray-400 text-right min-w-[80px]">Absent Deduction</th>
-              <th className="p-2 border-r border-gray-400 text-right min-w-[90px] font-black">TOTAL</th>
+              <th className="p-2 border-r border-gray-400 text-center min-w-[60px]">
+                Absent (days)
+              </th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[80px]">
+                Absent Deduction
+              </th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[90px] font-black">
+                TOTAL
+              </th>
 
               {/* Primary Deductions */}
               <th className="p-2 border-r border-gray-400 text-right min-w-[70px]">SSS</th>
@@ -1402,7 +1520,9 @@ export function PayrollGridTab({
               </th>
 
               {/* Adjustments */}
-              <th className="p-2 border-r border-gray-400 text-right min-w-[100px]">Meal & Transpo Allowance</th>
+              <th className="p-2 border-r border-gray-400 text-right min-w-[100px]">
+                Meal & Transpo Allowance
+              </th>
               <th className="p-2 border-r border-gray-400 text-right min-w-[75px]">License Fee</th>
               <th className="p-2 border-r border-gray-400 text-right min-w-[75px]">ADJUSTMENT</th>
               <th className="p-2 border-r border-gray-400 text-right min-w-[60px]">SIL</th>
@@ -1415,28 +1535,43 @@ export function PayrollGridTab({
           <tbody className="divide-y divide-gray-300">
             {calculatedRows.length === 0 ? (
               <tr>
-                <td colSpan={4 + activeRateDefs.length + 18} className="p-12 text-center text-gray-400 italic">
+                <td
+                  colSpan={4 + activeRateDefs.length + 18}
+                  className="p-12 text-center text-gray-400 italic"
+                >
                   No active employees found.
                 </td>
               </tr>
             ) : (
               calculatedRows.map((r, rowIdx) => {
                 const isEven = rowIdx % 2 === 0
-                const rowBg = isEven ? 'bg-white' : 'bg-gray-50/50'
+                const rowBg = isEven ? 'bg-white' : 'bg-gray-50'
+                const stickyBg = `${rowBg} group-hover:bg-sky-50`
 
                 return (
-                  <tr key={r.emp.id} className={`${rowBg} hover:bg-sky-50/40 transition`}>
+                  <tr key={r.emp.id} className={`group ${rowBg} hover:bg-sky-50 transition-colors`}>
                     {/* FROZEN LEFT COLUMNS */}
-                    <td className={`p-2 border-r border-gray-300 font-bold text-blue-800 sticky left-0 z-20 ${rowBg}`}>
+                    <td
+                      className={`p-2 border-r border-gray-300 font-bold text-blue-800 sticky left-0 z-20 ${stickyBg} min-w-[140px] w-[140px] max-w-[140px] truncate`}
+                    >
                       {r.emp.first_name} {r.emp.last_name}
                     </td>
-                    <td className={`p-2 border-r border-gray-300 text-blue-700 sticky left-[140px] z-20 ${rowBg}`}>
+                    <td
+                      className={`p-2 border-r border-gray-300 text-blue-700 sticky z-20 ${stickyBg} min-w-[100px] w-[100px] max-w-[100px] truncate`}
+                      style={{ left: `${frozenColumnLefts.position}px` }}
+                    >
                       {r.emp.position || r.emp.department || 'Nurse'}
                     </td>
-                    <td className={`p-2 border-r border-gray-300 text-right font-mono text-blue-700 sticky left-[240px] z-20 ${rowBg}`}>
+                    <td
+                      className={`p-2 border-r border-gray-300 text-right font-mono text-blue-700 sticky z-20 ${stickyBg} min-w-[90px] w-[90px] max-w-[90px] truncate`}
+                      style={{ left: `${frozenColumnLefts.monthlySalary}px` }}
+                    >
                       {formatCurrency(r.monthlySalary)}
                     </td>
-                    <td className={`p-2 border-r border-gray-300 text-right font-mono text-gray-800 sticky left-[330px] z-20 ${rowBg} shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)]`}>
+                    <td
+                      className={`p-2 border-r border-gray-300 text-right font-mono text-gray-800 sticky z-20 ${stickyBg} shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)] min-w-[90px] w-[90px] max-w-[90px] truncate`}
+                      style={{ left: `${frozenColumnLefts.dailyRate}px` }}
+                    >
                       {formatCurrency(r.dailyRate)}
                     </td>
 
@@ -1455,12 +1590,17 @@ export function PayrollGridTab({
                             type="number"
                             step="0.5"
                             min="0"
-                            value={r.hours[def.key] === 0 ? '' : r.hours[def.key] ?? ''}
+                            value={r.hours[def.key] === 0 ? '' : (r.hours[def.key] ?? '')}
                             placeholder="-"
-                            onChange={(e) => handleCellChange(r.emp.id, 'hours', def.key, e.target.value)}
+                            onChange={(e) =>
+                              handleCellChange(r.emp.id, 'hours', def.key, e.target.value)
+                            }
                             onFocus={() => {
                               if (!isDragging) {
-                                setSelection({ start: { row: rowIdx, col: colIdx }, end: { row: rowIdx, col: colIdx } })
+                                setSelection({
+                                  start: { row: rowIdx, col: colIdx },
+                                  end: { row: rowIdx, col: colIdx }
+                                })
                               }
                             }}
                             className="w-full h-8 text-center bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
@@ -1494,12 +1634,17 @@ export function PayrollGridTab({
                             type="number"
                             min="0"
                             step="0.5"
-                            value={r.absentDays === 0 ? '' : r.absentDays ?? ''}
+                            value={r.absentDays === 0 ? '' : (r.absentDays ?? '')}
                             placeholder="-"
-                            onChange={(e) => handleCellChange(r.emp.id, 'absent', 'absentDays', e.target.value)}
+                            onChange={(e) =>
+                              handleCellChange(r.emp.id, 'absent', 'absentDays', e.target.value)
+                            }
                             onFocus={() => {
                               if (!isDragging) {
-                                setSelection({ start: { row: rowIdx, col: absentColIdx }, end: { row: rowIdx, col: absentColIdx } })
+                                setSelection({
+                                  start: { row: rowIdx, col: absentColIdx },
+                                  end: { row: rowIdx, col: absentColIdx }
+                                })
                               }
                             }}
                             className="w-full h-8 text-center bg-transparent text-red-600 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
@@ -1530,12 +1675,17 @@ export function PayrollGridTab({
                             <input
                               type="number"
                               step="1"
-                              value={r.sss === 0 ? '' : r.sss ?? ''}
+                              value={r.sss === 0 ? '' : (r.sss ?? '')}
                               placeholder="-"
-                              onChange={(e) => handleCellChange(r.emp.id, 'deductions', 'sss', e.target.value)}
+                              onChange={(e) =>
+                                handleCellChange(r.emp.id, 'deductions', 'sss', e.target.value)
+                              }
                               onFocus={() => {
                                 if (!isDragging) {
-                                  setSelection({ start: { row: rowIdx, col: sssColIdx }, end: { row: rowIdx, col: sssColIdx } })
+                                  setSelection({
+                                    start: { row: rowIdx, col: sssColIdx },
+                                    end: { row: rowIdx, col: sssColIdx }
+                                  })
                                 }
                               }}
                               className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
@@ -1549,12 +1699,22 @@ export function PayrollGridTab({
                             <input
                               type="number"
                               step="1"
-                              value={r.philhealth === 0 ? '' : r.philhealth ?? ''}
+                              value={r.philhealth === 0 ? '' : (r.philhealth ?? '')}
                               placeholder="-"
-                              onChange={(e) => handleCellChange(r.emp.id, 'deductions', 'philhealth', e.target.value)}
+                              onChange={(e) =>
+                                handleCellChange(
+                                  r.emp.id,
+                                  'deductions',
+                                  'philhealth',
+                                  e.target.value
+                                )
+                              }
                               onFocus={() => {
                                 if (!isDragging) {
-                                  setSelection({ start: { row: rowIdx, col: phColIdx }, end: { row: rowIdx, col: phColIdx } })
+                                  setSelection({
+                                    start: { row: rowIdx, col: phColIdx },
+                                    end: { row: rowIdx, col: phColIdx }
+                                  })
                                 }
                               }}
                               className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
@@ -1568,12 +1728,17 @@ export function PayrollGridTab({
                             <input
                               type="number"
                               step="1"
-                              value={r.hdmf === 0 ? '' : r.hdmf ?? ''}
+                              value={r.hdmf === 0 ? '' : (r.hdmf ?? '')}
                               placeholder="-"
-                              onChange={(e) => handleCellChange(r.emp.id, 'deductions', 'hdmf', e.target.value)}
+                              onChange={(e) =>
+                                handleCellChange(r.emp.id, 'deductions', 'hdmf', e.target.value)
+                              }
                               onFocus={() => {
                                 if (!isDragging) {
-                                  setSelection({ start: { row: rowIdx, col: hdmfColIdx }, end: { row: rowIdx, col: hdmfColIdx } })
+                                  setSelection({
+                                    start: { row: rowIdx, col: hdmfColIdx },
+                                    end: { row: rowIdx, col: hdmfColIdx }
+                                  })
                                 }
                               }}
                               className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
@@ -1587,12 +1752,17 @@ export function PayrollGridTab({
                             <input
                               type="number"
                               step="1"
-                              value={r.tax === 0 ? '' : r.tax ?? ''}
+                              value={r.tax === 0 ? '' : (r.tax ?? '')}
                               placeholder="-"
-                              onChange={(e) => handleCellChange(r.emp.id, 'deductions', 'tax', e.target.value)}
+                              onChange={(e) =>
+                                handleCellChange(r.emp.id, 'deductions', 'tax', e.target.value)
+                              }
                               onFocus={() => {
                                 if (!isDragging) {
-                                  setSelection({ start: { row: rowIdx, col: taxColIdx }, end: { row: rowIdx, col: taxColIdx } })
+                                  setSelection({
+                                    start: { row: rowIdx, col: taxColIdx },
+                                    end: { row: rowIdx, col: taxColIdx }
+                                  })
                                 }
                               }}
                               className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
@@ -1627,12 +1797,17 @@ export function PayrollGridTab({
                             <input
                               type="number"
                               step="1"
-                              value={r.meal === 0 ? '' : r.meal ?? ''}
+                              value={r.meal === 0 ? '' : (r.meal ?? '')}
                               placeholder="-"
-                              onChange={(e) => handleCellChange(r.emp.id, 'adjustments', 'meal', e.target.value)}
+                              onChange={(e) =>
+                                handleCellChange(r.emp.id, 'adjustments', 'meal', e.target.value)
+                              }
                               onFocus={() => {
                                 if (!isDragging) {
-                                  setSelection({ start: { row: rowIdx, col: mealColIdx }, end: { row: rowIdx, col: mealColIdx } })
+                                  setSelection({
+                                    start: { row: rowIdx, col: mealColIdx },
+                                    end: { row: rowIdx, col: mealColIdx }
+                                  })
                                 }
                               }}
                               className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
@@ -1646,12 +1821,17 @@ export function PayrollGridTab({
                             <input
                               type="number"
                               step="1"
-                              value={r.license === 0 ? '' : r.license ?? ''}
+                              value={r.license === 0 ? '' : (r.license ?? '')}
                               placeholder="-"
-                              onChange={(e) => handleCellChange(r.emp.id, 'adjustments', 'license', e.target.value)}
+                              onChange={(e) =>
+                                handleCellChange(r.emp.id, 'adjustments', 'license', e.target.value)
+                              }
                               onFocus={() => {
                                 if (!isDragging) {
-                                  setSelection({ start: { row: rowIdx, col: licColIdx }, end: { row: rowIdx, col: licColIdx } })
+                                  setSelection({
+                                    start: { row: rowIdx, col: licColIdx },
+                                    end: { row: rowIdx, col: licColIdx }
+                                  })
                                 }
                               }}
                               className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
@@ -1665,12 +1845,17 @@ export function PayrollGridTab({
                             <input
                               type="number"
                               step="1"
-                              value={r.adjustmentVal === 0 ? '' : r.adjustmentVal ?? ''}
+                              value={r.adjustmentVal === 0 ? '' : (r.adjustmentVal ?? '')}
                               placeholder="-"
-                              onChange={(e) => handleCellChange(r.emp.id, 'adjustments', 'adj', e.target.value)}
+                              onChange={(e) =>
+                                handleCellChange(r.emp.id, 'adjustments', 'adj', e.target.value)
+                              }
                               onFocus={() => {
                                 if (!isDragging) {
-                                  setSelection({ start: { row: rowIdx, col: adjColIdx }, end: { row: rowIdx, col: adjColIdx } })
+                                  setSelection({
+                                    start: { row: rowIdx, col: adjColIdx },
+                                    end: { row: rowIdx, col: adjColIdx }
+                                  })
                                 }
                               }}
                               className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
@@ -1684,12 +1869,17 @@ export function PayrollGridTab({
                             <input
                               type="number"
                               step="1"
-                              value={r.sil === 0 ? '' : r.sil ?? ''}
+                              value={r.sil === 0 ? '' : (r.sil ?? '')}
                               placeholder="-"
-                              onChange={(e) => handleCellChange(r.emp.id, 'adjustments', 'sil', e.target.value)}
+                              onChange={(e) =>
+                                handleCellChange(r.emp.id, 'adjustments', 'sil', e.target.value)
+                              }
                               onFocus={() => {
                                 if (!isDragging) {
-                                  setSelection({ start: { row: rowIdx, col: silColIdx }, end: { row: rowIdx, col: silColIdx } })
+                                  setSelection({
+                                    start: { row: rowIdx, col: silColIdx },
+                                    end: { row: rowIdx, col: silColIdx }
+                                  })
                                 }
                               }}
                               className="w-full h-8 text-right pr-2 bg-transparent text-blue-700 font-mono font-medium outline-none focus:bg-white focus:ring-1 focus:ring-[#1B9387] placeholder:text-gray-400 cursor-cell"
@@ -1710,22 +1900,37 @@ export function PayrollGridTab({
           {/* SPREADSHEET FOOTER (TOTALS ROW) */}
           <tfoot>
             <tr className="bg-[#B8CCE4] font-black text-gray-900 border-t-2 border-gray-500 text-[11px]">
-              <td className="p-2 border-r border-gray-400 sticky left-0 z-30 bg-[#B8CCE4]">
+              <td
+                className="p-2 border-r border-gray-400 sticky z-30 bg-[#B8CCE4] min-w-[140px] w-[140px] max-w-[140px]"
+                style={{ left: `${frozenColumnLefts.name}px` }}
+              >
                 TOTALS
               </td>
-              <td className="p-2 border-r border-gray-400 sticky left-[140px] z-30 bg-[#B8CCE4]">
+              <td
+                className="p-2 border-r border-gray-400 sticky z-30 bg-[#B8CCE4] min-w-[100px] w-[100px] max-w-[100px]"
+                style={{ left: `${frozenColumnLefts.position}px` }}
+              >
                 {calculatedRows.length} Employee(s)
               </td>
-              <td className="p-2 border-r border-gray-400 text-right font-mono sticky left-[240px] z-30 bg-[#B8CCE4]">
+              <td
+                className="p-2 border-r border-gray-400 text-right font-mono sticky z-30 bg-[#B8CCE4] min-w-[90px] w-[90px] max-w-[90px]"
+                style={{ left: `${frozenColumnLefts.monthlySalary}px` }}
+              >
                 {formatCurrency(summaryTotals.monthlySalary)}
               </td>
-              <td className="p-2 border-r border-gray-400 text-right font-mono sticky left-[330px] z-30 bg-[#B8CCE4] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)]">
+              <td
+                className="p-2 border-r border-gray-400 text-right font-mono sticky z-30 bg-[#B8CCE4] shadow-[2px_0_5px_-2px_rgba(0,0,0,0.15)] min-w-[90px] w-[90px] max-w-[90px]"
+                style={{ left: `${frozenColumnLefts.dailyRate}px` }}
+              >
                 —
               </td>
 
               {/* Active Hours Totals */}
               {activeRateDefs.map((def) => (
-                <td key={def.key} className="p-1 border-r border-gray-400 text-center font-mono font-bold">
+                <td
+                  key={def.key}
+                  className="p-1 border-r border-gray-400 text-center font-mono font-bold"
+                >
                   {formatHour(summaryTotals.hours[def.key])}
                 </td>
               ))}
@@ -1798,8 +2003,8 @@ export function PayrollGridTab({
             </div>
             <div className="p-5 space-y-4">
               <p className="text-xs text-gray-600 font-medium">
-                The selected payroll cutoff date falls within a locked period (on or before {lockDate}).
-                Enter Manager Override PIN to post.
+                The selected payroll cutoff date falls within a locked period (on or before{' '}
+                {lockDate}). Enter Manager Override PIN to post.
               </p>
               {pinError && <p className="text-xs text-red-600 font-bold">{pinError}</p>}
               <input
@@ -1859,7 +2064,8 @@ export function PayrollGridTab({
                   <FolderOpen className="w-10 h-10 mx-auto text-gray-300 mb-2" />
                   <p className="text-sm font-medium">No saved drafts found</p>
                   <p className="text-xs text-gray-400 mt-1">
-                    Click &quot;Save Draft&quot; in the payroll cutoff bar to save your work in progress.
+                    Click &quot;Save Draft&quot; in the payroll cutoff bar to save your work in
+                    progress.
                   </p>
                 </div>
               ) : (
@@ -1905,8 +2111,7 @@ export function PayrollGridTab({
                               </strong>
                             </span>
                             <span>
-                              Date:{' '}
-                              <strong className="text-slate-700">{draft.payrollDate}</strong>
+                              Date: <strong className="text-slate-700">{draft.payrollDate}</strong>
                             </span>
                             <span>
                               Saved:{' '}
@@ -1980,4 +2185,3 @@ export function PayrollGridTab({
     </div>
   )
 }
-
