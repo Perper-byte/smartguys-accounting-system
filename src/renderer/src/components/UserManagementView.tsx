@@ -8,6 +8,7 @@ const MODULES = [
   { id: 'disbursement', label: 'Cash Disbursements' },
   { id: 'payouts', label: 'Doctor Payouts' },
   { id: 'aging', label: 'Aged Receivables (HMO)' },
+  { id: 'aged-payables', label: 'Aged Payables (AP Aging)' },
   { id: 'tracker', label: 'Invoice Tracker' },
   { id: 'history', label: 'My Sales History' },
   { id: 'payroll', label: 'HR & Payroll' },

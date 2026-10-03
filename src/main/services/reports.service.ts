@@ -490,6 +490,166 @@ export class ReportsService {
     return report.sort((a, b) => b.total - a.total)
   }
 
+    static async getAgedPayables() {
+    const lines = await prisma.journalLine.findMany({
+      where: {
+        account_id: '2010',
+        entry: {
+          payee_id: { not: null },
+          status: { not: 'VOIDED' }
+        }
+      },
+      include: { entry: { include: { payee: true } } },
+      orderBy: { entry: { date: 'asc' } }
+    })
+
+    const payeeMap: Record<
+      string,
+      {
+        name: string
+        bills: any[]
+        payments: any[]
+      }
+    > = {}
+
+    for (const line of lines) {
+      const payeeId = line.entry.payee_id!.toString()
+      if (!payeeMap[payeeId]) {
+        payeeMap[payeeId] = {
+          name: line.entry.payee!.name,
+          bills: [],
+          payments: []
+        }
+      }
+      if (Number(line.credit) > 0) {
+        payeeMap[payeeId].bills.push({
+          billNo: line.entry.reference_no || 'N/A',
+          description: cleanDescription(line.entry.description),
+          rawDescription: line.entry.description || '',
+          date: line.entry.date,
+          originalAmount: Number(line.credit),
+          amount: Number(line.credit),
+          paidAmount: 0,
+          dueDate: new Date(new Date(line.entry.date).getTime() + 30 * 24 * 60 * 60 * 1000)
+        })
+      }
+      if (Number(line.debit) > 0) {
+        payeeMap[payeeId].payments.push({
+          referenceNo: line.entry.reference_no || '',
+          description: cleanDescription(line.entry.description),
+          rawDescription: line.entry.description || '',
+          amount: Number(line.debit),
+          remainingAmount: Number(line.debit)
+        })
+      }
+    }
+
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const report: any[] = []
+
+    for (const payeeId in payeeMap) {
+      const p = payeeMap[payeeId]
+
+      // PASS 1: Exact Explicit Match
+      for (const pmt of p.payments) {
+        if (pmt.remainingAmount <= 0) continue
+        for (const bill of p.bills) {
+          if (bill.amount <= 0) continue
+          const desc = (pmt.description || '').toUpperCase()
+          const ref = (pmt.referenceNo || '').toUpperCase()
+          const billNo = bill.billNo.toUpperCase()
+
+          if (billNo !== 'N/A' && (desc.includes(billNo) || ref.includes(billNo))) {
+            const deduction = Math.min(pmt.remainingAmount, bill.amount)
+            bill.amount -= deduction
+            bill.paidAmount += deduction
+            pmt.remainingAmount -= deduction
+          }
+        }
+      }
+
+      // PASS 2: Exact Amount
+      for (const pmt of p.payments) {
+        if (pmt.remainingAmount <= 0) continue
+        for (const bill of p.bills) {
+          if (bill.amount <= 0) continue
+          if (Math.abs(bill.amount - pmt.remainingAmount) < 0.01) {
+            bill.paidAmount += pmt.remainingAmount
+            bill.amount = 0
+            pmt.remainingAmount = 0
+            break
+          }
+        }
+      }
+
+      // PASS 3: FIFO
+      for (const pmt of p.payments) {
+        if (pmt.remainingAmount <= 0) continue
+        for (const bill of p.bills) {
+          if (bill.amount <= 0) continue
+          const deduction = Math.min(pmt.remainingAmount, bill.amount)
+          bill.amount -= deduction
+          bill.paidAmount += deduction
+          pmt.remainingAmount -= deduction
+          if (pmt.remainingAmount <= 0) break
+        }
+      }
+
+      let current = 0
+      let days30 = 0
+      let days60 = 0
+      let days90 = 0
+      const billDetails: any[] = []
+
+      for (const bill of p.bills) {
+        const unpaidAmount = Number(bill.amount.toFixed(2))
+        let status = 'Unpaid'
+        if (unpaidAmount <= 0) {
+          status = 'Paid'
+        } else if (bill.paidAmount > 0) {
+          status = 'Partially Paid'
+        }
+
+        if (unpaidAmount > 0) {
+          const billDate = new Date(bill.date)
+          billDate.setHours(0, 0, 0, 0)
+          const diffTime = today.getTime() - billDate.getTime()
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+          if (diffDays <= 30) current += unpaidAmount
+          else if (diffDays <= 60) days30 += unpaidAmount
+          else if (diffDays <= 90) days60 += unpaidAmount
+          else days90 += unpaidAmount
+        }
+
+        billDetails.push({
+          billNo: bill.billNo,
+          date: bill.date,
+          dueDate: bill.dueDate,
+          amount: unpaidAmount,
+          originalAmount: bill.originalAmount,
+          status: status
+        })
+      }
+
+      const total = Number((current + days30 + days60 + days90).toFixed(2))
+      if (total > 0 || billDetails.length > 0) {
+        report.push({
+          payeeName: p.name,
+          current: Number(current.toFixed(2)),
+          days30: Number(days30.toFixed(2)),
+          days60: Number(days60.toFixed(2)),
+          days90: Number(days90.toFixed(2)),
+          total,
+          bills: billDetails
+        })
+      }
+    }
+
+    return report.sort((a, b) => b.total - a.total)
+  }
+
   static async getInvoiceTracker() {
     // 1. Fetch BOTH manual INV- invoices AND automated SYS- POS transactions (Exclude voided)
     const invoices = await prisma.journalEntry.findMany({

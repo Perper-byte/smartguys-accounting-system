@@ -29,7 +29,8 @@ import {
   ListTree,
   Tags,
   LogOut,
-  Coins
+  Coins,
+  CalendarClock
 } from 'lucide-react'
 
 // Screens
@@ -47,6 +48,7 @@ import { CashierDisbursementView } from './components/CashierDisbursementView'
 import { CashDisbursementForm } from './components/CashDisbursementForm'
 import { RentPayoutView } from './components/EWTPayoutView'
 import { AgedReceivablesView } from './components/AgedReceivablesView'
+import { AgedPayablesView } from './components/AgedPayablesView'
 import { InvoiceTrackerView } from './components/InvoiceTrackerView'
 import { PayrollView } from './components/PayrollView'
 import { JournalManagementView } from './components/JournalManagementView'
@@ -149,6 +151,13 @@ const ALL_TABS = [
     id: 'aging',
     label: 'Aged Receivables (HMO)',
     icon: Clock,
+    group: 'Accounting',
+    allowedRoles: ROLES.FINANCE_TEAM
+  },
+  {
+    id: 'aged-payables',
+    label: 'Aged Payables (AP Aging)',
+    icon: CalendarClock,
     group: 'Accounting',
     allowedRoles: ROLES.FINANCE_TEAM
   },
@@ -479,6 +488,7 @@ export default function App() {
               {activeTab === 'users' && <UserManagementView currentUser={currentUser} />}
 
               {activeTab === 'aging' && <AgedReceivablesView onNavigate={handleNavigation} />}
+              {activeTab === 'aged-payables' && <AgedPayablesView onNavigate={handleNavigation} />}
               {activeTab === 'history' && (
                 <CashierHistoryView userId={currentUser.id} prefillData={navData} />
               )}

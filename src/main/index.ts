@@ -823,6 +823,13 @@ app.whenReady().then(() => {
       return []
     }
   })
+    ipcMain.handle('get-aged-payables', async () => {
+    try {
+      return await ReportsService.getAgedPayables()
+    } catch (err: any) {
+      return []
+    }
+  })
   ipcMain.handle('get-invoice-tracker', async () => {
     try {
       return typeof ReportsService.getInvoiceTracker === 'function'
