@@ -1,6 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
-  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"] 
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "windows", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -41,7 +41,7 @@ model Attachment {
   fileName       String
   fileType       String
   fileData       String       // This will store the Base64 string
-  createdAt      DateTime     @default(now())
+  createdAt      DateTime     @default(dbgenerated("NOW()")) @db.DateTime
 
   // Link it to the Journal Entry
   entry          JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
@@ -56,7 +56,7 @@ model InventoryItem {
   name      String  @db.VarChar(150) // The "Product / Description"
   location  String? @db.VarChar(100) // The "Location"
   stock     Int     @default(0) // The "Quantity On Hand"
-   uom         String?  @default("Pieces") 
+  uom       String? @default("Pieces") 
   is_active Boolean @default(true)
 
   logs InventoryLog[]
@@ -67,7 +67,7 @@ model InventoryItem {
 model InventoryLog {
   id      String   @id @default(uuid()) @db.VarChar(50)
   item_id String   @db.VarChar(50)
-  date    DateTime @default(now())
+  date    DateTime @default(dbgenerated("NOW()")) @db.DateTime
   in_qty  Int      @default(0)
   out_qty Int      @default(0)
   balance Int      @default(0)
@@ -88,7 +88,7 @@ model InventoryLog {
 
 model AuditLog {
   id        Int      @id @default(autoincrement())
-  timestamp DateTime @default(now())
+  timestamp DateTime @default(dbgenerated("NOW()")) @db.DateTime
   user_id   String   @db.VarChar(50)
   action    String   @db.VarChar(100)
   details   String   @db.Text
@@ -143,7 +143,7 @@ model Payee {
   hmo_card_no     String?   @db.VarChar(100)
   hmo_expiry_date DateTime? @db.Date
 
-   is_active       Boolean   @default(true)
+  is_active       Boolean   @default(true)
 
   journal_entries JournalEntry[]
   @@map("payees")
@@ -157,8 +157,8 @@ model JournalEntry {
   description  String   @db.Text
   payee_id     String?  @db.VarChar(50)
   user_id      String   @db.VarChar(50)
-  created_at   DateTime @default(now())
-  attachments Attachment[]
+  created_at   DateTime @default(dbgenerated("NOW()")) @db.DateTime
+  attachments  Attachment[]
 
   // VOID SYSTEM STATUS
   status      String  @default("ACTIVE") @db.VarChar(20)
@@ -206,7 +206,7 @@ model Employee {
   philhealth_no  String?  @db.VarChar(50)
   pagibig_no     String?  @db.VarChar(50)
   is_active      Boolean  @default(true)
-  created_at     DateTime @default(now())
+  created_at     DateTime @default(dbgenerated("NOW()")) @db.DateTime
 
   payslips Payslip[] // 🔥 ADD THIS
 
@@ -218,7 +218,7 @@ model BankAccount {
   name           String   @db.VarChar(150)
   account_number String?  @db.VarChar(100)
   ledger_account String   @db.VarChar(50)
-  created_at     DateTime @default(now())
+  created_at     DateTime @default(dbgenerated("NOW()")) @db.DateTime
 
   ledger_account_ref Account           @relation(fields: [ledger_account], references: [code])
   transactions       BankTransaction[]
@@ -235,7 +235,7 @@ model BankTransaction {
   reference_no     String?  @db.VarChar(100)
   amount           Decimal  @db.Decimal(15, 2)
   status           String   @default("UNMATCHED") @db.VarChar(20)
-  created_at       DateTime @default(now())
+  created_at       DateTime @default(dbgenerated("NOW()")) @db.DateTime
   removed_at       DateTime?
 
   bank_account   BankAccount      @relation(fields: [bank_account_id], references: [id], onDelete: Cascade)
@@ -265,7 +265,7 @@ model Reconciliation {
   // 🔥 CHANGED: Removed @unique so multiple records can share the same bank_transaction_id
   bank_transaction_id String   @db.VarChar(50) 
   journal_entry_id    String   @unique @db.VarChar(50)
-  matched_at          DateTime @default(now())
+  matched_at          DateTime @default(dbgenerated("NOW()")) @db.DateTime
   matched_by          String   @db.VarChar(50)
 
   bank_transaction BankTransaction @relation(fields: [bank_transaction_id], references: [id], onDelete: Cascade)
@@ -286,6 +286,7 @@ model SystemSetting {
 
   @@map("system_settings")
 }
+
 model Payslip {
   id               String   @id @default(uuid()) @db.VarChar(50)
   employee_id      Int
