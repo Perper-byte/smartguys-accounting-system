@@ -1,7 +1,7 @@
 // src/main/main.ts
+import './env'
 import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
-import './env'
 import { app, BrowserWindow, ipcMain, dialog } from 'electron'
 import path from 'path'
 import * as fs from 'fs'

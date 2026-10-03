@@ -17,7 +17,6 @@ export class AnalyticsService {
       const entries = await prisma.journalEntry.findMany({
         where: {
           date: { gte: startOfDay, lte: endOfDay },
-          status: { not: 'VOID' }
         },
         include: {
           lines: {
@@ -77,7 +76,7 @@ export class AnalyticsService {
 
       const entries = await prisma.journalEntry.findMany({
         where: { date: { gte: startOfDay, lte: endOfDay } },
-        orderBy: { created_at: 'desc' },
+        orderBy: { date: 'desc' },
         take: 10,
         include: {
           payee: true,

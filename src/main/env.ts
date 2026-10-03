@@ -6,12 +6,13 @@ import * as path from 'path';
 // Find the secure folder where Electron stores user settings (e.g., AppData/Roaming/)
 const configPath = path.join(app.getPath('userData'), 'server-config.json');
 
-let serverIp = 'localhost'; // Default to localhost (Server PC)
+// Default to the Ubuntu Server IP on client machines:
+let serverIp = '192.168.1.100'; 
 
 if (fs.existsSync(configPath)) {
   try {
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
-    if (config.serverIp) {
+    if (config.serverIp && config.serverIp !== 'localhost') {
       serverIp = config.serverIp;
     }
   } catch (e) {
@@ -21,3 +22,5 @@ if (fs.existsSync(configPath)) {
 
 // 🚀 DYNAMICALLY SET THE DATABASE URL BEFORE PRISMA LOADS!
 process.env.DATABASE_URL = `mysql://admin:smartguys123@${serverIp}:3306/smartguys_accounting?connect_timeout=30`;
+
+export { serverIp };
