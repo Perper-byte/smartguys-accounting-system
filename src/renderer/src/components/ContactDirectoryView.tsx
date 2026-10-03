@@ -1,5 +1,17 @@
 import * as React from 'react'
 import { useState, useEffect, useMemo } from 'react'
+import {
+  Users,
+  User,
+  Stethoscope,
+  Building2,
+  Building,
+  Package,
+  Key,
+  Search,
+  Download,
+  Upload
+} from 'lucide-react'
 import { NewContactModal } from './NewContactModal'
 import * as XLSX from 'xlsx'
 
@@ -27,7 +39,7 @@ export function ContactDirectoryView({
 
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<
-    'ALL' | 'PATIENT' | 'DOCTOR' | 'HMO_CORP' | 'SUPPLIER'
+    'ALL' | 'PATIENT' | 'DOCTOR' | 'HMO_CORP' | 'SUPPLIER' | 'OTHERS' | 'ARCHIVED'
   >('ALL')
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null)
   const [actionMenuId, setActionMenuId] = useState<string | null>(null)
@@ -68,21 +80,30 @@ export function ContactDirectoryView({
 
   const counts = useMemo(
     () => ({
-      ALL: contacts.length,
-      PATIENT: contacts.filter((c) => c.type === 'PATIENT').length,
-      DOCTOR: contacts.filter((c) => c.type === 'DOCTOR').length,
-      HMO_CORP: contacts.filter((c) => c.type === 'HMO' || c.type === 'CORPORATE').length,
-      SUPPLIER: contacts.filter((c) => c.type === 'SUPPLIER').length
+      ALL: contacts.filter((c) => c.status !== 'ARCHIVED').length,
+      PATIENT: contacts.filter((c) => c.status !== 'ARCHIVED' && c.type === 'PATIENT').length,
+      DOCTOR: contacts.filter((c) => c.status !== 'ARCHIVED' && c.type === 'DOCTOR').length,
+      HMO_CORP: contacts.filter(
+        (c) => c.status !== 'ARCHIVED' && (c.type === 'HMO' || c.type === 'CORPORATE')
+      ).length,
+      SUPPLIER: contacts.filter((c) => c.status !== 'ARCHIVED' && c.type === 'SUPPLIER').length,
+      OTHERS: contacts.filter(
+        (c) =>
+          c.status !== 'ARCHIVED' &&
+          !['PATIENT', 'DOCTOR', 'HMO', 'CORPORATE', 'SUPPLIER'].includes(c.type)
+      ).length,
+      ARCHIVED: contacts.filter((c) => c.status === 'ARCHIVED').length
     }),
     [contacts]
   )
 
   const filteredContacts = useMemo(() => {
     return contacts.filter((c) => {
-      const q = searchQuery.toLowerCase()
+      const q = searchQuery.toLowerCase().trim()
       const matchesSearch =
+        !q ||
         c.name.toLowerCase().includes(q) ||
-        (c.tin && c.tin.includes(q)) ||
+        (c.tin && c.tin.toLowerCase().includes(q)) ||
         (c.hmo_affiliation && c.hmo_affiliation.toLowerCase().includes(q)) ||
         (c.affiliatedPatients &&
           c.affiliatedPatients.some(
@@ -92,13 +113,24 @@ export function ContactDirectoryView({
               (pt.loaNumbers && pt.loaNumbers.some((l: string) => l.toLowerCase().includes(q)))
           ))
 
-      const matchesType =
-        filterType === 'ALL' ||
-        (filterType === 'HMO_CORP'
-          ? c.type === 'HMO' || c.type === 'CORPORATE'
-          : c.type === filterType)
+      if (!matchesSearch) return false
 
-      return matchesSearch && matchesType
+      if (filterType === 'ARCHIVED') {
+        return c.status === 'ARCHIVED'
+      }
+
+      // Hide archived from active category tabs
+      if (c.status === 'ARCHIVED') return false
+
+      if (filterType === 'ALL') return true
+      if (filterType === 'PATIENT') return c.type === 'PATIENT'
+      if (filterType === 'DOCTOR') return c.type === 'DOCTOR'
+      if (filterType === 'HMO_CORP') return c.type === 'HMO' || c.type === 'CORPORATE'
+      if (filterType === 'SUPPLIER') return c.type === 'SUPPLIER'
+      if (filterType === 'OTHERS')
+        return !['PATIENT', 'DOCTOR', 'HMO', 'CORPORATE', 'SUPPLIER'].includes(c.type)
+
+      return true
     })
   }, [contacts, searchQuery, filterType])
 
@@ -118,6 +150,8 @@ export function ContactDirectoryView({
       case 'HMO':
       case 'CORPORATE':
         return 'text-[#1B9387] bg-[#E9FAFA] border-[#B0DCDA]'
+      case 'LANDLORD':
+        return 'text-amber-700 bg-amber-50 border-amber-200'
       default:
         return 'text-gray-500 bg-gray-50 border-gray-200'
     }
@@ -166,7 +200,7 @@ export function ContactDirectoryView({
         const rows = XLSX.utils.sheet_to_json<any>(worksheet, { defval: '', raw: false })
         if (rows.length === 0) throw new Error('The selected file contains no contacts.')
 
-        const allowedTypes = ['PATIENT', 'DOCTOR', 'HMO', 'CORPORATE', 'SUPPLIER']
+        const allowedTypes = ['PATIENT', 'DOCTOR', 'HMO', 'CORPORATE', 'SUPPLIER', 'LANDLORD', 'OTHER']
         const importedContacts: any[] = []
 
         for (let i = 0; i < rows.length; i++) {
@@ -187,7 +221,7 @@ export function ContactDirectoryView({
 
           if (!allowedTypes.includes(type)) {
             throw new Error(
-              `Row ${excelRow}: Invalid Type "${type}".\nAllowed values:\nPATIENT\nDOCTOR\nHMO\nCORPORATE\nSUPPLIER`
+              `Row ${excelRow}: Invalid Type "${type}".\nAllowed values:\nPATIENT\nDOCTOR\nHMO\nCORPORATE\nSUPPLIER\nLANDLORD\nOTHER`
             )
           }
 
@@ -381,161 +415,222 @@ export function ContactDirectoryView({
   }
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-6 py-4 flex flex-col font-sans text-gray-800 relative animate-in fade-in duration-300">
-      {(actionMenuId || isNewContactMenuOpen) && (
-        <div
-          className="fixed inset-0 z-20"
-          onClick={() => {
-            setActionMenuId(null)
-            setIsNewContactMenuOpen(false)
-          }}
-        ></div>
-      )}
-
-      <div className="mb-6">
-        <h2 className="text-2xl font-extrabold text-gray-800 tracking-wide">Contacts & Entities</h2>
-        <p className="text-sm text-gray-500 mt-1 font-medium">
-          Manage patients, doctors, HMOs, and outstanding balances.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        {[
-          { label: 'All Contacts', type: 'ALL', count: counts.ALL },
-          { label: 'Patients', type: 'PATIENT', count: counts.PATIENT },
-          { label: 'Doctors', type: 'DOCTOR', count: counts.DOCTOR },
-          { label: 'HMOs / Corp', type: 'HMO_CORP', count: counts.HMO_CORP },
-          { label: 'Suppliers', type: 'SUPPLIER', count: counts.SUPPLIER }
-        ].map((card) => (
+    <div className="w-full px-4 sm:px-6 py-6 font-sans text-gray-800 animate-in fade-in duration-300">
+      <div className="bg-white border border-[#B0DCDA] rounded-2xl p-6 sm:p-8 shadow-xs relative">
+        {(actionMenuId || isNewContactMenuOpen) && (
           <div
-            key={card.type}
-            onClick={() => setFilterType(card.type as any)}
-            className={`p-4 rounded-xl border cursor-pointer transition shadow-sm text-center ${
-              filterType === card.type
-                ? 'bg-[#1B9387] border-[#1B9387] text-white'
-                : 'bg-white border-[#B0DCDA] hover:bg-[#E9FAFA] text-gray-600'
-            }`}
-          >
-            <p
-              className={`text-[10px] font-extrabold uppercase tracking-wider mb-1 ${
-                filterType === card.type ? 'text-[#E9FAFA]' : 'text-gray-500'
-              }`}
-            >
-              {card.label}
-            </p>
-            <p className="text-2xl font-black">{card.count}</p>
-          </div>
-        ))}
-      </div>
+            className="fixed inset-0 z-20"
+            onClick={() => {
+              setActionMenuId(null)
+              setIsNewContactMenuOpen(false)
+            }}
+          ></div>
+        )}
 
-      <div className="flex flex-col lg:flex-row justify-between items-center gap-4 mb-4">
-        <div className="relative w-full lg:w-96">
-          <span className="absolute left-3 top-2.5 text-gray-400">🔍</span>
-          <input
-            type="text"
-            placeholder="Search name, TIN, HMO..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-white border border-[#B0DCDA] rounded-md pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] text-gray-800 shadow-sm"
-          />
+        {/* HEADER */}
+        <div className="mb-6 flex items-start gap-3.5">
+          <div className="p-2.5 rounded-xl bg-[#E9FAFA] text-[#1B9387] border border-[#B0DCDA] shrink-0 mt-0.5">
+            <Users className="w-6 h-6 stroke-[2.2]" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-black text-gray-900 tracking-tight">Contacts & Entities</h2>
+            <p className="text-sm text-gray-500 mt-1 font-medium">
+              Manage patients, doctors, HMOs, and outstanding balances.
+            </p>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-3 w-full lg:w-auto">
-          <button
-            onClick={handleImport}
-            className="bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] px-4 py-2 rounded-md text-sm font-extrabold shadow-sm transition flex items-center space-x-2"
-          >
-            <span>📥</span>
-            <span>Import</span>
-          </button>
-          <button
-            onClick={handleExport}
-            className="bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] px-4 py-2 rounded-md text-sm font-extrabold shadow-sm transition flex items-center space-x-2"
-          >
-            <span>📤</span>
-            <span>Export</span>
-          </button>
+        {/* 7 FILTER / STAT CARDS */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+          {[
+            { label: 'ALL CONTACTS', type: 'ALL', count: counts.ALL, isArchived: false },
+            { label: 'PATIENTS', type: 'PATIENT', count: counts.PATIENT, isArchived: false },
+            { label: 'DOCTORS', type: 'DOCTOR', count: counts.DOCTOR, isArchived: false },
+            { label: 'HMOS / CORP', type: 'HMO_CORP', count: counts.HMO_CORP, isArchived: false },
+            { label: 'SUPPLIERS', type: 'SUPPLIER', count: counts.SUPPLIER, isArchived: false },
+            { label: 'OTHERS', type: 'OTHERS', count: counts.OTHERS, isArchived: false },
+            { label: 'ARCHIVED', type: 'ARCHIVED', count: counts.ARCHIVED, isArchived: true }
+          ].map((card) => {
+            const isSelected = filterType === card.type
 
-          <div className="relative z-50">
+            if (card.isArchived) {
+              return (
+                <button
+                  key={card.type}
+                  type="button"
+                  onClick={() => setFilterType(card.type as any)}
+                  className={`p-3.5 rounded-xl border transition text-center cursor-pointer flex flex-col items-center justify-center ${
+                    isSelected
+                      ? 'bg-[#1e293b] border-white/50 ring-2 ring-[#1B9387] text-white shadow-md'
+                      : 'bg-[#334155] border-[#475569] hover:bg-[#1e293b] text-white shadow-2xs'
+                  }`}
+                >
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 mb-1">
+                    {card.label}
+                  </span>
+                  <span className="text-2xl font-black text-white">{card.count}</span>
+                </button>
+              )
+            }
+
+            return (
+              <button
+                key={card.type}
+                type="button"
+                onClick={() => setFilterType(card.type as any)}
+                className={`p-3.5 rounded-xl border transition text-center cursor-pointer flex flex-col items-center justify-center shadow-2xs ${
+                  isSelected
+                    ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-md ring-1 ring-[#1B9387]'
+                    : 'bg-white border-[#B0DCDA] hover:bg-[#E9FAFA] text-gray-700'
+                }`}
+              >
+                <span
+                  className={`text-[10px] font-extrabold uppercase tracking-wider mb-1 ${
+                    isSelected ? 'text-[#E9FAFA]' : 'text-gray-500'
+                  }`}
+                >
+                  {card.label}
+                </span>
+                <span
+                  className={`text-2xl font-black ${isSelected ? 'text-white' : 'text-gray-800'}`}
+                >
+                  {card.count}
+                </span>
+              </button>
+            )
+          })}
+        </div>
+
+        {/* SEARCH AND ACTION BUTTONS */}
+        <div className="flex flex-col lg:flex-row justify-between items-center gap-4 mb-4">
+          <div className="relative w-full lg:w-80">
+            <Search className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search name, TIN, HMO..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-white border border-[#B0DCDA] rounded-lg pl-9 pr-4 py-2 text-sm focus:outline-none focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] text-gray-800 shadow-2xs placeholder-gray-400 font-medium"
+            />
+          </div>
+
+          <div className="flex items-center space-x-3 w-full lg:w-auto justify-end">
             <button
-              onClick={() => setIsNewContactMenuOpen(!isNewContactMenuOpen)}
-              className="bg-[#1B9387] hover:bg-[#28958B] border border-transparent text-white px-5 py-2 rounded-md text-sm font-extrabold shadow-sm transition flex items-center space-x-2"
+              onClick={handleImport}
+              className="bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] px-4 py-2 rounded-lg text-xs font-black shadow-2xs transition flex items-center space-x-2 uppercase tracking-wide cursor-pointer"
             >
-              <span>+ New Contact ▾</span>
+              <Download className="w-4 h-4 text-[#1B9387]" />
+              <span>IMPORT</span>
             </button>
 
-            {isNewContactMenuOpen && (
-              <div className="absolute right-0 mt-2 w-48 bg-white border border-[#B0DCDA] rounded-lg shadow-xl overflow-hidden py-1 z-50">
-                <div className="px-3 py-2 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider bg-gray-50 border-b border-gray-100">
-                  What Type?
+            <button
+              onClick={handleExport}
+              className="bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] px-4 py-2 rounded-lg text-xs font-black shadow-2xs transition flex items-center space-x-2 uppercase tracking-wide cursor-pointer"
+            >
+              <Upload className="w-4 h-4 text-[#1B9387]" />
+              <span>EXPORT</span>
+            </button>
+
+            <div className="relative z-50">
+              <button
+                onClick={() => setIsNewContactMenuOpen(!isNewContactMenuOpen)}
+                className="bg-[#1B9387] hover:bg-[#167a70] border border-amber-400 ring-1 ring-amber-400/40 text-white px-5 py-2 rounded-lg text-xs font-black shadow-sm transition flex items-center space-x-2 uppercase tracking-wide cursor-pointer"
+              >
+                <span>+ NEW CONTACT</span>
+                <span className="text-[10px]">▼</span>
+              </button>
+
+              {isNewContactMenuOpen && (
+                <div className="absolute right-0 mt-2 w-52 bg-white border border-[#B0DCDA] rounded-xl shadow-2xl overflow-hidden py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+                  <div className="px-3.5 py-1.5 text-[10px] font-extrabold text-gray-400 uppercase tracking-wider bg-gray-50/80 border-b border-gray-100">
+                    WHAT TYPE?
+                  </div>
+                  <button
+                    onClick={() => openNewContactModal('PATIENT')}
+                    className="w-full text-left px-3.5 py-2 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <User className="w-4 h-4 text-blue-500" />
+                    <span>Patient</span>
+                  </button>
+                  <button
+                    onClick={() => openNewContactModal('DOCTOR')}
+                    className="w-full text-left px-3.5 py-2 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <Stethoscope className="w-4 h-4 text-rose-500" />
+                    <span>Doctor</span>
+                  </button>
+                  <button
+                    onClick={() => openNewContactModal('HMO')}
+                    className="w-full text-left px-3.5 py-2 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <Building2 className="w-4 h-4 text-[#1B9387]" />
+                    <span>HMO</span>
+                  </button>
+                  <button
+                    onClick={() => openNewContactModal('CORPORATE')}
+                    className="w-full text-left px-3.5 py-2 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <Building className="w-4 h-4 text-teal-600" />
+                    <span>Corporate</span>
+                  </button>
+                  <button
+                    onClick={() => openNewContactModal('SUPPLIER')}
+                    className="w-full text-left px-3.5 py-2 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <Package className="w-4 h-4 text-amber-500" />
+                    <span>Supplier</span>
+                  </button>
+                  <button
+                    onClick={() => openNewContactModal('LANDLORD')}
+                    className="w-full text-left px-3.5 py-2 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <Key className="w-4 h-4 text-amber-600" />
+                    <span>Landlord</span>
+                  </button>
                 </div>
-                <button
-                  onClick={() => openNewContactModal('PATIENT')}
-                  className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
-                >
-                  👤 Patient
-                </button>
-                <button
-                  onClick={() => openNewContactModal('DOCTOR')}
-                  className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
-                >
-                  🩺 Doctor
-                </button>
-                <button
-                  onClick={() => openNewContactModal('HMO')}
-                  className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
-                >
-                  🏥 HMO
-                </button>
-                <button
-                  onClick={() => openNewContactModal('CORPORATE')}
-                  className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
-                >
-                  🏢 Corporate
-                </button>
-                <button
-                  onClick={() => openNewContactModal('SUPPLIER')}
-                  className="w-full text-left px-4 py-2.5 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition"
-                >
-                  📦 Supplier
-                </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* TABLE */}
-      <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-sm mb-4">
-        <table className="w-full text-left text-sm">
-          <thead className="bg-[#FBF8F8] border-b border-[#B0DCDA]">
-            <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold">
-              <th className="p-4 pl-6 rounded-tl-xl">Contact</th>
-              <th className="p-4">Type</th>
-              <th className="p-4">Phone / Email</th>
-              <th className="p-4 text-center">Status</th>
-              <th className="p-4 text-right text-orange-500">Payable</th>
-              <th className="p-4 text-right text-[#1B9387]">Receivable</th>
-              <th className="p-4 w-12 text-center rounded-tr-xl">⋮</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading ? (
-              <tr>
-                <td colSpan={7} className="p-12 text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1B9387] mx-auto"></div>
-                </td>
+        {/* TABLE */}
+        <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-xs mb-4 overflow-visible min-h-[320px]">
+          <table className="w-full text-left text-sm">
+            <thead className="bg-[#FBF8F8] border-b border-[#B0DCDA]">
+              <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold">
+                <th className="p-4 pl-6">Contact</th>
+                <th className="p-4">Type</th>
+                <th className="p-4">Phone / Email</th>
+                <th className="p-4 text-center">Status</th>
+                <th className="p-4 text-right text-orange-500 font-extrabold">Payable</th>
+                <th className="p-4 text-right text-[#1B9387] font-extrabold">Receivable</th>
+                <th className="p-4 w-12 text-center">⋮</th>
               </tr>
-            ) : paginatedContacts.length === 0 ? (
-              <tr>
-                <td colSpan={7} className="p-12 text-center text-gray-500 italic font-medium">
-                  No contacts match your filters.
-                </td>
-              </tr>
-            ) : (
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {loading ? (
+                <tr>
+                  <td colSpan={7} className="p-16 text-center">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#1B9387] mx-auto"></div>
+                  </td>
+                </tr>
+              ) : paginatedContacts.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="py-24 text-center">
+                    <div className="flex flex-col items-center justify-center">
+                      <div className="w-16 h-16 rounded-full border-2 border-[#B0DCDA] flex items-center justify-center mb-4 text-[#1B9387]/70">
+                        <Search className="w-8 h-8" />
+                      </div>
+                      <p className="text-gray-400 italic font-medium text-sm">
+                        No contacts match your filters.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              ) : (
               paginatedContacts.map((c, index) => {
                 const isNearBottom =
-                  index >= paginatedContacts.length - 2 && paginatedContacts.length > 2
+                  index >= paginatedContacts.length - 2 && paginatedContacts.length >= 4
 
                 return (
                   <React.Fragment key={c.id}>
@@ -931,6 +1026,8 @@ export function ContactDirectoryView({
         </div>
       )}
 
+      </div> {/* closes inner white card container */}
+
       <NewContactModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -980,6 +1077,8 @@ export function ContactDirectoryView({
                     <option value="HMO">HMO</option>
                     <option value="CORPORATE">Corporate</option>
                     <option value="SUPPLIER">Supplier</option>
+                    <option value="LANDLORD">Landlord</option>
+                    <option value="OTHER">Other</option>
                   </select>
                 </div>
               </div>

@@ -22,7 +22,8 @@ import {
   ArrowUp,
   ArrowDown,
   History,
-  Calendar
+  Calendar,
+  Upload
 } from 'lucide-react'
 
 const getLocalDateString = () =>
@@ -91,6 +92,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
   const [status, setStatus] = useState<{ type: 'error' | 'success'; msg: string } | null>(null)
   const [loading, setLoading] = useState(false)
   const [previewAttachment, setPreviewAttachment] = useState<any | null>(null)
+  const [previewAttachments, setPreviewAttachments] = useState<any[] | null>(null)
 
   // Dynamic Logic based on Payment Method
   const refPrefix =
@@ -370,6 +372,96 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
 
   const removeFile = (index: number) => setAttachments(attachments.filter((_, i) => i !== index))
 
+  // Compress image before saving (preserves white background for transparent PNGs)
+  const compressImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const dataUrl = e.target?.result as string
+        if (!file.type.startsWith('image/')) {
+          resolve(dataUrl)
+          return
+        }
+        const img = new Image()
+        img.onload = () => {
+          const maxDim = 1600
+          let width = img.width
+          let height = img.height
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width)
+              width = maxDim
+            } else {
+              width = Math.round((width * maxDim) / height)
+              height = maxDim
+            }
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          const ctx = canvas.getContext('2d')
+          if (ctx) {
+            ctx.fillStyle = '#FFFFFF'
+            ctx.fillRect(0, 0, width, height)
+            ctx.drawImage(img, 0, 0, width, height)
+            resolve(canvas.toDataURL('image/jpeg', 0.85))
+          } else {
+            resolve(dataUrl)
+          }
+        }
+        img.onerror = () => resolve(dataUrl)
+        img.src = dataUrl
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  const processAttachments = async () => {
+    return Promise.all(
+      attachments.map(async (file) => {
+        const compressedData = await compressImage(file)
+        return {
+          name: file.name,
+          fileName: file.name,
+          type: file.type || 'image/jpeg',
+          fileType: file.type || 'image/jpeg',
+          size: file.size,
+          data: compressedData,
+          fileData: compressedData
+        }
+      })
+    )
+  }
+
+  const handleAttachToExistingVoucher = async (voucherId: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setLoading(true)
+    try {
+      const compressedData = await compressImage(file)
+      const api = (window as any).api || (window as any).electronAPI
+      if (api?.updateDisbursementAttachment) {
+        const res = await api.updateDisbursementAttachment(voucherId, {
+          name: file.name,
+          type: file.type || 'image/jpeg',
+          data: compressedData
+        })
+        if (res?.success) {
+          await loadHistoricalVouchers()
+          await loadCashierVouchers()
+          await loadData()
+          setStatus({ type: 'success', msg: 'Receipt photo attached successfully!' })
+        } else {
+          setStatus({ type: 'error', msg: res?.error || 'Failed to attach photo.' })
+        }
+      }
+    } catch (err: any) {
+      setStatus({ type: 'error', msg: `Failed to attach receipt: ${err.message}` })
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const handlePreviewFile = (file: File) => {
     const reader = new FileReader()
     reader.onload = (e) => {
@@ -425,6 +517,9 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
       }`
       const fullReferenceNo = `${refPrefix}${refSequence.padStart(3, '0')}`
 
+      // Process attachments before submitting
+      const processedAttachments = await processAttachments()
+
       const result = await api.submitJournalEntry({
         date: new Date(date).toISOString(),
         referenceNo: fullReferenceNo,
@@ -432,7 +527,8 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
         vatType: hasVatableLine ? 'VATABLE' : 'EXEMPT',
         userId,
         payeeId,
-        lines
+        lines,
+        attachments: processedAttachments
       })
 
       if (result.success) {
@@ -989,7 +1085,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                       multiple
                       className="hidden"
                       onChange={handleFileChange}
-                      accept=".pdf,.jpg,.png"
+                      accept="image/*,application/pdf,.pdf,.jpg,.jpeg,.png,.webp"
                     />
                   </label>
                   {attachments.length > 0 && (
@@ -1138,13 +1234,18 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation()
-                              setPreviewAttachment(v.attachments[0])
+                              setPreviewAttachments(
+                                v.attachments.map((a: any) => ({
+                                  ...a,
+                                  entryId: v.id
+                                }))
+                              )
                             }}
                             className="text-[10px] text-[#1B9387] font-bold flex items-center gap-1 hover:underline cursor-pointer"
                             title="Preview receipt"
                           >
                             <Eye size={11} />
-                            <span>Attachment</span>
+                            <span>Attachment ({v.attachments.length})</span>
                           </button>
                         )}
                       </div>
@@ -1435,15 +1536,17 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                               <button
                                 type="button"
                                 onClick={() =>
-                                  setPreviewAttachment({
-                                    ...v.attachments[0],
-                                    entryId: v.id
-                                  })
+                                  setPreviewAttachments(
+                                    v.attachments.map((a: any) => ({
+                                      ...a,
+                                      entryId: v.id
+                                    }))
+                                  )
                                 }
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#E9FAFA] hover:bg-[#1B9387] text-[#1B9387] hover:text-white rounded-lg text-xs font-bold transition cursor-pointer border border-[#B0DCDA]"
                               >
                                 <Eye size={13} />
-                                View Receipt
+                                View Receipt ({v.attachments.length})
                               </button>
                             ) : (
                               <span className="text-[11px] text-rose-500 font-bold bg-rose-50 border border-rose-200 px-2 py-1 rounded-md">
@@ -1816,7 +1919,14 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                             {hasAttachment ? (
                               <button
                                 type="button"
-                                onClick={() => setPreviewAttachment(v.attachments[0])}
+                                onClick={() =>
+                                  setPreviewAttachments(
+                                    v.attachments.map((a: any) => ({
+                                      ...a,
+                                      entryId: v.id
+                                    }))
+                                  )
+                                }
                                 className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-[#E9FAFA] text-[#1B9387] border border-[#B0DCDA] rounded-lg text-xs font-bold transition shadow-xs cursor-pointer"
                                 title="Inspect receipt attachment"
                               >
@@ -1824,7 +1934,19 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                                 <span>View ({v.attachments.length})</span>
                               </button>
                             ) : (
-                              <span className="text-[10px] text-gray-400 italic">None</span>
+                              <label
+                                className="inline-flex items-center gap-1 px-2.5 py-1 bg-gray-50 hover:bg-[#E9FAFA] text-gray-500 hover:text-[#1B9387] border border-dashed border-gray-300 hover:border-[#1B9387] rounded-lg text-[11px] font-bold transition cursor-pointer"
+                                title="Attach receipt photo to this voucher"
+                              >
+                                <Upload size={12} />
+                                <span>Attach</span>
+                                <input
+                                  type="file"
+                                  accept="image/*,application/pdf,.pdf,.jpg,.jpeg,.png,.webp"
+                                  className="hidden"
+                                  onChange={(e) => handleAttachToExistingVoucher(v.id, e)}
+                                />
+                              </label>
                             )}
                           </td>
                         </tr>
@@ -1940,11 +2062,19 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
         defaultType="SUPPLIER"
       />
 
-      {previewAttachment && (
+      {(previewAttachment || (previewAttachments && previewAttachments.length > 0)) && (
         <AttachmentPreviewModal
           attachment={previewAttachment}
-          onClose={() => setPreviewAttachment(null)}
-          onAttachmentUpdated={() => loadCashierVouchers()}
+          attachments={previewAttachments || undefined}
+          onClose={() => {
+            setPreviewAttachment(null)
+            setPreviewAttachments(null)
+          }}
+          onAttachmentUpdated={() => {
+            loadCashierVouchers()
+            loadHistoricalVouchers()
+            loadData()
+          }}
         />
       )}
     </div>

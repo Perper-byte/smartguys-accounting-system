@@ -317,6 +317,7 @@ model Payslip {
 
   // Earnings
   base_pay       Decimal @default(0.00) @db.Decimal(15, 2)
+
   overtime       Decimal @default(0.00) @db.Decimal(15, 2)
   night_diff     Decimal @default(0.00) @db.Decimal(15, 2)
   other_earnings Decimal @default(0.00) @db.Decimal(15, 2)

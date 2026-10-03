@@ -6,7 +6,7 @@ import { useState, useEffect } from 'react'
 interface NewContactModalProps {
   isOpen: boolean
   onClose: () => void
-  onSaveSuccess: (newId?: string, newName?: string) => void
+  onSaveSuccess?: (...args: any[]) => void
   defaultType?: string
 }
 
@@ -84,6 +84,10 @@ export function NewContactModal({
         return 'Supplier'
       case 'CORPORATE':
         return 'Corporate'
+      case 'LANDLORD':
+        return 'Landlord'
+      case 'OTHER':
+        return 'Other Contact'
       default:
         return 'Contact'
     }
@@ -104,6 +108,10 @@ export function NewContactModal({
         return 'Supplier information will be used for purchases and payable transactions.'
       case 'CORPORATE':
         return 'Corporate account information will be used for business transactions.'
+      case 'LANDLORD':
+        return 'Landlord information will be used for property leases, rentals, and payable disbursements.'
+      case 'OTHER':
+        return 'General contact information for misc vendors, agencies, or external partners.'
       default:
         return 'Assigning the correct type ensures they appear in the right ledgers.'
     }
@@ -156,19 +164,24 @@ export function NewContactModal({
         throw new Error(result?.error || 'Failed to create contact.')
       }
 
-      /*
-       * Fetch updated contacts so we can get the new ID.
-       */
-      const updatedPayees = await api.getPayees()
+      let newId = (result as any)?.payee?.id
+      let newName = (result as any)?.payee?.name
 
-      const newRecord = updatedPayees.find(
-        (p: any) => p.name && p.name.toLowerCase() === formData.name.trim().toLowerCase()
-      )
+      if (!newId) {
+        const updatedPayees = await api.getPayees()
+        const newRecord = updatedPayees.find(
+          (p: any) => p.name && p.name.toLowerCase() === formData.name.trim().toLowerCase()
+        )
+        if (newRecord) {
+          newId = newRecord.id
+          newName = newRecord.name
+        }
+      }
 
-      if (newRecord) {
-        onSaveSuccess(newRecord.id, newRecord.name)
+      if (newId) {
+        onSaveSuccess?.(newId, newName)
       } else {
-        onSaveSuccess()
+        onSaveSuccess?.()
       }
 
       /*
@@ -235,6 +248,8 @@ export function NewContactModal({
                 <option value="HMO">🏥 HMO</option>
                 <option value="SUPPLIER">📦 Supplier</option>
                 <option value="CORPORATE">🏢 Corporate</option>
+                <option value="LANDLORD">🔑 Landlord</option>
+                <option value="OTHER">📁 Other</option>
               </select>
             </div>
 
@@ -248,7 +263,9 @@ export function NewContactModal({
                       ? 'HMO Name *'
                       : formData.type === 'SUPPLIER'
                         ? 'Supplier Name *'
-                        : 'Contact Name *'}
+                        : formData.type === 'LANDLORD'
+                          ? 'Landlord / Lessor Name *'
+                          : 'Contact Name *'}
                 </label>
                 <input
                   type="text"
@@ -263,7 +280,9 @@ export function NewContactModal({
                         ? 'e.g. Maxicare'
                         : formData.type === 'SUPPLIER'
                           ? 'e.g. MedSupplies Corp'
-                          : 'e.g. Juan Dela Cruz'
+                          : formData.type === 'LANDLORD'
+                            ? 'e.g. Prime Realty / Landlord Corp'
+                            : 'e.g. Juan Dela Cruz'
                   }
                   className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#4f46e5] outline-none transition placeholder-gray-400"
                 />

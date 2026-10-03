@@ -78,6 +78,7 @@ export const api = {
   updatePayeeTin: (payeeId: string, tin: string) =>
     ipcRenderer.invoke('update-payee-tin', payeeId, tin),
   getContactsWithBalances: () => ipcRenderer.invoke('get-contacts-with-balances'),
+  updatePayee: (id: string, data: any) => ipcRenderer.invoke('update-payee', id, data),
 
   // Services & Procedures (POS Items)
   getAllServiceItems: () => ipcRenderer.invoke('get-all-service-items'),
