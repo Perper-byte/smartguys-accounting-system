@@ -46,3 +46,13 @@ export function cleanDescription(rawDesc?: string | null): string {
 
   return cleaned
 }
+
+// src/shared/formatters.ts  (or date-utils.ts)
+
+/**
+ * Strips time component and returns a pure UTC date.
+ * Prevents day-boundary shifts between Windows host ↔ Ubuntu VirtualBox guest.
+ */
+export function toDateOnly(d: Date): Date {
+  return new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+}

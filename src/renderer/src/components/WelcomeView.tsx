@@ -312,18 +312,6 @@ export const WelcomeView: React.FC<WelcomeViewProps> = ({ username, role, onNavi
                 </button>
               )}
 
-              {canReconcile && (
-                <button
-                  onClick={() => handleActionClick('reconciliation')}
-                  className={quickActionBtnClass}
-                >
-                  <Landmark className="w-6 h-6 text-white/90 mb-3" />
-                  <div className="flex justify-between items-center w-full">
-                    <span className="font-bold text-sm tracking-wide">Bank Reconciliation</span>
-                  </div>
-                </button>
-              )}
-
               {canViewReports && (
                 <button
                   onClick={() => handleActionClick('statements')}

@@ -1287,7 +1287,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                 {cashierMetrics.totalCount}
               </div>
               <span className="text-xs text-gray-500 font-medium mt-1 block">
-                Petty Cash Fund (1020) & Cash in Hand (1010)
+                Petty Cash Fund (1020) & Cash in Hand (1030)
               </span>
             </div>
 

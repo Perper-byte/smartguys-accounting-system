@@ -55,7 +55,7 @@ export function CashierDisbursementView({
   const [payeeNameInput, setPayeeNameInput] = useState('')
   const [selectedPayeeId, setSelectedPayeeId] = useState<string | null>(null)
   const [particulars, setParticulars] = useState('')
-  const [sourceAccount, setSourceAccount] = useState('1010') // Default to 1010 Cash in Hand
+const [sourceAccount, setSourceAccount] = useState('1030') // Default to 1030 Cash in Hand
   const [refSequence, setRefSequence] = useState('')
   const [attachment, setAttachment] = useState<{ name: string; type: string; data: string; size?: number } | null>(null)
 
@@ -84,38 +84,15 @@ export function CashierDisbursementView({
           (a: any) => a.account_type?.name === 'Expense' || a.code.startsWith('5') || a.code.startsWith('6')
         )
         
-        // Only allow Petty Cash Fund and Cash in Hand / Cash on Hand
-        const allowedCashierCodes = ['1010', '1020', '1030']
-        const assets = accs.filter((a: any) => {
-          const name = (a.name || '').toLowerCase()
-          return (
-            allowedCashierCodes.includes(a.code) ||
-            name.includes('petty cash') ||
-            name.includes('cash in hand') ||
-            name.includes('cash on hand')
-          )
-        })
-
+        // Cashier can only pay out of Petty Cash Fund or Cash in Hand (never the bank)
+        const allowedCashierCodes = ['1020', '1030']
+        const assets = accs.filter((a: any) => allowedCashierCodes.includes(a.code))
         setExpenseAccounts(expenses)
         setCashAccounts(assets)
 
-        // Set Cash in Hand / Cash on Hand by default
-        const cashInHand = assets.find((a: any) =>
-          a.code === '1010' ||
-          (a.name && (a.name.toLowerCase().includes('cash in hand') || a.name.toLowerCase().includes('cash on hand')))
-        )
-        const pettyCash = assets.find((a: any) =>
-          a.code === '1020' ||
-          (a.name && a.name.toLowerCase().includes('petty cash'))
-        )
-
-        if (cashInHand) {
-          setSourceAccount(cashInHand.code)
-        } else if (pettyCash) {
-          setSourceAccount(pettyCash.code)
-        } else if (assets.length > 0) {
-          setSourceAccount(assets[0].code)
-        }
+        const cashInHand = assets.find((a: any) => a.code === '1030')
+        const pettyCash = assets.find((a: any) => a.code === '1020')
+        setSourceAccount(cashInHand?.code || pettyCash?.code || assets[0]?.code || '1030')
       }
 
       // 2. Payees / Contacts

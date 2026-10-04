@@ -891,12 +891,12 @@ ${itemsListFormatted || '  - None'}
       // DEBIT 2: PATIENT SHARE (CASH/GCASH)
       if (patientShare > 0) {
         if (paymentMethod === 'CASH') {
-          lines.push({ accountId: '1020', debit: patientShare, credit: 0 })
+          lines.push({ accountId: '1030', debit: patientShare, credit: 0 }) // Cash in Hand
         } else if (paymentMethod === 'GCASH') {
           lines.push({ accountId: '1010', debit: patientShare, credit: 0 })
         } else if (paymentMethod === 'SPLIT') {
           lines.push({ accountId: '1010', debit: splitGcash, credit: 0 })
-          lines.push({ accountId: '1020', debit: patientShare - splitGcash, credit: 0 })
+          lines.push({ accountId: '1030', debit: patientShare - splitGcash, credit: 0 }) // Cash in Hand
         }
       }
 

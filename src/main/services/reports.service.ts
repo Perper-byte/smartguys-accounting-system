@@ -271,7 +271,7 @@ export class ReportsService {
       entry.lines.forEach((line) => {
         const debit = Number(line.debit)
         if (debit > 0) {
-          if (line.account_id === '1020') totalCash += debit
+          if (line.account_id === '1030') totalCash += debit
           else if (line.account_id === '1010') totalGCash += debit
           else if (line.account_id === '1200') totalHMO += debit
           totalSales += debit
@@ -696,8 +696,8 @@ export class ReportsService {
 
       // Explicitly track actual Cash (1020) and GCash (1010) debited upon creation
       const cashAmount = inv.lines
-        .filter((l) => ['1010', '1020'].includes(l.account_id) && Number(l.debit) > 0)
-        .reduce((sum, l) => sum + Number(l.debit), 0)
+      .filter((l) => ['1010', '1020', '1030'].includes(l.account_id) && Number(l.debit) > 0)
+      .reduce((sum, l) => sum + Number(l.debit), 0)
 
       // Total properly equals expected collection (Cash upfront + AR pending)
       const totalAmount = arAmount + cashAmount
@@ -820,7 +820,8 @@ export class ReportsService {
       endDate = dates.endDate
     }
 
-    const whereClause: any = { lines: { some: { account_id: '1010' } } }
+    const CASH_CODES = ['1010', '1020', '1030']
+    const whereClause: any = { lines: { some: { account_id: { in: CASH_CODES } } } }
     if (startDate || endDate) {
       whereClause.date = {}
       if (startDate) whereClause.date.gte = startDate
@@ -841,17 +842,15 @@ export class ReportsService {
       financingDetails: any[] = []
 
     for (const entry of cashEntries) {
-      const cashLine = entry.lines.find((l) => l.account_id === '1010')
-      if (!cashLine) continue
+    const cashLines = entry.lines.filter((l) => CASH_CODES.includes(l.account_id))
+    const netCashChange = cashLines.reduce((s, l) => s + Number(l.debit) - Number(l.credit), 0)
+    if (netCashChange === 0) continue // transfers between cash accounts net to zero
 
-      const netCashChange = Number(cashLine.debit) - Number(cashLine.credit)
-      if (netCashChange === 0) continue
-
-      const offsetLine =
-        entry.lines.find(
-          (l) => l.account_id !== '1010' && (Number(l.debit) > 0 || Number(l.credit) > 0)
-        ) || entry.lines[0]
-      const offsetAccount = offsetLine.account
+    const offsetLine =
+      entry.lines.find(
+        (l) => !CASH_CODES.includes(l.account_id) && (Number(l.debit) > 0 || Number(l.credit) > 0)
+      ) || entry.lines[0]
+    const offsetAccount = offsetLine.account
 
       const detail = {
         id: entry.id,

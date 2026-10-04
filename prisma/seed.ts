@@ -353,7 +353,7 @@ async function main() {
         status: 'ACTIVE',
         lines: {
           create: [
-            { account_id: '1010', debit: 1500, credit: 0 },
+            { account_id: '1030', debit: 1500, credit: 0 },
             { account_id: '4010', debit: 0, credit: 1500 }
           ]
         }
