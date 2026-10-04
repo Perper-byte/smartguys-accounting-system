@@ -1,5 +1,5 @@
 // src/renderer/src/components/ReceivePaymentView.tsx
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import {
   Search,
   CheckCircle,
@@ -24,6 +24,39 @@ interface ReceivePaymentViewProps {
   }
 }
 
+// Helper to extract or resolve patient name from invoice data
+const getInvoicePatient = (inv: any, fallbackPayeeName?: string, isPatientEntity?: boolean): string => {
+  if (inv.patientName) return inv.patientName
+  if (inv.patient_name) return inv.patient_name
+  if (inv.patient?.name) return inv.patient.name
+  if (typeof inv.patient === 'string' && inv.patient.trim()) return inv.patient
+
+  // Check if patient name is tagged in description (e.g. "Patient: Juan Dela Cruz | LOA-1234")
+  const desc = inv.description || ''
+  const ptMatch = desc.match(/(?:Patient|Pt\.?|Patient\s*Name):\s*([^|\n,]+)/i)
+  if (ptMatch) return ptMatch[1].trim()
+
+  // If description has pipes and the first item is not generic "HMO Billing", it might be the patient name
+  if (desc.includes('|')) {
+    const firstPart = cleanDescription(desc).split('|')[0].trim()
+    if (
+      firstPart &&
+      !firstPart.toLowerCase().includes('billing') &&
+      !firstPart.toLowerCase().includes('invoice') &&
+      !firstPart.toLowerCase().includes('hmo')
+    ) {
+      return firstPart
+    }
+  }
+
+  // If the debtor entity itself is a patient
+  if (isPatientEntity && fallbackPayeeName) {
+    return fallbackPayeeName
+  }
+
+  return '—'
+}
+
 export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewProps) {
   // --- States ---
   const [payees, setPayees] = useState<any[]>([])
@@ -33,10 +66,11 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
 
   const [outstandingBalance, setOutstandingBalance] = useState(0)
 
-  // Invoice Tracking States
+  // Invoice Tracking & Search States
   const [unpaidInvoices, setUnpaidInvoices] = useState<any[]>([])
   const [checkedInvoiceIds, setCheckedInvoiceIds] = useState<string[]>([])
   const [fetchingInvoices, setFetchingInvoices] = useState(false)
+  const [invoiceSearchQuery, setInvoiceSearchQuery] = useState('')
 
   // Payment & Deduction States
   const [amountReceived, setAmountReceived] = useState<number | ''>('')
@@ -57,6 +91,28 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
 
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const selectedPayee = payees.find((p) => p.id === payeeId)
+
+  // Filter invoices based on user search
+  const filteredInvoices = useMemo(() => {
+    if (!invoiceSearchQuery.trim()) return unpaidInvoices
+    const q = invoiceSearchQuery.toLowerCase()
+    return unpaidInvoices.filter((inv) => {
+      const pName = getInvoicePatient(
+        inv,
+        selectedPayee?.name,
+        selectedPayee?.type === 'PATIENT'
+      ).toLowerCase()
+      return (
+        inv.referenceNo?.toLowerCase().includes(q) ||
+        pName.includes(q) ||
+        inv.description?.toLowerCase().includes(q) ||
+        inv.total?.toString().includes(q) ||
+        inv.balance?.toString().includes(q)
+      )
+    })
+  }, [unpaidInvoices, invoiceSearchQuery, selectedPayee])
 
   // --- Computations ---
   const received = Number(amountReceived) || 0
@@ -139,11 +195,13 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
       setPaymentReference('')
       setUnpaidInvoices([])
       setCheckedInvoiceIds([])
+      setInvoiceSearchQuery('')
       return
     }
 
     const fetchData = async () => {
       setFetchingInvoices(true)
+      setInvoiceSearchQuery('')
       try {
         const api = (window as any).api || (window as any).electronAPI
 
@@ -151,10 +209,10 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
         setOutstandingBalance(bal?.receivable || 0)
 
         const tracker = await api.getInvoiceTracker()
-        const selectedName = payees.find((p) => p.id === payeeId)?.name
+        const currentPayeeName = payees.find((p) => p.id === payeeId)?.name
 
         const pending = tracker.filter(
-          (inv: any) => inv.payeeName === selectedName && inv.balance > 0
+          (inv: any) => inv.payeeName === currentPayeeName && inv.balance > 0
         )
 
         setUnpaidInvoices(pending)
@@ -188,10 +246,16 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
   }
 
   const handleToggleAll = () => {
-    if (checkedInvoiceIds.length === unpaidInvoices.length) {
-      setCheckedInvoiceIds([])
+    const visibleRefs = filteredInvoices.map((inv) => inv.referenceNo)
+    const allVisibleSelected =
+      visibleRefs.length > 0 && visibleRefs.every((id) => checkedInvoiceIds.includes(id))
+
+    if (allVisibleSelected) {
+      // Uncheck only the visible ones
+      setCheckedInvoiceIds((prev) => prev.filter((id) => !visibleRefs.includes(id)))
     } else {
-      setCheckedInvoiceIds(unpaidInvoices.map((inv) => inv.referenceNo))
+      // Add all visible ones to selected
+      setCheckedInvoiceIds((prev) => Array.from(new Set([...prev, ...visibleRefs])))
     }
   }
 
@@ -233,13 +297,13 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
 
       lines.push({ accountId: '1200', debit: 0, credit: totalCredit })
 
-      const selectedName = payees.find((p) => p.id === payeeId)?.name
+      const currentPayeeName = payees.find((p) => p.id === payeeId)?.name
       const fullReferenceNo = `${refPrefix}${(refSequence || '1').padStart(3, '0')}`
 
       const invList = checkedInvoiceIds.length > 0 ? ` [Invs: ${checkedInvoiceIds.join(', ')}]` : ''
       const isPartial = targetAmount > 0 && totalCredit < targetAmount - 0.009
       const partialTag = isPartial ? ' [PARTIAL PAYMENT]' : ''
-      const description = `Collection of A/R from ${selectedName}${invList}${partialTag} via ${paymentMethod} ${paymentReference ? `(Ref: ${paymentReference})` : ''}`
+      const description = `Collection of A/R from ${currentPayeeName}${invList}${partialTag} via ${paymentMethod} ${paymentReference ? `(Ref: ${paymentReference})` : ''}`
 
       const entryData = {
         date: new Date().toISOString(),
@@ -262,7 +326,7 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
       setIsConfirmModalOpen(false)
       setSuccessData({
         orNo: fullReferenceNo,
-        name: selectedName,
+        name: currentPayeeName,
         amount: received,
         tax: tax,
         method: paymentMethod,
@@ -294,7 +358,6 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
   const filteredPayees = payees.filter((p) =>
     p.name.toLowerCase().includes(payeeSearchQuery.toLowerCase())
   )
-  const selectedPayee = payees.find((p) => p.id === payeeId)
 
   // ==========================================
   // VIEW 1: SUCCESS SCREEN
@@ -502,10 +565,17 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
             <div
               className={`bg-white p-8 border ${checkedInvoiceIds.length > 0 ? 'border-emerald-300 ring-1 ring-emerald-100' : 'border-slate-200'} shadow-sm rounded-xl relative transition-all`}
             >
-              <div className="flex justify-between items-end border-b border-slate-100 pb-4 mb-6">
-                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
-                  2. Select Unpaid Invoices
-                </label>
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end border-b border-slate-100 pb-4 mb-4 gap-2">
+                <div>
+                  <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider">
+                    2. Select Unpaid Invoices
+                  </label>
+                  {unpaidInvoices.length > 0 && (
+                    <span className="text-[11px] text-slate-400 font-medium">
+                      Showing {filteredInvoices.length} of {unpaidInvoices.length} invoice(s)
+                    </span>
+                  )}
+                </div>
                 <div className="text-xs font-bold text-slate-500 flex items-center gap-2">
                   Selected Target:
                   <span
@@ -515,6 +585,29 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
                   </span>
                 </div>
               </div>
+
+              {/* Invoice Search Bar */}
+              {payeeId && unpaidInvoices.length > 0 && (
+                <div className="relative mb-4">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search invoice by Ref No, Patient Name, or Details..."
+                    value={invoiceSearchQuery}
+                    onChange={(e) => setInvoiceSearchQuery(e.target.value)}
+                    className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:bg-white focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] transition shadow-2xs"
+                  />
+                  {invoiceSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setInvoiceSearchQuery('')}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              )}
 
               {!payeeId ? (
                 <div className="flex justify-center items-center py-10 bg-slate-50/50 rounded-lg border border-dashed border-slate-200">
@@ -535,93 +628,125 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
                     No outstanding invoices
                   </span>
                 </div>
+              ) : filteredInvoices.length === 0 ? (
+                <div className="flex flex-col justify-center items-center py-10 bg-slate-50 rounded-lg border border-dashed border-slate-200 text-center">
+                  <span className="text-slate-400 font-bold text-xs">
+                    No unpaid invoices matching "{invoiceSearchQuery}"
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setInvoiceSearchQuery('')}
+                    className="mt-2 text-xs text-[#1B9387] font-bold hover:underline cursor-pointer"
+                  >
+                    Clear Search
+                  </button>
+                </div>
               ) : (
-                <div className="border border-slate-200 rounded-lg overflow-hidden max-h-64 overflow-y-auto">
+                <div className="border border-slate-200 rounded-lg overflow-hidden max-h-72 overflow-y-auto">
                   <table className="w-full text-left text-sm">
                     <thead className="bg-slate-50 border-b border-slate-200 text-[10px] text-slate-500 uppercase tracking-wider font-bold sticky top-0 z-10">
                       <tr>
                         <th
-                          className="p-3 w-12 text-center cursor-pointer hover:bg-slate-100"
+                          className="p-3 w-10 text-center cursor-pointer hover:bg-slate-100"
                           onClick={handleToggleAll}
-                          title="Select All"
+                          title="Select All Visible"
                         >
                           <input
                             type="checkbox"
                             className="cursor-pointer w-4 h-4 text-emerald-500 rounded border-slate-300 focus:ring-emerald-500"
                             onChange={handleToggleAll}
                             checked={
-                              checkedInvoiceIds.length === unpaidInvoices.length &&
-                              unpaidInvoices.length > 0
+                              filteredInvoices.length > 0 &&
+                              filteredInvoices.every((inv) => checkedInvoiceIds.includes(inv.referenceNo))
                             }
                           />
                         </th>
-                        <th className="p-3">Reference No.</th>
-                        <th className="p-3">Date</th>
-                        <th className="p-3">Patient & Details</th>
-                        <th className="p-3 text-center">Status</th>
-                        <th className="p-3 text-right">Invoice Total</th>
-                        <th className="p-3 text-right text-red-500">Balance Due</th>
+                        <th className="p-3 whitespace-nowrap">Reference No.</th>
+                        <th className="p-3 whitespace-nowrap">Patient Name</th>
+                        <th className="p-3 whitespace-nowrap">Date</th>
+                        <th className="p-3">Details / Particulars</th>
+                        <th className="p-3 text-center whitespace-nowrap">Status</th>
+                        <th className="p-3 text-right whitespace-nowrap">Invoice Total</th>
+                        <th className="p-3 text-right text-red-500 whitespace-nowrap">Balance Due</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {unpaidInvoices.map((inv) => (
-                        <tr
-                          key={inv.referenceNo}
-                          className={`hover:bg-slate-50 transition cursor-pointer ${checkedInvoiceIds.includes(inv.referenceNo) ? 'bg-emerald-50/40' : ''}`}
-                          onClick={() => handleToggleInvoice(inv.referenceNo)}
-                        >
-                          <td className="p-3 text-center">
-                            <input
-                              type="checkbox"
-                              className="cursor-pointer w-4 h-4 text-emerald-500 rounded border-slate-300 focus:ring-emerald-500 pointer-events-none"
-                              checked={checkedInvoiceIds.includes(inv.referenceNo)}
-                              readOnly
-                            />
-                          </td>
-                          <td className="p-3 font-mono font-bold text-indigo-700 text-xs">
-                            {inv.referenceNo}
-                          </td>
-                          <td className="p-3 text-slate-500 text-xs">
-                            {new Date(inv.date).toLocaleDateString()}
-                          </td>
-                          <td className="p-3 text-xs w-1/3">
-                            <div
-                              className="flex flex-col max-w-[220px] overflow-hidden"
-                              title={cleanDescription(inv.description)}
-                            >
-                              <span className="text-slate-800 font-bold truncate">
-                                {cleanDescription(inv.description)
-                                  ? cleanDescription(inv.description).split('|')[0].trim()
-                                  : 'Manual Invoice'}
+                      {filteredInvoices.map((inv) => {
+                        const patientName = getInvoicePatient(
+                          inv,
+                          selectedPayee?.name,
+                          selectedPayee?.type === 'PATIENT'
+                        )
+                        const isChecked = checkedInvoiceIds.includes(inv.referenceNo)
+
+                        return (
+                          <tr
+                            key={inv.referenceNo}
+                            className={`hover:bg-slate-50 transition cursor-pointer ${isChecked ? 'bg-emerald-50/40' : ''}`}
+                            onClick={() => handleToggleInvoice(inv.referenceNo)}
+                          >
+                            {/* Checkbox */}
+                            <td className="p-3 text-center">
+                              <input
+                                type="checkbox"
+                                className="cursor-pointer w-4 h-4 text-emerald-500 rounded border-slate-300 focus:ring-emerald-500 pointer-events-none"
+                                checked={isChecked}
+                                readOnly
+                              />
+                            </td>
+
+                            {/* Reference Number */}
+                            <td className="p-3 font-mono font-bold text-indigo-700 text-xs whitespace-nowrap">
+                              {inv.referenceNo}
+                            </td>
+
+                            {/* Patient Name (Next to Reference No.) */}
+                            <td className="p-3 text-xs font-bold text-slate-800 whitespace-nowrap">
+                              <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded font-semibold border border-slate-200/60">
+                                {patientName}
                               </span>
-                              {cleanDescription(inv.description).includes('|') && (
-                                <span className="text-slate-500 truncate text-[10px] mt-0.5">
-                                  {cleanDescription(inv.description)
-                                    .substring(cleanDescription(inv.description).indexOf('|') + 1)
-                                    .trim()}
+                            </td>
+
+                            {/* Date */}
+                            <td className="p-3 text-slate-500 text-xs whitespace-nowrap">
+                              {new Date(inv.date).toLocaleDateString()}
+                            </td>
+
+                            {/* Particulars & Details */}
+                            <td className="p-3 text-xs max-w-[200px]">
+                              <div
+                                className="truncate text-slate-600"
+                                title={cleanDescription(inv.description)}
+                              >
+                                {cleanDescription(inv.description)}
+                              </div>
+                            </td>
+
+                            {/* Status */}
+                            <td className="p-3 text-center whitespace-nowrap">
+                              {inv.status === 'Partially Paid' || inv.paid > 0 ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
+                                  Partial (₱{Number(inv.paid || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} paid)
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700 border border-red-200">
+                                  Unpaid
                                 </span>
                               )}
-                            </div>
-                          </td>
-                          <td className="p-3 text-center">
-                            {inv.status === 'Partially Paid' || (inv.paid > 0) ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200">
-                                Partial (₱{Number(inv.paid || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} paid)
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-700 border border-red-200">
-                                Unpaid
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-3 text-right font-mono text-slate-400 text-xs">
-                            ₱ {inv.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className="p-3 text-right font-mono font-bold text-red-500">
-                            ₱ {inv.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+
+                            {/* Total */}
+                            <td className="p-3 text-right font-mono text-slate-400 text-xs whitespace-nowrap">
+                              ₱ {inv.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </td>
+
+                            {/* Balance Due */}
+                            <td className="p-3 text-right font-mono font-bold text-red-500 whitespace-nowrap">
+                              ₱ {inv.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -854,7 +979,7 @@ export function ReceivePaymentView({ userId, prefillData }: ReceivePaymentViewPr
       </div>
 
       {/* ========================================== */}
-      {/* CONFIRMATION MODAL                           */}
+      {/* CONFIRMATION MODAL                         */}
       {/* ========================================== */}
       {isConfirmModalOpen && (
         <div className="fixed inset-0 z-[100] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">

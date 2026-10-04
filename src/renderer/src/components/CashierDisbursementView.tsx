@@ -55,7 +55,7 @@ export function CashierDisbursementView({
   const [payeeNameInput, setPayeeNameInput] = useState('')
   const [selectedPayeeId, setSelectedPayeeId] = useState<string | null>(null)
   const [particulars, setParticulars] = useState('')
-  const [sourceAccount, setSourceAccount] = useState('1020') // 1020 Petty Cash Fund / 1030 Cash in Hand
+  const [sourceAccount, setSourceAccount] = useState('1010') // Default to 1010 Cash in Hand
   const [refSequence, setRefSequence] = useState('')
   const [attachment, setAttachment] = useState<{ name: string; type: string; data: string; size?: number } | null>(null)
 
@@ -83,17 +83,36 @@ export function CashierDisbursementView({
         const expenses = accs.filter(
           (a: any) => a.account_type?.name === 'Expense' || a.code.startsWith('5') || a.code.startsWith('6')
         )
-        const allowedCashierCodes = ['1010', '1020']
-        const assets = accs.filter(
-          (a: any) => allowedCashierCodes.includes(a.code)
-        )
+        
+        // Only allow Petty Cash Fund and Cash in Hand / Cash on Hand
+        const allowedCashierCodes = ['1010', '1020', '1030']
+        const assets = accs.filter((a: any) => {
+          const name = (a.name || '').toLowerCase()
+          return (
+            allowedCashierCodes.includes(a.code) ||
+            name.includes('petty cash') ||
+            name.includes('cash in hand') ||
+            name.includes('cash on hand')
+          )
+        })
+
         setExpenseAccounts(expenses)
         setCashAccounts(assets)
 
-        if (assets.some((a: any) => a.code === '1020')) {
-          setSourceAccount('1020')
-        } else if (assets.some((a: any) => a.code === '1010')) {
-          setSourceAccount('1010')
+        // Set Cash in Hand / Cash on Hand by default
+        const cashInHand = assets.find((a: any) =>
+          a.code === '1010' ||
+          (a.name && (a.name.toLowerCase().includes('cash in hand') || a.name.toLowerCase().includes('cash on hand')))
+        )
+        const pettyCash = assets.find((a: any) =>
+          a.code === '1020' ||
+          (a.name && a.name.toLowerCase().includes('petty cash'))
+        )
+
+        if (cashInHand) {
+          setSourceAccount(cashInHand.code)
+        } else if (pettyCash) {
+          setSourceAccount(pettyCash.code)
         } else if (assets.length > 0) {
           setSourceAccount(assets[0].code)
         }
@@ -266,8 +285,9 @@ export function CashierDisbursementView({
     const payeeToUse = payeeNameInput.trim() || 'Incidental / Cash'
     const fullRefNo = `PCV-${refSequence.padStart(3, '0')}`
 
-    const selectedCategory = expenseAccounts.find((a) => a.code === selectedCategoryCode) ||
-      QUICK_CATEGORIES.find((c) => c.code === selectedCategoryCode)
+    const selectedCategory =
+      QUICK_CATEGORIES.find((c) => c.code === selectedCategoryCode) ||
+      expenseAccounts.find((a) => a.code === selectedCategoryCode)
 
     const isHighValue = numAmount > 2000
     const highValueFlag = isHighValue ? ' [HIGH-VALUE ALERT > ₱2,000]' : ''
@@ -477,22 +497,6 @@ export function CashierDisbursementView({
                     </button>
                   )
                 })}
-              </div>
-
-              {/* Other Accounts Dropdown */}
-              <div className="mt-2.5 flex items-center gap-2">
-                <span className="text-[11px] text-gray-400 font-medium">Or custom account:</span>
-                <select
-                  value={selectedCategoryCode}
-                  onChange={(e) => setSelectedCategoryCode(e.target.value)}
-                  className="text-xs font-bold text-gray-700 bg-gray-50 border border-gray-200 rounded-lg px-2.5 py-1 outline-none focus:border-[#1B9387]"
-                >
-                  {expenseAccounts.map((acc) => (
-                    <option key={acc.code} value={acc.code}>
-                      {acc.code} - {acc.name}
-                    </option>
-                  ))}
-                </select>
               </div>
             </div>
 

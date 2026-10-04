@@ -30,12 +30,12 @@ import {
   Tags,
   LogOut,
   Coins,
-  CalendarClock
+  CalendarClock,
+  Lock
 } from 'lucide-react'
 
 // Screens
 import { LoginScreen } from './components/LoginScreen'
-import { Lock } from 'lucide-react'
 import { SystemSettingsView } from './components/SystemSettingsView'
 import { WelcomeView } from './components/WelcomeView'
 import { DashboardView } from './components/DashboardView'
@@ -76,14 +76,16 @@ const ROLES: Record<string, Role[]> = {
   ACCOUNTANT_ONLY: ['ACCOUNTANT'],
   MANAGER_ONLY: ['MANAGER'],
   IT_ONLY: ['IT_PERSONNEL'],
-  FINANCE_TEAM: ['ACCOUNTANT', 'MANAGER', 'CASHIER'],
+  FINANCE_TEAM: ['ACCOUNTANT', 'MANAGER'],
+  SOMETHING: ['ACCOUNTANT', 'MANAGER', 'CASHIER'],
   OPS_FINANCE: ['CASHIER', 'ACCOUNTANT']
 } as const
 
 const GROUP_ORDER = ['Home', 'Clinic Operations', 'Accounting', 'Reports & Taxes', 'System Admin']
 
 const ALL_TABS = [
-  { id: 'home', label: 'Home', icon: Home, group: 'Home', allowedRoles: ROLES.FINANCE_TEAM },
+  { id: 'home', label: 'Home', icon: Home, group: 'Home', allowedRoles: ROLES.SOMETHING},
+
   {
     id: 'billing',
     label: 'Patient Billing',
@@ -296,11 +298,10 @@ export default function App() {
 
   const handleLoginSuccess = (user: User) => {
     setCurrentUser(user)
-
     if (user.role === 'IT_PERSONNEL') {
-      setActiveTab('audit') // Default IT landing page
+      setActiveTab('audit')
     } else {
-      setActiveTab('home') // Default Finance landing page
+      setActiveTab('home')
     }
   }
 
@@ -414,7 +415,7 @@ export default function App() {
             </div>
             <button
               onClick={handleLogout}
-              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
               title="Logout"
             >
               <LogOut className="w-4 h-4" />
@@ -483,10 +484,7 @@ export default function App() {
               {(activeTab === 'rent-payout' || activeTab === 'payouts') && (
                 <RentPayoutView userId={currentUser.id} />
               )}
-
-              {/* 🔥 FIXED: Passed currentUser here instead of userId so the UserManagementView knows who the active Admin is! */}
               {activeTab === 'users' && <UserManagementView currentUser={currentUser} />}
-
               {activeTab === 'aging' && <AgedReceivablesView onNavigate={handleNavigation} />}
               {activeTab === 'aged-payables' && <AgedPayablesView onNavigate={handleNavigation} />}
               {activeTab === 'history' && (
