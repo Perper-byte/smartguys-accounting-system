@@ -4,7 +4,32 @@ import { cleanDescription } from '../../shared/formatters'
 
 const prisma = new PrismaClient()
 
-export function resolvePeriodDateRange(year?: number, month?: number, quarter?: string): {
+// Short, statement-friendly label for one journal entry
+function statementLabel(entry: {
+  reference_no: string | null
+  description: string | null
+}): string {
+  const raw = entry.description || ''
+  const ref = entry.reference_no || ''
+
+  // POS invoices (INV-): "Patient collection - Maria Clara (INV-006)"
+  if (/^INV-/i.test(ref)) {
+    const patient = raw.match(/Patient:\s*([^|\n[\]]+)/i)?.[1]?.trim()
+    return `Patient collection${patient ? ` – ${patient}` : ''} (${ref})`
+  }
+
+  // Everything else: first line only, with any remarks / audit trail removed
+  return cleanDescription(raw)
+    .split('\n')[0]
+    .replace(/\s*Remarks:[\s\S]*$/i, '')
+    .trim()
+}
+
+export function resolvePeriodDateRange(
+  year?: number,
+  month?: number,
+  quarter?: string
+): {
   startDate?: Date
   endDate?: Date
   label: string
@@ -490,7 +515,7 @@ export class ReportsService {
     return report.sort((a, b) => b.total - a.total)
   }
 
-    static async getAgedPayables() {
+  static async getAgedPayables() {
     const lines = await prisma.journalLine.findMany({
       where: {
         account_id: '2010',
@@ -696,8 +721,8 @@ export class ReportsService {
 
       // Explicitly track actual Cash (1020) and GCash (1010) debited upon creation
       const cashAmount = inv.lines
-      .filter((l) => ['1010', '1020', '1030'].includes(l.account_id) && Number(l.debit) > 0)
-      .reduce((sum, l) => sum + Number(l.debit), 0)
+        .filter((l) => ['1010', '1020', '1030'].includes(l.account_id) && Number(l.debit) > 0)
+        .reduce((sum, l) => sum + Number(l.debit), 0)
 
       // Total properly equals expected collection (Cash upfront + AR pending)
       const totalAmount = arAmount + cashAmount
@@ -842,24 +867,24 @@ export class ReportsService {
       financingDetails: any[] = []
 
     for (const entry of cashEntries) {
-    const cashLines = entry.lines.filter((l) => CASH_CODES.includes(l.account_id))
-    const netCashChange = cashLines.reduce((s, l) => s + Number(l.debit) - Number(l.credit), 0)
-    if (netCashChange === 0) continue // transfers between cash accounts net to zero
+      const cashLines = entry.lines.filter((l) => CASH_CODES.includes(l.account_id))
+      const netCashChange = cashLines.reduce((s, l) => s + Number(l.debit) - Number(l.credit), 0)
+      if (netCashChange === 0) continue // transfers between cash accounts net to zero
 
-    const offsetLine =
-      entry.lines.find(
-        (l) => !CASH_CODES.includes(l.account_id) && (Number(l.debit) > 0 || Number(l.credit) > 0)
-      ) || entry.lines[0]
-    const offsetAccount = offsetLine.account
+      const offsetLine =
+        entry.lines.find(
+          (l) => !CASH_CODES.includes(l.account_id) && (Number(l.debit) > 0 || Number(l.credit) > 0)
+        ) || entry.lines[0]
+      const offsetAccount = offsetLine.account
 
       const detail = {
         id: entry.id,
         date: entry.date,
-        description: cleanDescription(entry.description),
+        referenceNo: entry.reference_no,
+        description: statementLabel(entry),
         rawDescription: entry.description,
         amount: netCashChange
       }
-
       if (offsetAccount.code === '1500' || offsetAccount.name.includes('Equipment')) {
         investingDetails.push(detail)
         investingNet += netCashChange
