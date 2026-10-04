@@ -27,6 +27,37 @@ import { PayrollService } from './services/payroll.service'
 import { InventoryService } from './services/inventory.service'
 import { cleanDescription as cleanDescHelper } from '../shared/formatters'
 
+// Helper: Resolve a user ID or object to their account username
+async function resolveAccountIdentifier(userId: string | number): Promise<string> {
+  if (!userId) return 'unknown account'
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: String(userId) },
+      select: { username: true }
+    })
+    return user?.username ? `account "${user.username}"` : `ID: ${userId}`
+  } catch {
+    return `ID: ${userId}`
+  }
+}
+
+// Helper: Ensure we have a valid actor User ID for AuditService
+async function resolveActorId(adminUser: any): Promise<string> {
+  if (!adminUser || adminUser === 'SYSTEM') return 'SYSTEM'
+  if (typeof adminUser === 'object' && adminUser.id) return adminUser.id
+  if (typeof adminUser === 'string') {
+    // If it's already a UUID or ID
+    const exists = await prisma.user.findFirst({
+      where: {
+        OR: [{ id: adminUser }, { username: adminUser }]
+      },
+      select: { id: true }
+    })
+    if (exists?.id) return exists.id
+  }
+  return String(adminUser)
+}
+
 function createWindow() {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -40,7 +71,7 @@ function createWindow() {
     }
   })
 
-  mainWindow.setMenu(null);
+  mainWindow.setMenu(null)
 
   const devServerUrl = process.env['ELECTRON_RENDERER_URL']
   if (devServerUrl) mainWindow.loadURL(devServerUrl)
@@ -51,7 +82,7 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow()
-  prisma.$executeRawUnsafe("SET GLOBAL max_allowed_packet = 67108864;").catch(() => {})
+  prisma.$executeRawUnsafe('SET GLOBAL max_allowed_packet = 67108864;').catch(() => {})
 
   // Auth & Users
   ipcMain.handle('auth:login', async (e, username, password) => {
@@ -62,54 +93,57 @@ app.whenReady().then(() => {
         await AuditService.logAction(result.id, 'USER LOGIN', `User ${username} logged in.`)
 
         // 2. Update Local Cache for Offline Login capability
-        let offlineUsers: any = {};
+        let offlineUsers: any = {}
         if (fs.existsSync(CACHE_USERS_PATH)) {
           try {
-            offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'));
+            offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'))
           } catch {
-            offlineUsers = {};
+            offlineUsers = {}
           }
         }
         // Securely hash with bcrypt - never store plaintext passwords
-        const passwordHash = await bcrypt.hash(password, 12);
-        offlineUsers[username] = { passwordHash, data: result };
-        fs.writeFileSync(CACHE_USERS_PATH, JSON.stringify(offlineUsers, null, 2));
+        const passwordHash = await bcrypt.hash(password, 12)
+        offlineUsers[username] = { passwordHash, data: result }
+        fs.writeFileSync(CACHE_USERS_PATH, JSON.stringify(offlineUsers, null, 2))
       }
       return { success: true, data: result }
-
     } catch (err: any) {
       // 3. 🚨 DETECT OFFLINE NETWORK ERROR
-      const isOffline = err.message.includes("Can't reach") || err.message.includes("P1001") || err.message.includes("timeout") || err.message.includes("network");
+      const isOffline =
+        err.message.includes("Can't reach") ||
+        err.message.includes('P1001') ||
+        err.message.includes('timeout') ||
+        err.message.includes('network')
 
       if (isOffline && fs.existsSync(CACHE_USERS_PATH)) {
-        let offlineUsers: any = {};
+        let offlineUsers: any = {}
         try {
-          offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'));
+          offlineUsers = JSON.parse(fs.readFileSync(CACHE_USERS_PATH, 'utf-8'))
         } catch {
-          offlineUsers = {};
+          offlineUsers = {}
         }
 
-        const cached = offlineUsers[username];
+        const cached = offlineUsers[username]
         if (cached) {
-          let match = false;
+          let match = false
           if (cached.passwordHash) {
-            match = await bcrypt.compare(password, cached.passwordHash);
+            match = await bcrypt.compare(password, cached.passwordHash)
           } else if (cached.password) {
             // Legacy plaintext fallback - immediately migrate to bcrypt hash
-            match = (cached.password === password);
+            match = cached.password === password
             if (match) {
-              cached.passwordHash = await bcrypt.hash(password, 12);
-              delete cached.password;
-              fs.writeFileSync(CACHE_USERS_PATH, JSON.stringify(offlineUsers, null, 2));
+              cached.passwordHash = await bcrypt.hash(password, 12)
+              delete cached.password
+              fs.writeFileSync(CACHE_USERS_PATH, JSON.stringify(offlineUsers, null, 2))
             }
           }
 
           if (match) {
-            console.log(`[OFFLINE MODE] User ${username} logged in via local cache.`);
-            return { success: true, data: cached.data, offline: true };
+            console.log(`[OFFLINE MODE] User ${username} logged in via local cache.`)
+            return { success: true, data: cached.data, offline: true }
           }
         }
-        return { success: false, error: "Network offline. Invalid credentials or user not cached locally." };
+        return { success: false, error: 'Network offline. Invalid credentials or user not cached locally.' }
       }
       return { success: false, error: err.message }
     }
@@ -122,42 +156,64 @@ app.whenReady().then(() => {
       return []
     }
   })
+
+  // Helper for Frontend Audit view to translate historical UUID logs
+  ipcMain.handle('get-users-map', async () => {
+    try {
+      const users = await prisma.user.findMany({ select: { id: true, username: true } })
+      return users.reduce((acc: Record<string, string>, u) => {
+        acc[u.id] = u.username
+        return acc
+      }, {})
+    } catch {
+      return {}
+    }
+  })
+
   ipcMain.handle('create-user', async (e, userData, adminUser = 'SYSTEM') => {
     try {
+      const actorId = await resolveActorId(adminUser)
       const result = { success: true, data: await UserService.createUser(userData) }
-      // 🔥 Fixed: Uses adminUser
-      await AuditService.logAction(adminUser, 'CREATE USER', `Created user: ${userData.username}`)
+      await AuditService.logAction(actorId, 'CREATE USER', `Created user account: "${userData.username}"`)
       return result
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
 
-  // (Keeping restore-payee and archive-payee unchanged as they are between the user functions)
-  ipcMain.handle('restore-payee', async (_, payeeId: string) => { 
-    try { 
-        const result = await LedgerService.restorePayee(payeeId); 
-        await AuditService.logAction('SYSTEM', 'RESTORE CONTACT', `Restored contact ID: ${payeeId}`); 
-        return result; 
-    } catch (error: any) { return { success: false, error: error.message }; } 
-  });
+  ipcMain.handle('restore-payee', async (_, payeeId: string) => {
+    try {
+      const result = await LedgerService.restorePayee(payeeId)
+      await AuditService.logAction('SYSTEM', 'RESTORE CONTACT', `Restored contact ID: ${payeeId}`)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
 
-  ipcMain.handle('archive-payee', async (_, payeeId: string) => { 
-    try { 
-        const result = await LedgerService.archivePayee(payeeId); 
-        await AuditService.logAction('SYSTEM', 'ARCHIVE CONTACT', `Archived contact ID: ${payeeId}`); 
-        return result; 
-    } catch (error: any) { return { success: false, error: error.message }; } 
-  });
+  ipcMain.handle('archive-payee', async (_, payeeId: string) => {
+    try {
+      const result = await LedgerService.archivePayee(payeeId)
+      await AuditService.logAction('SYSTEM', 'ARCHIVE CONTACT', `Archived contact ID: ${payeeId}`)
+      return result
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  })
 
+  // 🔥 FIXED: Looks up target username and properly resolves actor
   ipcMain.handle('toggle-user-status', async (e, userId, isActive, adminUser = 'SYSTEM') => {
     try {
+      const targetIdentifier = await resolveAccountIdentifier(userId)
+      const actorId = await resolveActorId(adminUser)
+
       await UserService.toggleUserStatus(userId, isActive)
-      // 🔥 Fixed: Uses adminUser
+
+      const statusLabel = isActive ? 'Active' : 'Inactive'
       await AuditService.logAction(
-        adminUser,
+        actorId,
         'USER ACCESS',
-        `Changed status for ID: ${userId} to ${isActive}`
+        `Changed status for ${targetIdentifier} to ${statusLabel}`
       )
       return { success: true }
     } catch (err: any) {
@@ -165,27 +221,36 @@ app.whenReady().then(() => {
     }
   })
 
+  // 🔥 FIXED: Looks up target username and properly resolves actor
   ipcMain.handle('reset-user-password', async (e, userId, newPassword, adminUser = 'SYSTEM') => {
     try {
+      const targetIdentifier = await resolveAccountIdentifier(userId)
+      const actorId = await resolveActorId(adminUser)
+
       await UserService.resetPassword(userId, newPassword)
-      // 🔥 Fixed: Uses adminUser
-      await AuditService.logAction(adminUser, 'SECURITY', `Reset password for ID: ${userId}`)
+
+      await AuditService.logAction(actorId, 'SECURITY', `Reset password for ${targetIdentifier}`)
       return { success: true }
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
 
+  // 🔥 FIXED: Looks up target username and properly resolves actor
   ipcMain.handle('update-user-permissions', async (e, id, perms, adminUser = 'SYSTEM') => {
     try {
+      const targetIdentifier = await resolveAccountIdentifier(id)
+      const actorId = await resolveActorId(adminUser)
+
       await UserService.updateUserPermissions(id, perms)
-      // 🔥 Fixed: Added an Audit Log entry for changing permissions and using adminUser
-      await AuditService.logAction(adminUser, 'SECURITY', `Updated permissions for ID: ${id}`)
+
+      await AuditService.logAction(actorId, 'SECURITY', `Updated permissions for ${targetIdentifier}`)
       return { success: true }
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('get-petty-cash-balance', async () => {
     try {
       return typeof UserService.getPettyCashBalance === 'function'
@@ -200,17 +265,16 @@ app.whenReady().then(() => {
   ipcMain.handle('ledger:getAccounts', async () => {
     try {
       const accounts = await LedgerService.getAccounts()
-      // If successful, save a local copy for offline use
       fs.writeFileSync(CACHE_ACCOUNTS_PATH, JSON.stringify(accounts))
       return accounts
     } catch (err) {
-      // 🚨 IF OFFLINE: Read from the local cache!
       if (fs.existsSync(CACHE_ACCOUNTS_PATH)) {
         return JSON.parse(fs.readFileSync(CACHE_ACCOUNTS_PATH, 'utf-8'))
       }
       return []
     }
   })
+
   ipcMain.handle('ledger:getAccountTypes', async () => {
     try {
       return typeof LedgerService.getAccountTypes === 'function'
@@ -220,6 +284,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('ledger:createAccount', async (e, data) => {
     try {
       const result =
@@ -233,14 +298,13 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('get-payees', async (e, typeFilter) => {
     try {
       const payees = await LedgerService.getPayees(typeFilter)
-      // If successful, save a local copy for offline use
       fs.writeFileSync(CACHE_PAYEES_PATH, JSON.stringify(payees))
       return payees
     } catch (err) {
-      // 🚨 IF OFFLINE: Read from the local cache!
       if (fs.existsSync(CACHE_PAYEES_PATH)) {
         let cached = JSON.parse(fs.readFileSync(CACHE_PAYEES_PATH, 'utf-8'))
         if (typeFilter) cached = cached.filter((p: any) => p.type === typeFilter)
@@ -249,6 +313,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle(
     'create-payee',
     async (
@@ -276,15 +341,12 @@ app.whenReady().then(() => {
       )
       if (result.success) {
         const hmoLog = hmo ? ` (Linked to HMO: ${hmo})` : ''
-        await AuditService.logAction(
-          'SYSTEM',
-          'CREATE CONTACT',
-          `Added new ${type}: ${name}${hmoLog}`
-        )
+        await AuditService.logAction('SYSTEM', 'CREATE CONTACT', `Added new ${type}: ${name}${hmoLog}`)
       }
       return result
     }
   )
+
   ipcMain.handle('import-payees', async (e, data) => {
     try {
       const result =
@@ -302,9 +364,11 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('get-payee-balance', async (e, payeeId: string) => {
     return await LedgerService.getPayeeBalance(payeeId)
   })
+
   ipcMain.handle('update-payee-tin', async (_, payeeId: string, tin: string) => {
     try {
       const result = await LedgerService.updatePayeeTin(payeeId, tin)
@@ -313,6 +377,7 @@ app.whenReady().then(() => {
       return { success: false, error: error.message }
     }
   })
+
   ipcMain.handle('get-contacts-with-balances', async () => {
     try {
       return typeof LedgerService.getContactsWithBalances === 'function'
@@ -356,6 +421,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('get-service-items', async () => {
     try {
       return typeof LedgerService.getServiceItems === 'function'
@@ -365,6 +431,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('create-service-item', async (e, data) => {
     try {
       const result =
@@ -378,6 +445,7 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('update-service-item', async (e, id, data) => {
     try {
       const result =
@@ -403,7 +471,6 @@ app.whenReady().then(() => {
       )
       return result
     } catch (err: any) {
-      // 🚨 DETECT OFFLINE NETWORK ERROR
       const isOffline =
         err.message.includes("Can't reach") ||
         err.message.includes('P1001') ||
@@ -411,7 +478,6 @@ app.whenReady().then(() => {
         err.message.includes('network')
 
       if (isOffline) {
-        // Save to local Windows hard drive queue
         let queue: any[] = []
         if (fs.existsSync(OFFLINE_QUEUE_PATH)) {
           queue = JSON.parse(fs.readFileSync(OFFLINE_QUEUE_PATH, 'utf-8'))
@@ -420,19 +486,17 @@ app.whenReady().then(() => {
         fs.writeFileSync(OFFLINE_QUEUE_PATH, JSON.stringify(queue, null, 2))
 
         console.log(`[OFFLINE MODE] Saved transaction ${entryData.referenceNo} locally.`)
-
-        // Return success so the Cashier's UI clears and they can help the next patient
         return {
           success: true,
           offline: true,
-          message:
-            'Network offline. Transaction secured locally. It will auto-sync when connection restores.'
+          message: 'Network offline. Transaction secured locally. It will auto-sync when connection restores.'
         }
       }
 
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('ledger:getAccountLedger', async (e, accountId) => {
     try {
       return await LedgerService.getAccountLedger(accountId)
@@ -440,6 +504,7 @@ app.whenReady().then(() => {
       return { error: err.message }
     }
   })
+
   ipcMain.handle('get-next-sequence', async (e, prefix: string) => {
     try {
       return typeof LedgerService.getNextReferenceSequence === 'function'
@@ -449,6 +514,7 @@ app.whenReady().then(() => {
       return '001'
     }
   })
+
   ipcMain.handle('get-payout-history', async () => {
     try {
       return await LedgerService.getPayoutHistory()
@@ -456,6 +522,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('get-cashier-disbursements', async (e, limit = 100) => {
     try {
       return typeof LedgerService.getCashierDisbursements === 'function'
@@ -465,6 +532,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('acknowledge-cashier-disbursement', async (e, entryId, userId, note) => {
     try {
       const result =
@@ -483,6 +551,7 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('update-disbursement-attachment', async (e, entryId, attachment) => {
     try {
       const result =
@@ -501,6 +570,7 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('get-recent-disbursements', async (e, limit = 20) => {
     try {
       return typeof LedgerService.getRecentDisbursements === 'function'
@@ -510,6 +580,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('get-historical-disbursements', async (e, options) => {
     try {
       return typeof (LedgerService as any).getHistoricalDisbursements === 'function'
@@ -519,6 +590,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('get-full-ledger-report', async (e, startDate, endDate) => {
     try {
       return await LedgerService.getFullLedgerReport(startDate, endDate)
@@ -526,6 +598,7 @@ app.whenReady().then(() => {
       return { error: err.message }
     }
   })
+
   ipcMain.handle('ledger:getAllJournalEntries', async () => {
     try {
       return await LedgerService.getAllJournalEntries()
@@ -533,6 +606,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('ledger:getJournalEntryById', async (_, idOrRef) => {
     try {
       return await LedgerService.getJournalEntryById(idOrRef)
@@ -540,6 +614,7 @@ app.whenReady().then(() => {
       return null
     }
   })
+
   ipcMain.handle('get-user-sales-history', async (e, userId) => {
     try {
       const result = await LedgerService.getUserSalesHistory(userId)
@@ -563,6 +638,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('create-bank-account', async (e, data) => {
     try {
       const result =
@@ -576,6 +652,7 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('get-reconciliation-data', async (e, bankAccountId, startDate, endDate) => {
     try {
       return typeof LedgerService.getReconciliationData === 'function'
@@ -585,6 +662,7 @@ app.whenReady().then(() => {
       return { error: err.message }
     }
   })
+
   ipcMain.handle('create-bank-transaction', async (e, data) => {
     try {
       const result =
@@ -598,6 +676,7 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('import-bank-transactions', async (e, data) => {
     try {
       const result =
@@ -605,16 +684,13 @@ app.whenReady().then(() => {
           ? await LedgerService.importBankTransactions(data)
           : { success: false }
       if ((result as any).success)
-        await AuditService.logAction(
-          data.userId || 'SYSTEM',
-          'BANK IMPORT',
-          `Imported bank transactions`
-        )
+        await AuditService.logAction(data.userId || 'SYSTEM', 'BANK IMPORT', `Imported bank transactions`)
       return result
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('match-bank-transaction', async (e, bankTxId, journalId, userId) => {
     try {
       const result =
@@ -628,6 +704,7 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('unmatch-bank-transaction', async (e, bankTxId) => {
     try {
       const result =
@@ -641,6 +718,7 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('remove-bank-transaction', async (e, bankTxId, userId) => {
     try {
       const result =
@@ -665,6 +743,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('create-inventory-item', async (e, data) => {
     try {
       const result =
@@ -679,6 +758,7 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('update-inventory-item', async (e, id, data) => {
     try {
       const result =
@@ -686,13 +766,18 @@ app.whenReady().then(() => {
           ? await InventoryService.updateItem(id, data)
           : { success: false }
       if (result && (result as any).success) {
-        await AuditService.logAction('SYSTEM', 'INVENTORY', `Updated inventory item ID: ${id} (${data.code} - ${data.name})`)
+        await AuditService.logAction(
+          'SYSTEM',
+          'INVENTORY',
+          `Updated inventory item ID: ${id} (${data.code} - ${data.name})`
+        )
       }
       return result
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('delete-inventory-item', async (e, id) => {
     try {
       const result =
@@ -707,6 +792,7 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('get-inventory-logs', async (e, itemId) => {
     try {
       return typeof InventoryService.getLogs === 'function'
@@ -716,6 +802,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('add-inventory-log', async (e, data) => {
     try {
       const result =
@@ -740,6 +827,7 @@ app.whenReady().then(() => {
       return { error: err.message }
     }
   })
+
   ipcMain.handle('get-pending-voids', async () => {
     try {
       return await LedgerService.getPendingVoids()
@@ -747,6 +835,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('reject-void', async (e, id) => {
     try {
       await LedgerService.rejectVoid(id)
@@ -756,6 +845,7 @@ app.whenReady().then(() => {
       return { error: err.message }
     }
   })
+
   ipcMain.handle('approve-void', async (e, id, managerId, overridePin) => {
     try {
       const result = await LedgerService.approveVoid(id, managerId, overridePin)
@@ -779,6 +869,7 @@ app.whenReady().then(() => {
       return { error: error.message }
     }
   })
+
   ipcMain.handle('reports:getIncomeStatement', async (event, year, month, quarter) => {
     try {
       return await ReportsService.getIncomeStatement(year, month, quarter)
@@ -786,6 +877,7 @@ app.whenReady().then(() => {
       return { error: error.message }
     }
   })
+
   ipcMain.handle('reports:getBalanceSheet', async (event, year, month, quarter) => {
     try {
       return await ReportsService.getBalanceSheet(year, month, quarter)
@@ -793,6 +885,7 @@ app.whenReady().then(() => {
       return { error: error.message }
     }
   })
+
   ipcMain.handle('reports:getCashFlowStatement', async (event, year, month, quarter) => {
     try {
       return typeof ReportsService.getCashFlowStatement === 'function'
@@ -802,6 +895,7 @@ app.whenReady().then(() => {
       return { error: error.message }
     }
   })
+
   ipcMain.handle('get-books-of-accounts', async (e, bookType, startDate, endDate) => {
     try {
       return await ReportsService.getBooksOfAccounts(bookType, startDate, endDate)
@@ -809,6 +903,7 @@ app.whenReady().then(() => {
       return { error: err.message }
     }
   })
+
   ipcMain.handle('get-shift-report', async (e, userId) => {
     try {
       return await ReportsService.getShiftReport(userId)
@@ -816,26 +911,29 @@ app.whenReady().then(() => {
       return { error: err.message }
     }
   })
+
   ipcMain.handle('get-aged-receivables', async () => {
     try {
       return await ReportsService.getAgedReceivables()
-    } catch (err: any) {
+    } catch (err) {
       return []
     }
   })
-    ipcMain.handle('get-aged-payables', async () => {
+
+  ipcMain.handle('get-aged-payables', async () => {
     try {
       return await ReportsService.getAgedPayables()
-    } catch (err: any) {
+    } catch (err) {
       return []
     }
   })
+
   ipcMain.handle('get-invoice-tracker', async () => {
     try {
       return typeof ReportsService.getInvoiceTracker === 'function'
         ? await ReportsService.getInvoiceTracker()
         : []
-    } catch (err: any) {
+    } catch (err) {
       return []
     }
   })
@@ -844,26 +942,29 @@ app.whenReady().then(() => {
   ipcMain.handle('payroll:getSettings', async () => {
     return await PayrollService.getPayrollSettings()
   })
+
   ipcMain.handle('payroll:updateSettings', async (e, multipliers) => {
     const result = await PayrollService.updatePayrollSettings(multipliers)
     if (result.success) await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Updated payroll settings`)
     return result
   })
+
   ipcMain.handle('payroll:calculateEmployee', async (e, monthlySalary, hours, demerits, allowances, loans) => {
     return await PayrollService.calculateEmployeePayroll(monthlySalary, hours, demerits, allowances, loans)
   })
+
   ipcMain.handle('payroll:batchCalculate', async (e, employeeInputs) => {
     return await PayrollService.batchCalculatePayroll(employeeInputs)
   })
+
   ipcMain.handle('get-employees', async () => {
     try {
-      return typeof PayrollService.getEmployees === 'function'
-        ? await PayrollService.getEmployees()
-        : []
+      return typeof PayrollService.getEmployees === 'function' ? await PayrollService.getEmployees() : []
     } catch (err) {
       return []
     }
   })
+
   ipcMain.handle('create-employee', async (e, data) => {
     try {
       const result =
@@ -876,6 +977,7 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('process-payroll', async (e, data) => {
     try {
       const result =
@@ -883,29 +985,26 @@ app.whenReady().then(() => {
           ? await PayrollService.processPayroll(data)
           : { success: false }
       if (result.success)
-        await AuditService.logAction(
-          data.userId || 'SYSTEM',
-          'PAYROLL PROCESSED',
-          `Processed payroll`
-        )
+        await AuditService.logAction(data.userId || 'SYSTEM', 'PAYROLL PROCESSED', `Processed payroll`)
       return result
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('toggle-employee-status', async (e, id, isActive) => {
     try {
       const result =
         typeof PayrollService.toggleEmployeeStatus === 'function'
           ? await PayrollService.toggleEmployeeStatus(id, isActive)
           : { success: false }
-      if (result.success)
-        await AuditService.logAction('SYSTEM', 'HR RECORD', `Changed employee status`)
+      if (result.success) await AuditService.logAction('SYSTEM', 'HR RECORD', `Changed employee status`)
       return result
     } catch (err: any) {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('update-employee', async (_, id: string, data: any) => {
     try {
       await prisma.employee.update({
@@ -931,6 +1030,7 @@ app.whenReady().then(() => {
       return { success: false, error: error.message }
     }
   })
+
   ipcMain.handle('get-payroll-history', async () => {
     try {
       return typeof PayrollService.getPayrollHistory === 'function'
@@ -1061,6 +1161,7 @@ app.whenReady().then(() => {
       return { error: err.message }
     }
   })
+
   ipcMain.handle('tax:generateRelief', async (e, year, quarter) => {
     try {
       const result =
@@ -1073,6 +1174,7 @@ app.whenReady().then(() => {
       return { error: err.message }
     }
   })
+
   ipcMain.handle('tax:generate0619E', async (e, year, month) => {
     try {
       const result =
@@ -1085,6 +1187,7 @@ app.whenReady().then(() => {
       return { error: err.message }
     }
   })
+
   ipcMain.handle('tax:generate1601EQ', async (e, year, quarter) => {
     try {
       return typeof TaxService.generate1601EQ === 'function'
@@ -1094,6 +1197,7 @@ app.whenReady().then(() => {
       return { error: err.message }
     }
   })
+
   ipcMain.handle('tax:generate1601C', async (e, year, month) => {
     try {
       const result =
@@ -1115,11 +1219,13 @@ app.whenReady().then(() => {
       return { error: error.message }
     }
   })
+
   ipcMain.handle('backup:triggerBackup', async () => {
     const result = await BackupService.executeBackup()
     if (result.success) await AuditService.logAction('SYSTEM', 'SYSTEM BACKUP', `Generated backup`)
     return result
   })
+
   ipcMain.handle('backup:restore', async () => {
     const { filePaths } = await dialog.showOpenDialog({
       title: 'Select Backup File to Restore',
@@ -1137,9 +1243,11 @@ app.whenReady().then(() => {
     }
     return result
   })
+
   ipcMain.handle('log-action', async (e, userId, action, details) => {
     return await AuditService.logAction(userId, action, details)
   })
+
   ipcMain.handle('get-audit-logs', async (e, startDate, endDate) => {
     try {
       return await AuditService.getAuditLogs(startDate, endDate)
@@ -1147,6 +1255,7 @@ app.whenReady().then(() => {
       return []
     }
   })
+
   ipcMain.handle('get-today-stats', async () => {
     try {
       return await AnalyticsService.getTodayStats()
@@ -1154,6 +1263,7 @@ app.whenReady().then(() => {
       return { sales: 0, payments: 0, transactions: 0 }
     }
   })
+
   ipcMain.handle('get-recent-transactions', async () => {
     try {
       return await AnalyticsService.getRecentTransactions()
@@ -1179,15 +1289,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-patient-transactions', async (e, args: any) => {
     try {
-      const patientId = typeof args === 'string' ? args : (args?.patientId || '')
-      let patientName = typeof args === 'object' ? (args?.patientName || '') : ''
+      const patientId = typeof args === 'string' ? args : args?.patientId || ''
+      let patientName = typeof args === 'object' ? args?.patientName || '' : ''
 
       if (!patientName && patientId) {
         const payeeRecord = await prisma.payee.findUnique({ where: { id: patientId } }).catch(() => null)
         if (payeeRecord) {
           patientName = payeeRecord.name
         } else {
-          // If not UUID/payee, identifier might be a raw patient name
           patientName = patientId
         }
       }
@@ -1222,18 +1331,14 @@ app.whenReady().then(() => {
             }
           ]
         },
-        orderBy: [
-          { date: 'desc' },
-          { created_at: 'desc' }
-        ],
+        orderBy: [{ date: 'desc' }, { created_at: 'desc' }],
         include: {
           lines: { include: { account: true } },
           payee: true,
           attachments: true
         }
       })
-      
-      // Serialize Decimal types to Numbers to avoid IPC cloning errors
+
       return entries
         .filter((entry) => {
           const ref = (entry.reference_no || '').trim().toUpperCase()
@@ -1250,19 +1355,19 @@ app.whenReady().then(() => {
             rawDescription: entry.description,
             remarks,
             payeeName: entry.payee?.name || '',
-          attachments: (entry.attachments || []).map(a => ({
-            id: a.id,
-            name: a.fileName,
-            type: a.fileType,
-            data: a.fileData
-          })),
-          lines: entry.lines.map(line => ({
-            ...line,
-            debit: Number(line.debit),
-            credit: Number(line.credit)
-          }))
-        }
-      })
+            attachments: (entry.attachments || []).map((a) => ({
+              id: a.id,
+              name: a.fileName,
+              type: a.fileType,
+              data: a.fileData
+            })),
+            lines: entry.lines.map((line) => ({
+              ...line,
+              debit: Number(line.debit),
+              credit: Number(line.credit)
+            }))
+          }
+        })
     } catch (err) {
       console.error(err)
       return []
@@ -1295,7 +1400,6 @@ app.whenReady().then(() => {
 
   ipcMain.handle('get-all-recent-transactions', async () => {
     try {
-      // Returns all POS transactions (or at least a large recent chunk for the client to filter)
       const entries = await prisma.journalEntry.findMany({
         where: {
           NOT: [
@@ -1305,10 +1409,7 @@ app.whenReady().then(() => {
             { reference_no: { startsWith: 'PY' } }
           ]
         },
-        orderBy: [
-          { date: 'desc' },
-          { created_at: 'desc' }
-        ],
+        orderBy: [{ date: 'desc' }, { created_at: 'desc' }],
         take: 2000,
         include: {
           payee: true,
@@ -1317,13 +1418,11 @@ app.whenReady().then(() => {
         }
       })
 
-      // Exclude manual journal entries
       const posEntries = entries.filter((e) => {
         const ref = (e.reference_no || '').trim().toUpperCase()
         return !ref.startsWith('JV') && !ref.startsWith('ADJ') && !ref.startsWith('PJ') && !ref.startsWith('PY')
       })
 
-      // Format exactly like AnalyticsService.getRecentTransactions
       return posEntries.map((e) => {
         const arLine = e.lines.find((l) => l.account.code === '1200')
         const cashLine = e.lines.find((l) => l.account.code === '1020')
@@ -1337,7 +1436,7 @@ app.whenReady().then(() => {
 
         let clientType = 'WALKIN'
         let examType = 'STANDARD'
-        
+
         const metaMatch = e.description.match(/\[META:([^:]+):([^\]]+)\]/)
         if (metaMatch) {
           clientType = metaMatch[1]
@@ -1371,15 +1470,18 @@ app.whenReady().then(() => {
           patientName = nameMatch[1].trim()
         }
 
-        // For legacy diagnostic tests parsing
         const diagMatch = cleanDescription.match(/Diagnostic Test\s*\((.*?)(?:\s*-\s*[^)]*)?\)/)
         const parsedLegacyTests: string[] = []
         if (diagMatch && diagMatch[1]) {
-          diagMatch[1].split(',').map((s: string) => s.trim()).filter(Boolean).forEach(t => parsedLegacyTests.push(t))
+          diagMatch[1]
+            .split(',')
+            .map((s: string) => s.trim())
+            .filter(Boolean)
+            .forEach((t) => parsedLegacyTests.push(t))
         }
 
         let legacyTestIdx = 0
-        const mappedRawLines = e.lines.map(l => {
+        const mappedRawLines = e.lines.map((l) => {
           let lineDesc = ''
           if (l.account.code === '4020' && legacyTestIdx < parsedLegacyTests.length) {
             lineDesc = parsedLegacyTests[legacyTestIdx++]
@@ -1443,6 +1545,7 @@ app.whenReady().then(() => {
     }
     return 'localhost'
   })
+
   ipcMain.handle('update-reference-number', async (e, entryId, newRef) => {
     try {
       const result =
@@ -1460,6 +1563,7 @@ app.whenReady().then(() => {
       return { success: false, error: err.message }
     }
   })
+
   ipcMain.handle('config:setServerIp', async (event, ip: string) => {
     const configPath = path.join(app.getPath('userData'), 'server-config.json')
     fs.writeFileSync(configPath, JSON.stringify({ serverIp: ip }))
@@ -1488,7 +1592,7 @@ app.whenReady().then(() => {
       }
 
       const socket = new net.Socket()
-      socket.setTimeout(1000) // 1-second maximum timeout!
+      socket.setTimeout(1000)
 
       socket.on('connect', () => {
         socket.destroy()
@@ -1510,7 +1614,6 @@ app.whenReady().then(() => {
   })
 
   // --- AUTOMATED BACKUP SCHEDULER ---
-  // '59 23 * * *' translates to 11:59 PM every day.
   cron.schedule('59 23 * * *', async () => {
     console.log('⏳ Running automated daily background backup...')
     const result = await BackupService.executeScheduledBackup()
@@ -1533,7 +1636,6 @@ app.whenReady().then(() => {
   })
 
   // --- OFFLINE-FIRST AUTO-SYNCER ---
-  // Checks every 5 seconds if the cable is plugged back in to push data
   setInterval(async () => {
     if (!fs.existsSync(OFFLINE_QUEUE_PATH)) return
 
@@ -1547,16 +1649,14 @@ app.whenReady().then(() => {
     if (queue.length === 0) return
 
     try {
-      // 1. Check if Ubuntu server is back online
       const ping = await AuthService.pingDatabase()
-      if (!ping.success) return // Still offline, wait for next tick
+      if (!ping.success) return
 
       console.log(
         `🔄 [SYNC] Connection restored! Pushing ${queue.length} offline transactions to Ubuntu Server...`
       )
       let pendingQueue: any[] = []
 
-      // 2. Push all local transactions to the server
       for (const entryData of queue) {
         try {
           await LedgerService.createJournalEntry(entryData)
@@ -1568,11 +1668,10 @@ app.whenReady().then(() => {
           console.log(`✅ [SYNC] Successfully pushed ${entryData.referenceNo}`)
         } catch (err: any) {
           console.error(`❌ [SYNC] Failed to push ${entryData.referenceNo}:`, err.message)
-          pendingQueue.push(entryData) // Keep in queue if it failed
+          pendingQueue.push(entryData)
         }
       }
 
-      // 3. Clear the local queue
       fs.writeFileSync(OFFLINE_QUEUE_PATH, JSON.stringify(pendingQueue, null, 2))
       if (pendingQueue.length === 0) {
         console.log(`🎉 [SYNC COMPLETE] All offline transactions have been synced to the database!`)

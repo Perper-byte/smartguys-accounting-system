@@ -1,6 +1,6 @@
 // src/renderer/src/components/SystemAuditLogView.tsx
 import * as React from 'react'
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import {
   History,
   Download,
@@ -34,21 +34,56 @@ export function SystemAuditLogView() {
   const [endDate, setEndDate] = useState(getLocalDateString(today))
 
   const [logs, setLogs] = useState<any[]>([])
+  const [userMap, setUserMap] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('ALL')
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize, setPageSize] = useState(50)
 
+  // Fetch users map once to resolve any target UUIDs in historical logs
+  useEffect(() => {
+    let isMounted = true
+    const fetchUsersMap = async () => {
+      try {
+        const api = (window as any).api || (window as any).electronAPI
+        if (api?.getUsersMap) {
+          const map = await api.getUsersMap()
+          if (isMounted) setUserMap(map || {})
+        } else if (api?.getUsers) {
+          const usersList = await api.getUsers()
+          if (isMounted && Array.isArray(usersList)) {
+            const map: Record<string, string> = {}
+            for (const u of usersList) {
+              if (u?.id && u?.username) {
+                map[String(u.id).toLowerCase()] = u.username
+              }
+            }
+            setUserMap(map)
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load user mapping:', err)
+      }
+    }
+    fetchUsersMap()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
   const fetchLogs = async () => {
     setLoading(true)
     try {
       const api = (window as any).api || (window as any).electronAPI
-      const data = await api.getAuditLogs(startDate, endDate)
-      setLogs(data || [])
+      if (api?.getAuditLogs) {
+        const data = await api.getAuditLogs(startDate, endDate)
+        setLogs(Array.isArray(data) ? data : [])
+      }
       setCurrentPage(1)
     } catch (error) {
       console.error('Failed to fetch audit logs', error)
+      setLogs([])
     } finally {
       setLoading(false)
     }
@@ -58,7 +93,30 @@ export function SystemAuditLogView() {
     fetchLogs()
   }, [startDate, endDate])
 
-  // Quick Preset Handlers
+  // Fresh, local regex pattern (prevents global state lockups)
+  const formatLogDetails = useCallback(
+    (details: string = '') => {
+      if (!details || typeof details !== 'string') return ''
+
+      let clean = details
+        .replace(/\bto true\b/gi, 'to Active')
+        .replace(/\bto false\b/gi, 'to Inactive')
+
+      // Scans for UUIDs safely without global shared pointer lock
+      clean = clean.replace(
+        /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi,
+        (matchedId) => {
+          const lower = matchedId.toLowerCase()
+          return userMap[lower] ? `account "${userMap[lower]}"` : matchedId
+        }
+      )
+
+      return clean.replace(/ID:\s*account/gi, 'account')
+    },
+    [userMap]
+  )
+
+  // Quick Presets
   const handlePreset = (type: 'today' | 'yesterday' | 'this_week' | 'this_month' | 'last_30_days') => {
     const now = new Date()
     let start = new Date()
@@ -72,7 +130,7 @@ export function SystemAuditLogView() {
       end = start
     } else if (type === 'this_week') {
       const day = now.getDay()
-      const diff = now.getDate() - day + (day === 0 ? -6 : 1) // adjust when day is sunday
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1)
       start = new Date(now.setDate(diff))
       end = new Date()
     } else if (type === 'this_month') {
@@ -87,10 +145,11 @@ export function SystemAuditLogView() {
     setEndDate(getLocalDateString(end))
   }
 
-  // Filtered logs
+  // Filtered logs (Fast path)
   const filteredLogs = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+
     return logs.filter((log) => {
-      // Category filter
       if (selectedCategory !== 'ALL') {
         const cat = ACTION_CATEGORIES.find((c) => c.id === selectedCategory)
         if (cat?.match) {
@@ -100,9 +159,7 @@ export function SystemAuditLogView() {
         }
       }
 
-      // Search query filter
-      if (searchQuery.trim()) {
-        const q = searchQuery.toLowerCase()
+      if (q) {
         const user = (log.user?.username || 'SYSTEM').toLowerCase()
         const action = (log.action || '').toLowerCase()
         const details = (log.details || '').toLowerCase()
@@ -125,13 +182,14 @@ export function SystemAuditLogView() {
   const handleExportCSV = () => {
     if (filteredLogs.length === 0) return alert('No data to export.')
 
-    const headers = ['Timestamp', 'User', 'Action', 'Details']
+    const headers = ['Timestamp', 'Performed By', 'Role', 'Action', 'Details']
     const rows = filteredLogs.map((log) =>
       [
         new Date(log.timestamp).toLocaleString(),
         `"${log.user?.username || 'SYSTEM'}"`,
-        `"${log.action}"`,
-        `"${log.details.replace(/"/g, '""')}"`
+        `"${log.user?.role || 'SYSTEM'}"`,
+        `"${log.action || ''}"`,
+        `"${formatLogDetails(log.details || '').replace(/"/g, '""')}"`
       ].join(',')
     )
 
@@ -274,7 +332,6 @@ export function SystemAuditLogView() {
             />
           </div>
 
-          {/* Action Category Filter */}
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <Filter size={14} className="text-gray-400 shrink-0" />
             <select
@@ -320,7 +377,7 @@ export function SystemAuditLogView() {
               <thead className="bg-[#FBF8F8] sticky top-0 z-10 border-b border-gray-200 shadow-2xs">
                 <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-black">
                   <th className="py-2.5 px-4 w-44">Timestamp</th>
-                  <th className="py-2.5 px-4 w-36">User</th>
+                  <th className="py-2.5 px-4 w-44">Performed By</th>
                   <th className="py-2.5 px-4 w-48">Action</th>
                   <th className="py-2.5 px-4">Event Details & Reference</th>
                 </tr>
@@ -334,35 +391,38 @@ export function SystemAuditLogView() {
                     </td>
                   </tr>
                 ) : (
-                  paginatedLogs.map((log: any, i: number) => (
-                    <tr key={i} className="hover:bg-[#FBF8F8] transition-colors">
-                      <td className="py-2.5 px-4 font-mono text-[11px] text-gray-500 whitespace-nowrap">
-                        {new Date(log.timestamp).toLocaleString()}
-                      </td>
-                      <td className="py-2.5 px-4">
-                        <span className="font-bold text-gray-800">
-                          {log.user?.username || 'SYSTEM'}
-                        </span>
-                        {log.user?.role && (
-                          <span className="ml-1.5 text-[9px] text-gray-400 font-bold uppercase">
-                            ({log.user.role})
+                  paginatedLogs.map((log: any, i: number) => {
+                    const actorName = log.user?.username || 'SYSTEM'
+                    const actorRole = log.user?.role
+
+                    return (
+                      <tr key={log.id || i} className="hover:bg-[#FBF8F8] transition-colors">
+                        <td className="py-2.5 px-4 font-mono text-[11px] text-gray-500 whitespace-nowrap">
+                          {new Date(log.timestamp).toLocaleString()}
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <span className="font-bold text-gray-800">{actorName}</span>
+                          {actorRole && (
+                            <span className="ml-1.5 text-[9px] text-gray-400 font-bold uppercase">
+                              ({actorRole})
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-4">
+                          <span
+                            className={`inline-block px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider border ${getActionBadgeColor(
+                              log.action
+                            )}`}
+                          >
+                            {log.action}
                           </span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-4">
-                        <span
-                          className={`inline-block px-2 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-wider border ${getActionBadgeColor(
-                            log.action
-                          )}`}
-                        >
-                          {log.action}
-                        </span>
-                      </td>
-                      <td className="py-2.5 px-4 text-gray-700 break-words leading-relaxed">
-                        {log.details}
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="py-2.5 px-4 text-gray-700 break-words leading-relaxed">
+                          {formatLogDetails(log.details)}
+                        </td>
+                      </tr>
+                    )
+                  })
                 )}
               </tbody>
             </table>
@@ -403,4 +463,3 @@ export function SystemAuditLogView() {
     </div>
   )
 }
-

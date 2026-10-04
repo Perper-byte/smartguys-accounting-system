@@ -3,44 +3,91 @@ import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
 
-export const AuditService = {
-  // 1. Function to secretly record actions
-  async logAction(userId: string, action: string, details: string) {
+export class AuditService {
+  /**
+   * Logs a system or user action into the Audit Log table.
+   */
+  static async logAction(
+    actor: string | number | null | undefined,
+    action: string,
+    details: string
+  ) {
     try {
-      // First, verify the user actually exists in the DB to prevent Foreign Key crashes!
-      const userExists = await prisma.user.findUnique({ where: { id: userId } })
+      let resolvedUserId: string | null = null
 
-      // If the user doesn't exist, we look for the SYSTEM user we just created.
-      let validUserId = userId
-      if (!userExists) {
-        const sysUser = await prisma.user.findUnique({ where: { username: 'SYSTEM' } })
-        if (!sysUser) return // If there is no SYSTEM user either, just quietly abort.
-        validUserId = sysUser.id
+      if (actor && actor !== 'SYSTEM') {
+        const strActor = String(actor)
+        const user = await prisma.user.findFirst({
+          where: {
+            OR: [{ id: strActor }, { username: strActor }]
+          },
+          select: { id: true }
+        })
+        if (user) resolvedUserId = user.id
       }
 
-      await prisma.auditLog.create({
-        data: {
-          user_id: validUserId,
-          action,
-          details
+      // Safe write: try snake_case first, fallback to camelCase if schema requires
+      try {
+        return await (prisma.auditLog as any).create({
+          data: {
+            user_id: resolvedUserId,
+            action: (action || 'LOG').toUpperCase().trim(),
+            details: details || '',
+            timestamp: new Date()
+          }
+        })
+      } catch {
+        return await (prisma.auditLog as any).create({
+          data: {
+            userId: resolvedUserId,
+            action: (action || 'LOG').toUpperCase().trim(),
+            details: details || '',
+            timestamp: new Date()
+          }
+        })
+      }
+    } catch (err) {
+      console.error('AuditService.logAction failed:', err)
+      return null
+    }
+  }
+
+  /**
+   * Fetches audit logs within a given date range quickly without blocking.
+   */
+  static async getAuditLogs(startDate?: string, endDate?: string) {
+    try {
+      const start = startDate
+        ? new Date(`${startDate}T00:00:00.000Z`)
+        : new Date(new Date().setHours(0, 0, 0, 0))
+
+      const end = endDate
+        ? new Date(`${endDate}T23:59:59.999Z`)
+        : new Date(new Date().setHours(23, 59, 59, 999))
+
+      return await prisma.auditLog.findMany({
+        where: {
+          timestamp: {
+            gte: start,
+            lte: end
+          }
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              username: true,
+              role: true
+            }
+          }
+        },
+        orderBy: {
+          timestamp: 'desc'
         }
       })
     } catch (error) {
-      console.error('Failed to write to audit log:', error)
+      console.error('AuditService.getAuditLogs error:', error)
+      return []
     }
-  },
-
-  // 2. Function for the IT Admin to view the logs
-  async getAuditLogs(startDateStr: string, endDateStr: string) {
-    const startDate = new Date(startDateStr)
-    startDate.setHours(0, 0, 0, 0)
-    const endDate = new Date(endDateStr)
-    endDate.setHours(23, 59, 59, 999)
-
-    return await prisma.auditLog.findMany({
-      where: { timestamp: { gte: startDate, lte: endDate } },
-      include: { user: true },
-      orderBy: { timestamp: 'desc' }
-    })
   }
 }
