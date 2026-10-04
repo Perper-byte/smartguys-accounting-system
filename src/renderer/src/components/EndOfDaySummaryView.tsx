@@ -103,7 +103,7 @@ export function EndOfDaySummaryView({
       if (tx.method === 'CASH') cashAmt = amount
       else if (tx.method === 'GCASH') gcashAmt = amount
       else if (tx.method === 'SPLIT') {
-        const cashLine = tx.rawLines?.find((l: any) => l.accountCode === '1020')
+        const cashLine = tx.rawLines?.find((l: any) => l.accountCode === '1020') 
         const gcashLine = tx.rawLines?.find((l: any) => l.accountCode === '1010')
         cashAmt = cashLine ? cashLine.debit : 0
         gcashAmt = gcashLine ? gcashLine.debit : 0
@@ -178,7 +178,7 @@ export function EndOfDaySummaryView({
       'OR NO.': row.orNo,
       'CLIENT (OPD/WALKIN)': row.clientType,
       [row.date]: row.particular, // Template logic: Date header above particular
-      CASH: row.cash,
+      'CASH IN HAND': row.cash,
       GCASH: row.gcash,
       CHARGE: row.charge,
       AMOUNT: row.amount,
@@ -199,7 +199,7 @@ export function EndOfDaySummaryView({
           'OR NO.': '',
           'CLIENT (OPD/WALKIN)': '',
           [processedData[0]?.date || 'Date']: '',
-          CASH: totals.cash,
+          'CASH IN HAND': totals.cash,
           GCASH: totals.gcash,
           CHARGE: totals.charge,
           AMOUNT: totals.amount,
@@ -366,7 +366,7 @@ export function EndOfDaySummaryView({
                 </tr>
                 <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold bg-[#FBF8F8]">
                   <th className="p-2 border-r border-gray-100">PARTICULAR</th>
-                  <th className="p-2 border-r border-gray-100 text-right">CASH</th>
+                  <th className="p-2 border-r border-gray-100 text-right">CASH IN HAND</th>
                   <th className="p-2 border-r border-gray-100 text-right">GCASH</th>
                   <th className="p-2 border-r border-gray-100 text-right">CHARGE</th>
                   <th className="p-2 border-r border-gray-100 text-right">
