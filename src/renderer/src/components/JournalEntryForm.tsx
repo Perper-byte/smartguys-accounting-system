@@ -2,13 +2,113 @@
 import * as React from 'react'
 import { useState, useEffect } from 'react'
 import { NewContactModal } from './NewContactModal'
-import { UploadCloud, File as FileIcon, X, Image as ImageIcon, RefreshCw, Eye } from 'lucide-react'
+import {
+  UploadCloud,
+  File as FileIcon,
+  X,
+  Image as ImageIcon,
+  RefreshCw,
+  Eye,
+  HelpCircle,
+  ChevronDown,
+  ChevronUp
+} from 'lucide-react'
 import { AttachmentPreviewModal } from './AttachmentPreviewModal'
 
 const getLocalDateString = () =>
   new Date(new Date().getTime() - new Date().getTimezoneOffset() * 60000)
     .toISOString()
     .split('T')[0]
+
+// 💡 Accounting Debit & Credit Reference Guide
+const GUIDE_DATA = [
+  {
+    type: 'Assets',
+    example: '(e.g., Cash, Inventory)',
+    debitEffect: 'Increases',
+    debitColor: 'green',
+    creditEffect: 'Decreases',
+    creditColor: 'red',
+    normalBalance: 'Debit'
+  },
+  {
+    type: 'Expenses',
+    example: '(e.g., Rent, Utilities)',
+    debitEffect: 'Increases',
+    debitColor: 'green',
+    creditEffect: 'Decreases',
+    creditColor: 'red',
+    normalBalance: 'Debit'
+  },
+  {
+    type: 'Liabilities',
+    example: '(e.g., VAT Payable, Loans)',
+    debitEffect: 'Decreases',
+    debitColor: 'red',
+    creditEffect: 'Increases',
+    creditColor: 'green',
+    normalBalance: 'Credit'
+  },
+  {
+    type: 'Equity',
+    example: "(e.g., Owner's Capital)",
+    debitEffect: 'Decreases',
+    debitColor: 'red',
+    creditEffect: 'Increases',
+    creditColor: 'green',
+    normalBalance: 'Credit'
+  },
+  {
+    type: 'Revenue / Income',
+    example: '(e.g., Sales)',
+    debitEffect: 'Decreases',
+    debitColor: 'red',
+    creditEffect: 'Increases',
+    creditColor: 'green',
+    normalBalance: 'Credit'
+  }
+]
+
+// 🔍 Helper to determine account classification & normal balance
+const getAccountMeta = (acc: any) => {
+  if (!acc) return null
+
+  const rawType = String(acc.type || acc.category || '').toUpperCase()
+  const code = String(acc.code || '').trim()
+  const name = String(acc.name || '').toLowerCase()
+  const norm = String(acc.normalBalance || acc.normal_balance || '').toUpperCase()
+
+  if (norm.includes('CREDIT') || norm === 'CR') {
+    return { type: rawType || 'Credit Account', normal: 'CREDIT', isDebitNormal: false }
+  }
+  if (norm.includes('DEBIT') || norm === 'DR') {
+    return { type: rawType || 'Debit Account', normal: 'DEBIT', isDebitNormal: true }
+  }
+
+  if (rawType.includes('ASSET')) return { type: 'Asset', normal: 'DEBIT', isDebitNormal: true }
+  if (rawType.includes('EXPENSE') || rawType.includes('COST'))
+    return { type: 'Expense', normal: 'DEBIT', isDebitNormal: true }
+  if (rawType.includes('LIAB')) return { type: 'Liability', normal: 'CREDIT', isDebitNormal: false }
+  if (rawType.includes('EQUITY')) return { type: 'Equity', normal: 'CREDIT', isDebitNormal: false }
+  if (rawType.includes('REVENUE') || rawType.includes('INCOME') || rawType.includes('SALE')) {
+    return { type: 'Revenue', normal: 'CREDIT', isDebitNormal: false }
+  }
+
+  // Fallback by Standard Chart of Accounts first digit (1=Asset, 2=Liab, 3=Eq, 4=Rev, 5-9=Exp)
+  const firstDigit = code.charAt(0)
+  if (firstDigit === '1') return { type: 'Asset', normal: 'DEBIT', isDebitNormal: true }
+  if (firstDigit === '2') return { type: 'Liability', normal: 'CREDIT', isDebitNormal: false }
+  if (firstDigit === '3') return { type: 'Equity', normal: 'CREDIT', isDebitNormal: false }
+  if (firstDigit === '4') return { type: 'Revenue', normal: 'CREDIT', isDebitNormal: false }
+  if (['5', '6', '7', '8', '9'].includes(firstDigit))
+    return { type: 'Expense', normal: 'DEBIT', isDebitNormal: true }
+
+  if (/(payable|loan|capital|equity|revenue|sales|income)/.test(name)) {
+    return { type: 'Liability/Revenue', normal: 'CREDIT', isDebitNormal: false }
+  }
+
+  return { type: 'Asset/Expense', normal: 'DEBIT', isDebitNormal: true }
+}
 
 export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
   const [accounts, setAccounts] = useState<any[]>([])
@@ -21,6 +121,9 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
 
   const [vatType, setVatType] = useState('VATABLE')
   const [payeeId, setPayeeId] = useState('')
+
+  // 📖 Guide toggle state (collapsed by default)
+  const [showGuide, setShowGuide] = useState(false)
 
   const [isNewContactModalOpen, setIsNewContactModalOpen] = useState(false)
 
@@ -60,7 +163,6 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
     }
   }, [])
 
-  // 🔥 FIX: Extracted fetch logic so the button can use it
   const fetchNextSequence = async () => {
     try {
       const api = (window as any).api || (window as any).electronAPI
@@ -253,9 +355,21 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
         {/* HEADER */}
         <div className="flex justify-between items-center mb-6 border-b border-[#B0DCDA] pb-4">
           <h2 className="text-xl font-extrabold text-gray-800 tracking-wide">New Journal Entry</h2>
-          <span className="bg-[#E9FAFA] text-[#1B9387] text-xs px-4 py-1.5 rounded-full font-bold uppercase tracking-widest border border-[#B0DCDA]">
-            General Journal
-          </span>
+          <div className="flex items-center gap-2.5">
+            {/* 📖 Accounting Guide Header Toggle */}
+            <button
+              type="button"
+              onClick={() => setShowGuide((prev) => !prev)}
+              className="flex items-center gap-1.5 text-xs font-bold text-[#1B9387] bg-[#E9FAFA] hover:bg-[#d4f5f3] border border-[#B0DCDA] px-3.5 py-1.5 rounded-full transition shadow-sm cursor-pointer"
+              title="Toggle Accounting Guide"
+            >
+              <HelpCircle size={14} />
+              <span>Guide</span>
+            </button>
+            <span className="bg-[#E9FAFA] text-[#1B9387] text-xs px-4 py-1.5 rounded-full font-bold uppercase tracking-widest border border-[#B0DCDA]">
+              General Journal
+            </span>
+          </div>
         </div>
 
         {status && (
@@ -300,7 +414,6 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                 placeholder="001"
                 className="w-full bg-transparent p-3 text-sm font-mono text-gray-800 font-bold outline-none"
               />
-              {/* 🔥 FIX: Added the Auto-Generate button here! */}
               <button
                 type="button"
                 onClick={fetchNextSequence}
@@ -454,6 +567,93 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
           </div>
         </div>
 
+        {/* 📖 ACCOUNTING GUIDE (EXPANDABLE PANEL) */}
+        <div className="mb-6 bg-white border border-[#B0DCDA] rounded-lg shadow-sm overflow-hidden transition-all">
+          <button
+            type="button"
+            onClick={() => setShowGuide((prev) => !prev)}
+            className="w-full flex items-center justify-between p-3.5 bg-[#E9FAFA]/60 hover:bg-[#E9FAFA] transition text-left cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <HelpCircle size={17} className="text-[#1B9387]" />
+              <span className="text-xs font-extrabold text-gray-700 uppercase tracking-wider">
+                Accounting Guide (Debit &amp; Credit Rules)
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs font-bold text-[#1B9387]">
+              <span>{showGuide ? 'Hide Guide' : 'Show Guide'}</span>
+              {showGuide ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            </div>
+          </button>
+
+          {showGuide && (
+            <div className="p-4 sm:p-5 border-t border-[#B0DCDA] overflow-x-auto bg-white">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-gray-200 text-xs font-bold text-gray-900">
+                    <th className="pb-3 pr-4">Account Type</th>
+                    <th className="pb-3 pr-4">Debit (Dr)</th>
+                    <th className="pb-3 pr-4">Credit (Cr)</th>
+                    <th className="pb-3">Normal Balance</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 text-sm">
+                  {GUIDE_DATA.map((row, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50/70 transition">
+                      <td className="py-2.5 pr-4">
+                        <span className="font-bold text-gray-900">{row.type}</span>{' '}
+                        <span className="text-xs text-gray-500 font-normal">{row.example}</span>
+                      </td>
+                      <td className="py-2.5 pr-4">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`w-2.5 h-2.5 rounded-full shrink-0 shadow-sm ${
+                              row.debitColor === 'green'
+                                ? 'bg-emerald-500 ring-2 ring-emerald-100'
+                                : 'bg-rose-500 ring-2 ring-rose-100'
+                            }`}
+                          />
+                          <span
+                            className={
+                              row.debitEffect === 'Increases'
+                                ? 'font-bold text-gray-900'
+                                : 'font-medium text-gray-700'
+                            }
+                          >
+                            {row.debitEffect}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 pr-4">
+                        <div className="flex items-center gap-2">
+                          <span
+                            className={`w-2.5 h-2.5 rounded-full shrink-0 shadow-sm ${
+                              row.creditColor === 'green'
+                                ? 'bg-emerald-500 ring-2 ring-emerald-100'
+                                : 'bg-rose-500 ring-2 ring-rose-100'
+                            }`}
+                          />
+                          <span
+                            className={
+                              row.creditEffect === 'Increases'
+                                ? 'font-bold text-gray-900'
+                                : 'font-medium text-gray-700'
+                            }
+                          >
+                            {row.creditEffect}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-2.5 text-gray-700 font-medium">{row.normalBalance}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* LINES TABLE WITH VISUAL CUES */}
         <div className="border border-[#B0DCDA] rounded-md bg-white overflow-visible mb-6 shadow-sm">
           <table className="w-full">
             <thead className="bg-gray-50 border-b border-[#B0DCDA]">
@@ -471,121 +671,229 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {lines.map((line, idx) => (
-                <tr
-                  key={idx}
-                  className="even:bg-gray-50 odd:bg-white hover:bg-[#E9FAFA]/50 transition"
-                >
-                  <td className="p-0 border-r border-[#B0DCDA] relative align-top">
-                    {activeAccountRow === idx ? (
-                      <div className="absolute z-50 left-0 top-0 w-full min-w-[350px] bg-white border border-[#1B9387] shadow-xl rounded-md overflow-hidden">
-                        <div className="p-2 bg-[#FBF8F8] border-b border-[#B0DCDA]">
+              {lines.map((line, idx) => {
+                const selectedAcc = accounts.find((a) => a.code === line.accountId)
+                const accMeta = getAccountMeta(selectedAcc)
+
+                return (
+                  <tr
+                    key={idx}
+                    className="even:bg-gray-50/50 odd:bg-white hover:bg-[#E9FAFA]/30 transition"
+                  >
+                    {/* ACCOUNT SELECTION COLUMN */}
+                    <td className="p-0 border-r border-[#B0DCDA] relative align-top">
+                      {activeAccountRow === idx ? (
+                        <div className="absolute z-50 left-0 top-0 w-full min-w-[380px] bg-white border border-[#1B9387] shadow-xl rounded-md overflow-hidden">
+                          <div className="p-2 bg-[#FBF8F8] border-b border-[#B0DCDA]">
+                            <input
+                              type="text"
+                              autoFocus
+                              placeholder="🔍 Type account code or name..."
+                              value={accountSearchQuery}
+                              onChange={(e) => setAccountSearchQuery(e.target.value)}
+                              onBlur={() => setTimeout(() => setActiveAccountRow(null), 200)}
+                              className="w-full bg-transparent p-1.5 text-sm text-gray-800 outline-none font-medium"
+                            />
+                          </div>
+                          <ul className="max-h-56 overflow-y-auto bg-white divide-y divide-gray-50">
+                            {accounts
+                              .filter(
+                                (a) =>
+                                  a &&
+                                  a.name &&
+                                  `${a.code} ${a.name}`
+                                    .toLowerCase()
+                                    .includes(String(accountSearchQuery || '').toLowerCase())
+                              )
+                              .map((acc) => {
+                                const meta = getAccountMeta(acc)
+                                return (
+                                  <li
+                                    key={acc.code}
+                                    onMouseDown={() => {
+                                      updateLine(idx, 'accountId', acc.code)
+                                      setActiveAccountRow(null)
+                                    }}
+                                    className="p-3 text-sm text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition flex items-center justify-between group"
+                                  >
+                                    <div className="flex items-center min-w-0 pr-2">
+                                      <span className="font-mono font-bold text-[#1B9387] w-14 shrink-0">
+                                        {acc.code}
+                                      </span>
+                                      <span className="font-medium truncate">{acc.name}</span>
+                                    </div>
+                                    {/* 🏷️ Dropdown Visual Cue Badge */}
+                                    {meta && (
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <span className="text-[10px] text-gray-500 font-semibold">
+                                          {meta.type}
+                                        </span>
+                                        <span
+                                          className={`text-[10px] font-mono font-extrabold px-1.5 py-0.5 rounded border ${
+                                            meta.isDebitNormal
+                                              ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                              : 'bg-amber-50 text-amber-700 border-amber-300'
+                                          }`}
+                                          title={`Normal Balance: ${meta.normal}`}
+                                        >
+                                          {meta.isDebitNormal ? 'Dr (Normal)' : 'Cr (Normal)'}
+                                        </span>
+                                      </div>
+                                    )}
+                                  </li>
+                                )
+                              })}
+                          </ul>
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => {
+                            setActiveAccountRow(idx)
+                            setAccountSearchQuery('')
+                          }}
+                          className="w-full h-full min-h-[52px] p-3 pl-4 text-sm text-gray-800 cursor-text flex justify-between items-center group"
+                        >
+                          {line.accountId ? (
+                            <div className="flex items-center justify-between w-full">
+                              <div>
+                                <span className="font-mono font-extrabold text-[#1B9387] mr-2.5">
+                                  {line.accountId}
+                                </span>
+                                <span className="font-medium text-gray-800">
+                                  {selectedAcc?.name}
+                                </span>
+                              </div>
+                              {/* 🏷️ Selected Account Visual Cue */}
+                              {accMeta && (
+                                <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                  <span className="text-[10px] text-gray-400 font-semibold hidden sm:inline">
+                                    {accMeta.type}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-mono font-extrabold px-1.5 py-0.5 rounded border ${
+                                      accMeta.isDebitNormal
+                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                                        : 'bg-amber-50 text-amber-700 border-amber-300'
+                                    }`}
+                                  >
+                                    {accMeta.isDebitNormal ? 'Normal: Dr' : 'Normal: Cr'}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 italic font-medium">
+                              Type to search account...
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </td>
+
+                    {/* DEBIT COLUMN WITH DYNAMIC VISUAL CUE */}
+                    <td
+                      className={`p-0 border-r border-[#B0DCDA] align-top transition-colors ${
+                        accMeta?.isDebitNormal ? 'bg-emerald-50/20' : ''
+                      }`}
+                    >
+                      <div className="relative flex flex-col justify-center h-full min-h-[52px] py-1.5">
+                        <div className="relative flex items-center">
+                          <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
                           <input
-                            type="text"
-                            autoFocus
-                            placeholder="🔍 Type account code or name..."
-                            value={accountSearchQuery}
-                            onChange={(e) => setAccountSearchQuery(e.target.value)}
-                            onBlur={() => setTimeout(() => setActiveAccountRow(null), 200)}
-                            className="w-full bg-transparent p-1.5 text-sm text-gray-800 outline-none font-medium"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={line.debit === 0 ? '' : line.debit}
+                            placeholder="0.00"
+                            onChange={(e) =>
+                              updateLine(idx, 'debit', parseFloat(e.target.value) || 0)
+                            }
+                            className="w-full h-full bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition"
                           />
                         </div>
-                        <ul className="max-h-48 overflow-y-auto bg-white">
-                          {accounts
-                            .filter(
-                              (a) =>
-                                a &&
-                                a.name &&
-                                `${a.code} ${a.name}`
-                                  .toLowerCase()
-                                  .includes(String(accountSearchQuery || '').toLowerCase())
-                            )
-                            .map((acc) => (
-                              <li
-                                key={acc.code}
-                                onMouseDown={() => {
-                                  updateLine(idx, 'accountId', acc.code)
-                                  setActiveAccountRow(null)
-                                }}
-                                className="p-3 text-sm text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] cursor-pointer transition border-b border-gray-50 last:border-0 flex items-center"
-                              >
-                                <span className="font-mono font-bold text-[#1B9387] w-14 inline-block">
-                                  {acc.code}
-                                </span>
-                                <span className="font-medium">{acc.name}</span>
-                              </li>
-                            ))}
-                        </ul>
-                      </div>
-                    ) : (
-                      <div
-                        onClick={() => {
-                          setActiveAccountRow(idx)
-                          setAccountSearchQuery('')
-                        }}
-                        className="w-full h-full min-h-[44px] p-3.5 pl-5 text-sm text-gray-800 cursor-text flex justify-between items-center group"
-                      >
-                        {line.accountId ? (
-                          <span>
-                            <span className="font-mono font-extrabold text-[#1B9387] mr-3">
-                              {line.accountId}
+                        {/* 🎯 Debit Cue: Increases (+) or Decreases (-) */}
+                        {accMeta && (
+                          <div className="flex items-center justify-end px-3 mt-0.5">
+                            <span
+                              className={`inline-flex items-center gap-1 text-[10px] ${
+                                accMeta.isDebitNormal
+                                  ? 'text-emerald-700 font-extrabold'
+                                  : 'text-rose-600 font-semibold'
+                              }`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  accMeta.isDebitNormal ? 'bg-emerald-500' : 'bg-rose-500'
+                                }`}
+                              />
+                              {accMeta.isDebitNormal ? 'Increases (Normal)' : 'Decreases'}
                             </span>
-                            <span className="font-medium text-gray-800">
-                              {accounts.find((a) => a.code === line.accountId)?.name}
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="text-gray-400 italic font-medium">
-                            Type to search account...
-                          </span>
+                          </div>
                         )}
                       </div>
-                    )}
-                  </td>
-                  <td className="p-0 border-r border-[#B0DCDA] align-top">
-                    <div className="relative flex items-center h-full">
-                      <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.debit === 0 ? '' : line.debit}
-                        placeholder="0.00"
-                        onChange={(e) => updateLine(idx, 'debit', parseFloat(e.target.value) || 0)}
-                        className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition"
-                      />
-                    </div>
-                  </td>
-                  <td className="p-0 border-r border-[#B0DCDA] align-top">
-                    <div className="relative flex items-center h-full">
-                      <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={line.credit === 0 ? '' : line.credit}
-                        placeholder="0.00"
-                        onChange={(e) => updateLine(idx, 'credit', parseFloat(e.target.value) || 0)}
-                        className="w-full h-full min-h-[44px] bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition"
-                      />
-                    </div>
-                  </td>
-                  <td className="p-2 text-center align-middle">
-                    <button
-                      type="button"
-                      onClick={() => removeLine(idx)}
-                      disabled={lines.length <= 2}
-                      className="text-red-400 hover:text-red-600 disabled:opacity-20 transition cursor-pointer font-bold"
+                    </td>
+
+                    {/* CREDIT COLUMN WITH DYNAMIC VISUAL CUE */}
+                    <td
+                      className={`p-0 border-r border-[#B0DCDA] align-top transition-colors ${
+                        accMeta && !accMeta.isDebitNormal ? 'bg-emerald-50/20' : ''
+                      }`}
                     >
-                      ✕
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                      <div className="relative flex flex-col justify-center h-full min-h-[52px] py-1.5">
+                        <div className="relative flex items-center">
+                          <span className="absolute left-3 text-gray-400 font-mono text-xs">₱</span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={line.credit === 0 ? '' : line.credit}
+                            placeholder="0.00"
+                            onChange={(e) =>
+                              updateLine(idx, 'credit', parseFloat(e.target.value) || 0)
+                            }
+                            className="w-full h-full bg-transparent pl-8 pr-3 text-sm text-right text-gray-800 font-mono font-bold outline-none placeholder-gray-300 focus:bg-[#E9FAFA] transition"
+                          />
+                        </div>
+                        {/* 🎯 Credit Cue: Increases (+) or Decreases (-) */}
+                        {accMeta && (
+                          <div className="flex items-center justify-end px-3 mt-0.5">
+                            <span
+                              className={`inline-flex items-center gap-1 text-[10px] ${
+                                !accMeta.isDebitNormal
+                                  ? 'text-emerald-700 font-extrabold'
+                                  : 'text-rose-600 font-semibold'
+                              }`}
+                            >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full ${
+                                  !accMeta.isDebitNormal ? 'bg-emerald-500' : 'bg-rose-500'
+                                }`}
+                              />
+                              {!accMeta.isDebitNormal ? 'Increases (Normal)' : 'Decreases'}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </td>
+
+                    <td className="p-2 text-center align-middle">
+                      <button
+                        type="button"
+                        onClick={() => removeLine(idx)}
+                        disabled={lines.length <= 2}
+                        className="text-red-400 hover:text-red-600 disabled:opacity-20 transition cursor-pointer font-bold"
+                      >
+                        ✕
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
 
+        {/* ATTACHMENTS */}
         <div className="mb-6">
           <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
             Attachments
@@ -664,6 +972,7 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
           )}
         </div>
 
+        {/* TOTALS & SUBMISSION */}
         <div className="flex justify-between items-end mt-6">
           <button
             type="button"

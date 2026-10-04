@@ -25,7 +25,7 @@ export function NewContactModal({
     address: ''
   })
 
-  // 🔥 THE MISSING HMO STATES RESTORED
+  // HMO STATES
   const [hmoAffiliation, setHmoAffiliation] = useState('')
   const [hmoCardNo, setHmoCardNo] = useState('')
   const [hmoExpiry, setHmoExpiry] = useState('')
@@ -34,9 +34,7 @@ export function NewContactModal({
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   /*
-   * IMPORTANT:
-   * Every time the modal opens, update the contact type
-   * based on the type selected from Contact Directory.
+   * Update contact type based on the type selected from Contact Directory
    */
   useEffect(() => {
     if (isOpen) {
@@ -55,7 +53,7 @@ export function NewContactModal({
       setHmoExpiry('')
       setIsSubmitting(false)
 
-      // 🔥 Fetch the HMOs for the dropdown
+      // Fetch HMOs for the dropdown
       const fetchHMOs = async () => {
         const api = (window as any).api || (window as any).electronAPI
         if (api && api.getPayees) {
@@ -76,8 +74,6 @@ export function NewContactModal({
     switch (formData.type) {
       case 'PATIENT':
         return 'Patient'
-      case 'DOCTOR':
-        return 'Doctor'
       case 'HMO':
         return 'HMO'
       case 'SUPPLIER':
@@ -100,8 +96,6 @@ export function NewContactModal({
     switch (formData.type) {
       case 'PATIENT':
         return 'Patient information will be used for billing and receivable transactions.'
-      case 'DOCTOR':
-        return 'Doctor information will be used for professional fees and payout transactions.'
       case 'HMO':
         return 'HMO information will be used for insurance claims and receivable transactions.'
       case 'SUPPLIER':
@@ -125,7 +119,7 @@ export function NewContactModal({
       return
     }
 
-    // 🔥 Basic Expiry Validation for HMOs
+    // Basic Expiry Validation for HMOs
     if (formData.type === 'PATIENT' && hmoAffiliation && hmoExpiry) {
       const expiryDate = new Date(hmoExpiry)
       const today = new Date()
@@ -144,10 +138,6 @@ export function NewContactModal({
         throw new Error('Electron API is not available.')
       }
 
-      /*
-       * Save the contact.
-       * The selected type and missing HMO fields are now correctly passed!
-       */
       const result = await api.createPayee(
         formData.name,
         formData.type,
@@ -184,9 +174,7 @@ export function NewContactModal({
         onSaveSuccess?.()
       }
 
-      /*
-       * Reset form.
-       */
+      // Reset form
       setFormData({ name: '', type: defaultType, tin: '', email: '', phone: '', address: '' })
       setHmoAffiliation('')
       setHmoCardNo('')
@@ -244,7 +232,6 @@ export function NewContactModal({
                 className="bg-white border border-[#B0DCDA] rounded-md px-4 py-2 text-sm font-bold text-[#4f46e5] outline-none cursor-pointer shadow-sm transition focus:border-[#4f46e5] min-w-[150px]"
               >
                 <option value="PATIENT">👤 Patient</option>
-                <option value="DOCTOR">🩺 Doctor</option>
                 <option value="HMO">🏥 HMO</option>
                 <option value="SUPPLIER">📦 Supplier</option>
                 <option value="CORPORATE">🏢 Corporate</option>
@@ -257,15 +244,13 @@ export function NewContactModal({
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-                  {formData.type === 'DOCTOR'
-                    ? 'Doctor Name *'
-                    : formData.type === 'HMO'
-                      ? 'HMO Name *'
-                      : formData.type === 'SUPPLIER'
-                        ? 'Supplier Name *'
-                        : formData.type === 'LANDLORD'
-                          ? 'Landlord / Lessor Name *'
-                          : 'Contact Name *'}
+                  {formData.type === 'HMO'
+                    ? 'HMO Name *'
+                    : formData.type === 'SUPPLIER'
+                      ? 'Supplier Name *'
+                      : formData.type === 'LANDLORD'
+                        ? 'Landlord / Lessor Name *'
+                        : 'Contact Name *'}
                 </label>
                 <input
                   type="text"
@@ -274,15 +259,13 @@ export function NewContactModal({
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                   placeholder={
-                    formData.type === 'DOCTOR'
-                      ? 'e.g. Dr. Jose Rizal'
-                      : formData.type === 'HMO'
-                        ? 'e.g. Maxicare'
-                        : formData.type === 'SUPPLIER'
-                          ? 'e.g. MedSupplies Corp'
-                          : formData.type === 'LANDLORD'
-                            ? 'e.g. Prime Realty / Landlord Corp'
-                            : 'e.g. Juan Dela Cruz'
+                    formData.type === 'HMO'
+                      ? 'e.g. Maxicare'
+                      : formData.type === 'SUPPLIER'
+                        ? 'e.g. MedSupplies Corp'
+                        : formData.type === 'LANDLORD'
+                          ? 'e.g. Prime Realty / Landlord Corp'
+                          : 'e.g. Juan Dela Cruz'
                   }
                   className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#4f46e5] outline-none transition placeholder-gray-400"
                 />
@@ -301,7 +284,7 @@ export function NewContactModal({
               </div>
             </div>
 
-            {/* 🔥 THE MISSING HMO AFFILIATION BLOCK */}
+            {/* HMO AFFILIATION BLOCK */}
             {formData.type === 'PATIENT' && (
               <div className="bg-blue-50/40 border border-blue-200 rounded-lg p-5">
                 <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">

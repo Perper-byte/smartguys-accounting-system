@@ -3,18 +3,213 @@ import { useState, useEffect, useMemo } from 'react'
 import {
   Users,
   User,
-  Stethoscope,
   Building2,
   Building,
   Package,
   Key,
   Search,
   Download,
-  Upload
+  Upload,
+  ArrowUpDown,
+  X,
+  FileSpreadsheet
 } from 'lucide-react'
 import { NewContactModal } from './NewContactModal'
 import * as XLSX from 'xlsx'
 
+// ─── HMO / CORPORATE AFFILIATED PATIENTS LIST ────────────────────────────────
+function HmoAffiliatedPatientsList({
+  contact,
+  onNavigate
+}: {
+  contact: any
+  onNavigate?: (tab: string, data?: any) => void
+}) {
+  const [query, setQuery] = useState('')
+  const [sortBy, setSortBy] = useState<'NAME_ASC' | 'NAME_DESC' | 'BILLED_DESC' | 'CLAIMS_DESC'>(
+    'NAME_ASC'
+  )
+
+  const allPatients = contact.affiliatedPatients || []
+
+  const filteredAndSorted = useMemo(() => {
+    const q = query.toLowerCase().trim()
+    const filtered = allPatients.filter((pt: any) => {
+      if (!q) return true
+      const matchesName = pt.name && pt.name.toLowerCase().includes(q)
+      const matchesCard = pt.cardNo && pt.cardNo.toLowerCase().includes(q)
+      const matchesPhone = pt.phone && pt.phone.toLowerCase().includes(q)
+      const matchesEmail = pt.email && pt.email.toLowerCase().includes(q)
+      const matchesLoa =
+        pt.loaNumbers && pt.loaNumbers.some((l: string) => l.toLowerCase().includes(q))
+      return matchesName || matchesCard || matchesPhone || matchesEmail || matchesLoa
+    })
+
+    return filtered.sort((a: any, b: any) => {
+      if (sortBy === 'NAME_ASC') return (a.name || '').localeCompare(b.name || '')
+      if (sortBy === 'NAME_DESC') return (b.name || '').localeCompare(a.name || '')
+      if (sortBy === 'BILLED_DESC')
+        return (Number(b.totalBilled) || 0) - (Number(a.totalBilled) || 0)
+      if (sortBy === 'CLAIMS_DESC')
+        return (Number(b.transactionCount) || 0) - (Number(a.transactionCount) || 0)
+      return 0
+    })
+  }, [allPatients, query, sortBy])
+
+  return (
+    <div
+      className="mt-4 pt-4 border-t border-gray-200"
+      onClick={(e) => e.stopPropagation()} // Prevents row from collapsing when clicking inside
+    >
+      {/* SECTION HEADER & ALL-TRANSACTIONS LINK */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs">👥</span>
+          <p className="text-[11px] text-[#1B9387] font-black uppercase tracking-wider">
+            Patients &amp; Members Under this {contact.type === 'HMO' ? 'HMO' : 'Corporate'} (
+            {allPatients.length})
+          </p>
+        </div>
+        {allPatients.length > 0 && onNavigate && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation()
+              onNavigate('history', { searchQuery: contact.name })
+            }}
+            className="text-[11px] font-bold text-[#1B9387] hover:underline cursor-pointer text-left"
+          >
+            View All Transactions →
+          </button>
+        )}
+      </div>
+
+      {allPatients.length > 0 ? (
+        <div className="space-y-2.5">
+          {/* SEARCH AND SORT CONTROLS */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 bg-gray-50/80 p-2 rounded-lg border border-gray-200">
+            {/* Search Input */}
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-2.5 w-3.5 h-3.5 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search patient, policy #, LOA..."
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full bg-white border border-gray-200 rounded-md pl-8 pr-7 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#1B9387] font-medium"
+              />
+              {query && (
+                <button
+                  type="button"
+                  onClick={() => setQuery('')}
+                  className="absolute right-2 top-2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Sort Selector */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              <ArrowUpDown className="w-3.5 h-3.5 text-gray-400 ml-1" />
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as any)}
+                className="bg-white border border-gray-200 rounded-md px-2 py-1.5 text-xs text-gray-700 font-semibold focus:outline-none focus:border-[#1B9387] cursor-pointer"
+              >
+                <option value="NAME_ASC">Name (A → Z)</option>
+                <option value="NAME_DESC">Name (Z → A)</option>
+                <option value="BILLED_DESC">Highest Billed (₱)</option>
+                <option value="CLAIMS_DESC">Most Claims</option>
+              </select>
+            </div>
+          </div>
+
+          {/* SCROLLABLE PATIENT CARDS */}
+          {filteredAndSorted.length > 0 ? (
+            <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+              {filteredAndSorted.map((pt: any, ptIdx: number) => (
+                <div
+                  key={ptIdx}
+                  className="p-3 bg-white border border-gray-200 rounded-lg hover:border-[#B0DCDA] transition flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs"
+                >
+                  <div className="flex items-start gap-2.5 min-w-0">
+                    <div className="w-8 h-8 rounded-full bg-[#E9FAFA] text-[#1B9387] font-black text-xs flex items-center justify-center shrink-0 border border-[#B0DCDA]">
+                      {pt.name ? pt.name.charAt(0).toUpperCase() : 'P'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-xs text-gray-900">{pt.name}</span>
+                        {pt.isRegistered ? (
+                          <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] px-1.5 py-0.5 rounded font-bold">
+                            Registered Patient
+                          </span>
+                        ) : (
+                          <span className="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-1.5 py-0.5 rounded font-bold">
+                            Billed Patient
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-gray-500 font-medium flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                        {pt.cardNo && (
+                          <span>
+                            Card/Policy:{' '}
+                            <strong className="font-mono text-gray-700">{pt.cardNo}</strong>
+                          </span>
+                        )}
+                        {pt.loaNumbers && pt.loaNumbers.length > 0 && (
+                          <span>
+                            LOA:{' '}
+                            <strong className="font-mono text-gray-700">
+                              {pt.loaNumbers.join(', ')}
+                            </strong>
+                          </span>
+                        )}
+                        {pt.phone && <span>📞 {pt.phone}</span>}
+                        {pt.email && <span>✉️ {pt.email}</span>}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="text-right shrink-0 sm:self-center pl-10 sm:pl-0 flex sm:flex-col justify-between items-end">
+                    <div className="text-xs font-mono font-black text-[#1B9387]">
+                      ₱{' '}
+                      {Number(pt.totalBilled || 0).toLocaleString('en-US', {
+                        minimumFractionDigits: 2
+                      })}
+                    </div>
+                    <div className="text-[10px] text-gray-400 font-medium">
+                      {pt.transactionCount} claim{pt.transactionCount === 1 ? '' : 's'}
+                      {pt.recentRefNo ? ` • Ref: ${pt.recentRefNo}` : ''}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500 bg-white p-4 rounded-lg border border-dashed border-gray-200 text-center">
+              No patients found matching &ldquo;<span className="font-bold">{query}</span>&rdquo;.
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="ml-2 text-[#1B9387] underline font-bold cursor-pointer"
+              >
+                Clear search
+              </button>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="text-xs text-gray-500 bg-white p-3 rounded-lg border border-dashed border-gray-200 text-center">
+          No patients currently registered or billed under this{' '}
+          {contact.type === 'HMO' ? 'HMO' : 'Corporate guarantor'}.
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── MAIN CONTACT DIRECTORY VIEW ────────────────────────────────────────────
 export function ContactDirectoryView({
   onNavigate
 }: {
@@ -39,7 +234,7 @@ export function ContactDirectoryView({
 
   const [searchQuery, setSearchQuery] = useState('')
   const [filterType, setFilterType] = useState<
-    'ALL' | 'PATIENT' | 'DOCTOR' | 'HMO_CORP' | 'SUPPLIER' | 'OTHERS' | 'ARCHIVED'
+    'ALL' | 'PATIENT' | 'HMO_CORP' | 'SUPPLIER' | 'OTHERS' | 'ARCHIVED'
   >('ALL')
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null)
   const [actionMenuId, setActionMenuId] = useState<string | null>(null)
@@ -82,15 +277,13 @@ export function ContactDirectoryView({
     () => ({
       ALL: contacts.filter((c) => c.status !== 'ARCHIVED').length,
       PATIENT: contacts.filter((c) => c.status !== 'ARCHIVED' && c.type === 'PATIENT').length,
-      DOCTOR: contacts.filter((c) => c.status !== 'ARCHIVED' && c.type === 'DOCTOR').length,
       HMO_CORP: contacts.filter(
         (c) => c.status !== 'ARCHIVED' && (c.type === 'HMO' || c.type === 'CORPORATE')
       ).length,
       SUPPLIER: contacts.filter((c) => c.status !== 'ARCHIVED' && c.type === 'SUPPLIER').length,
       OTHERS: contacts.filter(
         (c) =>
-          c.status !== 'ARCHIVED' &&
-          !['PATIENT', 'DOCTOR', 'HMO', 'CORPORATE', 'SUPPLIER'].includes(c.type)
+          c.status !== 'ARCHIVED' && !['PATIENT', 'HMO', 'CORPORATE', 'SUPPLIER'].includes(c.type)
       ).length,
       ARCHIVED: contacts.filter((c) => c.status === 'ARCHIVED').length
     }),
@@ -115,20 +308,15 @@ export function ContactDirectoryView({
 
       if (!matchesSearch) return false
 
-      if (filterType === 'ARCHIVED') {
-        return c.status === 'ARCHIVED'
-      }
-
-      // Hide archived from active category tabs
+      if (filterType === 'ARCHIVED') return c.status === 'ARCHIVED'
       if (c.status === 'ARCHIVED') return false
 
       if (filterType === 'ALL') return true
       if (filterType === 'PATIENT') return c.type === 'PATIENT'
-      if (filterType === 'DOCTOR') return c.type === 'DOCTOR'
       if (filterType === 'HMO_CORP') return c.type === 'HMO' || c.type === 'CORPORATE'
       if (filterType === 'SUPPLIER') return c.type === 'SUPPLIER'
       if (filterType === 'OTHERS')
-        return !['PATIENT', 'DOCTOR', 'HMO', 'CORPORATE', 'SUPPLIER'].includes(c.type)
+        return !['PATIENT', 'HMO', 'CORPORATE', 'SUPPLIER'].includes(c.type)
 
       return true
     })
@@ -143,8 +331,6 @@ export function ContactDirectoryView({
     switch (type) {
       case 'SUPPLIER':
         return 'text-orange-600 bg-orange-50 border-orange-200'
-      case 'DOCTOR':
-        return 'text-rose-600 bg-rose-50 border-rose-200'
       case 'PATIENT':
         return 'text-blue-600 bg-blue-50 border-blue-200'
       case 'HMO':
@@ -174,6 +360,71 @@ export function ContactDirectoryView({
     setIsModalOpen(true)
   }
 
+  // --- TEMPLATE DOWNLOAD HANDLER ---
+  const handleDownloadTemplate = () => {
+    try {
+      const templateData = [
+        {
+          Name: 'Juan Dela Cruz',
+          Type: 'PATIENT',
+          Email: 'juan.delacruz@example.com',
+          Phone: '09171234567',
+          TIN: '123-456-789-000',
+          Address: '123 Medical Plaza, Makati City'
+        },
+        {
+          Name: 'Maxicare Healthcare',
+          Type: 'HMO',
+          Email: 'claims@maxicare.com.ph',
+          Phone: '(02) 8582-1900',
+          TIN: '000-123-456-000',
+          Address: 'Maxicare Tower, BGC, Taguig City'
+        },
+        {
+          Name: 'Prime Med Supplies Corp',
+          Type: 'SUPPLIER',
+          Email: 'sales@primemed.com',
+          Phone: '09189876543',
+          TIN: '987-654-321-000',
+          Address: '456 Warehouse Rd, Pasig City'
+        },
+        {
+          Name: 'Ayala Land Corp',
+          Type: 'LANDLORD',
+          Email: 'leasing@ayala.com',
+          Phone: '(02) 7908-3000',
+          TIN: '111-222-333-000',
+          Address: 'Ayala Tower One, Makati City'
+        },
+        {
+          Name: 'San Miguel Corporation',
+          Type: 'CORPORATE',
+          Email: 'corporate.accounts@smc.com',
+          Phone: '(02) 8632-3000',
+          TIN: '444-555-666-000',
+          Address: 'Mandaluyong City, Metro Manila'
+        }
+      ]
+
+      const worksheet = XLSX.utils.json_to_sheet(templateData)
+      worksheet['!cols'] = [
+        { wch: 28 }, // Name
+        { wch: 14 }, // Type
+        { wch: 30 }, // Email
+        { wch: 18 }, // Phone
+        { wch: 20 }, // TIN
+        { wch: 40 } // Address
+      ]
+
+      const workbook = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Contacts')
+      XLSX.writeFile(workbook, 'SmartGuys_Contacts_Import_Template.xlsx')
+    } catch (error) {
+      console.error('Template Download Error:', error)
+      alert('Failed to generate template.')
+    }
+  }
+
   // --- IMPORT / EXPORT LOGIC ---
   const handleImport = () => {
     const input = document.createElement('input')
@@ -200,7 +451,7 @@ export function ContactDirectoryView({
         const rows = XLSX.utils.sheet_to_json<any>(worksheet, { defval: '', raw: false })
         if (rows.length === 0) throw new Error('The selected file contains no contacts.')
 
-        const allowedTypes = ['PATIENT', 'DOCTOR', 'HMO', 'CORPORATE', 'SUPPLIER', 'LANDLORD', 'OTHER']
+        const allowedTypes = ['PATIENT', 'HMO', 'CORPORATE', 'SUPPLIER', 'LANDLORD', 'OTHER']
         const importedContacts: any[] = []
 
         for (let i = 0; i < rows.length; i++) {
@@ -221,7 +472,7 @@ export function ContactDirectoryView({
 
           if (!allowedTypes.includes(type)) {
             throw new Error(
-              `Row ${excelRow}: Invalid Type "${type}".\nAllowed values:\nPATIENT\nDOCTOR\nHMO\nCORPORATE\nSUPPLIER\nLANDLORD\nOTHER`
+              `Row ${excelRow}: Invalid Type "${type}".\nAllowed values:\nPATIENT\nHMO\nCORPORATE\nSUPPLIER\nLANDLORD\nOTHER`
             )
           }
 
@@ -433,19 +684,18 @@ export function ContactDirectoryView({
             <Users className="w-6 h-6 stroke-[2.2]" />
           </div>
           <div>
-            <h2 className="text-2xl font-black text-gray-900 tracking-tight">Contacts & Entities</h2>
+            <h2 className="text-2xl font-black text-gray-900 tracking-tight">Contacts &amp; Entities</h2>
             <p className="text-sm text-gray-500 mt-1 font-medium">
-              Manage patients, doctors, HMOs, and outstanding balances.
+              Manage patients, HMOs, suppliers, and outstanding balances.
             </p>
           </div>
         </div>
 
-        {/* 7 FILTER / STAT CARDS */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7 gap-3 mb-6">
+        {/* 6 FILTER / STAT CARDS */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-6 gap-3 mb-6">
           {[
             { label: 'ALL CONTACTS', type: 'ALL', count: counts.ALL, isArchived: false },
             { label: 'PATIENTS', type: 'PATIENT', count: counts.PATIENT, isArchived: false },
-            { label: 'DOCTORS', type: 'DOCTOR', count: counts.DOCTOR, isArchived: false },
             { label: 'HMOS / CORP', type: 'HMO_CORP', count: counts.HMO_CORP, isArchived: false },
             { label: 'SUPPLIERS', type: 'SUPPLIER', count: counts.SUPPLIER, isArchived: false },
             { label: 'OTHERS', type: 'OTHERS', count: counts.OTHERS, isArchived: false },
@@ -515,6 +765,16 @@ export function ContactDirectoryView({
           </div>
 
           <div className="flex items-center space-x-3 w-full lg:w-auto justify-end">
+            {/* 📄 GENERATE TEMPLATE BUTTON */}
+            <button
+              onClick={handleDownloadTemplate}
+              className="bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] px-4 py-2 rounded-lg text-xs font-black shadow-2xs transition flex items-center space-x-2 uppercase tracking-wide cursor-pointer"
+              title="Download Excel import template with sample data"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-[#1B9387]" />
+              <span>TEMPLATE</span>
+            </button>
+
             <button
               onClick={handleImport}
               className="bg-white border border-[#B0DCDA] hover:bg-[#E9FAFA] text-[#1B9387] px-4 py-2 rounded-lg text-xs font-black shadow-2xs transition flex items-center space-x-2 uppercase tracking-wide cursor-pointer"
@@ -551,13 +811,6 @@ export function ContactDirectoryView({
                   >
                     <User className="w-4 h-4 text-blue-500" />
                     <span>Patient</span>
-                  </button>
-                  <button
-                    onClick={() => openNewContactModal('DOCTOR')}
-                    className="w-full text-left px-3.5 py-2 text-sm font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387] transition flex items-center gap-2.5 cursor-pointer"
-                  >
-                    <Stethoscope className="w-4 h-4 text-rose-500" />
-                    <span>Doctor</span>
                   </button>
                   <button
                     onClick={() => openNewContactModal('HMO')}
@@ -628,405 +881,333 @@ export function ContactDirectoryView({
                   </td>
                 </tr>
               ) : (
-              paginatedContacts.map((c, index) => {
-                const isNearBottom =
-                  index >= paginatedContacts.length - 2 && paginatedContacts.length >= 4
+                paginatedContacts.map((c, index) => {
+                  const isNearBottom =
+                    index >= paginatedContacts.length - 2 && paginatedContacts.length >= 4
 
-                return (
-                  <React.Fragment key={c.id}>
-                    <tr
-                      onClick={() => setExpandedContactId(expandedContactId === c.id ? null : c.id)}
-                      className={`cursor-pointer transition-colors group ${
-                        expandedContactId === c.id
-                          ? 'bg-[#E9FAFA]'
-                          : 'hover:bg-gray-50 even:bg-gray-50/50 odd:bg-white'
-                      }`}
-                    >
-                      <td className="p-4 flex items-center space-x-4 pl-6">
-                        <div className="h-8 w-8 rounded-full bg-white text-[#1B9387] flex items-center justify-center font-extrabold text-xs border border-[#B0DCDA] shadow-sm shrink-0">
-                          {getInitials(c.name)}
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="font-extrabold text-gray-800 text-base group-hover:text-[#1B9387] transition truncate max-w-[200px]">
-                            {c.name}
-                          </span>
-                          {c.type === 'PATIENT' && c.hmo_affiliation && (
-                            <span className="text-[10px] font-bold text-[#1B9387] mt-0.5 truncate max-w-[200px]">
-                              {c.hmo_affiliation} {c.hmo_card_no ? `• #${c.hmo_card_no}` : ''}
-                            </span>
-                          )}
-                          {(c.type === 'HMO' || c.type === 'CORPORATE') && (
-                            <span className="text-[10px] font-bold text-[#1B9387] mt-0.5 flex items-center gap-1">
-                              👥 {c.affiliatedPatientCount || 0} patient{(c.affiliatedPatientCount || 0) === 1 ? '' : 's'} under this {c.type === 'HMO' ? 'HMO' : 'Corp'}
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <span
-                          className={`px-2 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider border shadow-sm ${getTypeStyle(
-                            c.type
-                          )}`}
-                        >
-                          {c.type}
-                        </span>
-                      </td>
-                      <td className="p-4 text-xs text-gray-500 font-medium">
-                        {c.email ? (
-                          c.email
-                        ) : c.phone ? (
-                          c.phone
-                        ) : (
-                          <span className="italic text-gray-400">Missing info</span>
-                        )}
-                      </td>
-                      <td className="p-4 text-center">
-                        <span
-                          className={`px-2 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
-                            c.status === 'ACTIVE'
-                              ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                              : 'bg-gray-100 text-gray-500 border border-gray-200'
-                          }`}
-                        >
-                          {c.status}
-                        </span>
-                      </td>
-                      <td className="p-4 text-right font-mono font-bold text-orange-500">
-                        {formatCurrency(c.youOwe)}
-                      </td>
-                      <td className="p-4 text-right font-mono font-bold text-[#1B9387]">
-                        {formatCurrency(c.theyOwe)}
-                      </td>
-
-                      <td
-                        className={`p-4 text-center relative ${
-                          actionMenuId === c.id ? 'z-30' : 'z-10'
+                  return (
+                    <React.Fragment key={c.id}>
+                      <tr
+                        onClick={() =>
+                          setExpandedContactId(expandedContactId === c.id ? null : c.id)
+                        }
+                        className={`cursor-pointer transition-colors group ${
+                          expandedContactId === c.id
+                            ? 'bg-[#E9FAFA]'
+                            : 'hover:bg-gray-50 even:bg-gray-50/50 odd:bg-white'
                         }`}
                       >
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            setActionMenuId(actionMenuId === c.id ? null : c.id)
-                          }}
-                          className="text-gray-400 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-200 transition text-lg font-bold"
-                        >
-                          ⋮
-                        </button>
-
-                        {actionMenuId === c.id && (
-                          <div
-                            className={`absolute right-8 w-40 bg-white border border-[#B0DCDA] rounded-md shadow-xl overflow-hidden py-1 text-left z-[100] ${
-                              isNearBottom ? 'bottom-8 mb-1' : 'top-10'
-                            }`}
-                          >
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleViewDetails(c.id)
-                              }}
-                              className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
-                            >
-                              👁️ View Details
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                openEditContact(c)
-                              }}
-                              className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
-                            >
-                              ✏️ Edit Contact
-                            </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleTransactions(c)
-                              }}
-                              className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
-                            >
-                              🧾 Transactions
-                            </button>
-
-                            <div className="border-t border-gray-100 my-1"></div>
-
-                            {c.status === 'ACTIVE' ? (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleArchive(c)
-                                }}
-                                className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50"
-                              >
-                                🗑️ Archive
-                              </button>
-                            ) : (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleRestore(c)
-                                }}
-                                className="w-full text-left px-4 py-2 text-xs font-bold text-emerald-500 hover:bg-emerald-50"
-                              >
-                                ✅ Restore
-                              </button>
+                        <td className="p-4 flex items-center space-x-4 pl-6">
+                          <div className="h-8 w-8 rounded-full bg-white text-[#1B9387] flex items-center justify-center font-extrabold text-xs border border-[#B0DCDA] shadow-sm shrink-0">
+                            {getInitials(c.name)}
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="font-extrabold text-gray-800 text-base group-hover:text-[#1B9387] transition truncate max-w-[200px]">
+                              {c.name}
+                            </span>
+                            {c.type === 'PATIENT' && c.hmo_affiliation && (
+                              <span className="text-[10px] font-bold text-[#1B9387] mt-0.5 truncate max-w-[200px]">
+                                {c.hmo_affiliation} {c.hmo_card_no ? `• #${c.hmo_card_no}` : ''}
+                              </span>
+                            )}
+                            {(c.type === 'HMO' || c.type === 'CORPORATE') && (
+                              <span className="text-[10px] font-bold text-[#1B9387] mt-0.5 flex items-center gap-1">
+                                👥 {c.affiliatedPatientCount || 0} patient
+                                {(c.affiliatedPatientCount || 0) === 1 ? '' : 's'} under this{' '}
+                                {c.type === 'HMO' ? 'HMO' : 'Corp'}
+                              </span>
                             )}
                           </div>
-                        )}
-                      </td>
-                    </tr>
+                        </td>
+                        <td className="p-4">
+                          <span
+                            className={`px-2 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider border shadow-sm ${getTypeStyle(
+                              c.type
+                            )}`}
+                          >
+                            {c.type}
+                          </span>
+                        </td>
+                        <td className="p-4 text-xs text-gray-500 font-medium">
+                          {c.email ? (
+                            c.email
+                          ) : c.phone ? (
+                            c.phone
+                          ) : (
+                            <span className="italic text-gray-400">Missing info</span>
+                          )}
+                        </td>
+                        <td className="p-4 text-center">
+                          <span
+                            className={`px-2 py-1 rounded-full text-[10px] font-extrabold uppercase tracking-wider ${
+                              c.status === 'ACTIVE'
+                                ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                                : 'bg-gray-100 text-gray-500 border border-gray-200'
+                            }`}
+                          >
+                            {c.status}
+                          </span>
+                        </td>
+                        <td className="p-4 text-right font-mono font-bold text-orange-500">
+                          {formatCurrency(c.youOwe)}
+                        </td>
+                        <td className="p-4 text-right font-mono font-bold text-[#1B9387]">
+                          {formatCurrency(c.theyOwe)}
+                        </td>
 
-                    {/* Expanded Details Row */}
-                    {expandedContactId === c.id && (
-                      <tr className="bg-[#FBF8F8] border-b border-[#B0DCDA] shadow-inner">
-                        <td colSpan={7} className="p-6 border-l-4 border-l-[#1B9387]">
-                          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
-                            <div className="md:col-span-2">
-                              <p className="text-[10px] text-gray-500 font-extrabold uppercase tracking-wider mb-2 border-b border-gray-200 pb-1">
-                                Contact Information
-                              </p>
-                              <div className="space-y-1.5 mt-2">
-                                <p className="text-sm text-gray-800 font-medium">
-                                  <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
-                                    Email:
-                                  </span>{' '}
-                                  {c.email || (
-                                    <span className="italic text-gray-400 font-normal">
-                                      Missing info
-                                    </span>
-                                  )}
+                        <td
+                          className={`p-4 text-center relative ${
+                            actionMenuId === c.id ? 'z-30' : 'z-10'
+                          }`}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setActionMenuId(actionMenuId === c.id ? null : c.id)
+                            }}
+                            className="text-gray-400 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-200 transition text-lg font-bold"
+                          >
+                            ⋮
+                          </button>
+
+                          {actionMenuId === c.id && (
+                            <div
+                              className={`absolute right-8 w-40 bg-white border border-[#B0DCDA] rounded-md shadow-xl overflow-hidden py-1 text-left z-[100] ${
+                                isNearBottom ? 'bottom-8 mb-1' : 'top-10'
+                              }`}
+                            >
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleViewDetails(c.id)
+                                }}
+                                className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
+                              >
+                                👁️ View Details
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openEditContact(c)
+                                }}
+                                className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
+                              >
+                                ✏️ Edit Contact
+                              </button>
+
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleTransactions(c)
+                                }}
+                                className="w-full text-left px-4 py-2 text-xs font-bold text-gray-700 hover:bg-[#E9FAFA] hover:text-[#1B9387]"
+                              >
+                                🧾 Transactions
+                              </button>
+
+                              <div className="border-t border-gray-100 my-1"></div>
+
+                              {c.status === 'ACTIVE' ? (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleArchive(c)
+                                  }}
+                                  className="w-full text-left px-4 py-2 text-xs font-bold text-red-500 hover:bg-red-50"
+                                >
+                                  🗑️ Archive
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleRestore(c)
+                                  }}
+                                  className="w-full text-left px-4 py-2 text-xs font-bold text-emerald-500 hover:bg-emerald-50"
+                                >
+                                  ✅ Restore
+                                </button>
+                              )}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+
+                      {/* Expanded Details Row */}
+                      {expandedContactId === c.id && (
+                        <tr className="bg-[#FBF8F8] border-b border-[#B0DCDA] shadow-inner">
+                          <td colSpan={7} className="p-6 border-l-4 border-l-[#1B9387]">
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
+                              <div className="md:col-span-2">
+                                <p className="text-[10px] text-gray-500 font-extrabold uppercase tracking-wider mb-2 border-b border-gray-200 pb-1">
+                                  Contact Information
                                 </p>
-                                <p className="text-sm text-gray-800 font-medium">
-                                  <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
-                                    Phone:
-                                  </span>{' '}
-                                  {c.phone || (
-                                    <span className="italic text-gray-400 font-normal">
-                                      Missing info
+                                <div className="space-y-1.5 mt-2">
+                                  <p className="text-sm text-gray-800 font-medium">
+                                    <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
+                                      Email:
+                                    </span>{' '}
+                                    {c.email || (
+                                      <span className="italic text-gray-400 font-normal">
+                                        Missing info
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-sm text-gray-800 font-medium">
+                                    <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
+                                      Phone:
+                                    </span>{' '}
+                                    {c.phone || (
+                                      <span className="italic text-gray-400 font-normal">
+                                        Missing info
+                                      </span>
+                                    )}
+                                  </p>
+                                  <p className="text-sm text-gray-800 font-medium">
+                                    <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
+                                      TIN:
+                                    </span>{' '}
+                                    <span className="font-mono font-bold">
+                                      {c.tin || (
+                                        <span className="italic text-gray-400 font-sans font-normal">
+                                          Not provided
+                                        </span>
+                                      )}
                                     </span>
-                                  )}
-                                </p>
-                                <p className="text-sm text-gray-800 font-medium">
-                                  <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
-                                    TIN:
-                                  </span>{' '}
-                                  <span className="font-mono font-bold">
-                                    {c.tin || (
-                                      <span className="italic text-gray-400 font-sans font-normal">
+                                  </p>
+                                  <p className="text-sm text-gray-800 font-medium">
+                                    <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
+                                      Address:
+                                    </span>{' '}
+                                    {c.address || (
+                                      <span className="italic text-gray-400 font-normal">
                                         Not provided
                                       </span>
                                     )}
-                                  </span>
-                                </p>
-                                <p className="text-sm text-gray-800 font-medium">
-                                  <span className="text-gray-400 mr-2 inline-block w-16 font-bold">
-                                    Address:
-                                  </span>{' '}
-                                  {c.address || (
-                                    <span className="italic text-gray-400 font-normal">
-                                      Not provided
-                                    </span>
-                                  )}
-                                </p>
-                              </div>
-
-                              {c.type === 'PATIENT' && (
-                                <div className="mt-4 pt-4 border-t border-gray-200">
-                                  <p className="text-[10px] text-[#1B9387] font-extrabold uppercase tracking-wider mb-2">
-                                    HMO / Corporate Guarantor
                                   </p>
-                                  {c.hmo_affiliation ? (
-                                    <div className="space-y-1.5">
-                                      <p className="text-sm text-gray-800 font-medium">
-                                        <span className="text-gray-400 mr-2 inline-block w-24 font-bold">
-                                          Provider:
-                                        </span>{' '}
-                                        <span className="font-bold">{c.hmo_affiliation}</span>
-                                      </p>
-                                      <p className="text-sm text-gray-800 font-medium">
-                                        <span className="text-gray-400 mr-2 inline-block w-24 font-bold">
-                                          Card/Policy:
-                                        </span>{' '}
-                                        <span className="font-mono">{c.hmo_card_no || 'N/A'}</span>
-                                      </p>
-                                      {c.hmo_expiry_date && (
+                                </div>
+
+                                {c.type === 'PATIENT' && (
+                                  <div className="mt-4 pt-4 border-t border-gray-200">
+                                    <p className="text-[10px] text-[#1B9387] font-extrabold uppercase tracking-wider mb-2">
+                                      HMO / Corporate Guarantor
+                                    </p>
+                                    {c.hmo_affiliation ? (
+                                      <div className="space-y-1.5">
                                         <p className="text-sm text-gray-800 font-medium">
                                           <span className="text-gray-400 mr-2 inline-block w-24 font-bold">
-                                            Expiry Date:
+                                            Provider:
                                           </span>{' '}
-                                          <span
-                                            className={`font-mono ${
-                                              new Date(c.hmo_expiry_date) < new Date()
-                                                ? 'text-red-500 font-bold'
-                                                : ''
-                                            }`}
-                                          >
-                                            {new Date(c.hmo_expiry_date).toLocaleDateString(
-                                              'en-US',
-                                              {
-                                                month: 'long',
-                                                day: 'numeric',
-                                                year: 'numeric'
-                                              }
-                                            )}
-                                            {new Date(c.hmo_expiry_date) < new Date() &&
-                                              ' (EXPIRED)'}
-                                          </span>
+                                          <span className="font-bold">{c.hmo_affiliation}</span>
                                         </p>
-                                      )}
-                                    </div>
-                                  ) : (
-                                    <p className="text-sm text-gray-400 italic">
-                                      No HMO / Corporate Guarantor assigned.
-                                    </p>
-                                  )}
-                                </div>
-                              )}
-
-                              {(c.type === 'HMO' || c.type === 'CORPORATE') && (
-                                <div className="mt-4 pt-4 border-t border-gray-200">
-                                  <div className="flex items-center justify-between mb-2.5">
-                                    <p className="text-[10px] text-[#1B9387] font-extrabold uppercase tracking-wider flex items-center gap-1.5">
-                                      <span>👥</span>
-                                      <span>Patients & Members Under this {c.type === 'HMO' ? 'HMO' : 'Corporate'} ({c.affiliatedPatients?.length || 0})</span>
-                                    </p>
-                                    {c.affiliatedPatients && c.affiliatedPatients.length > 0 && onNavigate && (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          onNavigate('history', { searchQuery: c.name })
-                                        }}
-                                        className="text-[10px] font-bold text-[#1B9387] hover:underline cursor-pointer"
-                                      >
-                                        View All Transactions →
-                                      </button>
+                                        <p className="text-sm text-gray-800 font-medium">
+                                          <span className="text-gray-400 mr-2 inline-block w-24 font-bold">
+                                            Card/Policy:
+                                          </span>{' '}
+                                          <span className="font-mono">{c.hmo_card_no || 'N/A'}</span>
+                                        </p>
+                                        {c.hmo_expiry_date && (
+                                          <p className="text-sm text-gray-800 font-medium">
+                                            <span className="text-gray-400 mr-2 inline-block w-24 font-bold">
+                                              Expiry Date:
+                                            </span>{' '}
+                                            <span
+                                              className={`font-mono ${
+                                                new Date(c.hmo_expiry_date) < new Date()
+                                                  ? 'text-red-500 font-bold'
+                                                  : ''
+                                              }`}
+                                            >
+                                              {new Date(c.hmo_expiry_date).toLocaleDateString(
+                                                'en-US',
+                                                {
+                                                  month: 'long',
+                                                  day: 'numeric',
+                                                  year: 'numeric'
+                                                }
+                                              )}
+                                              {new Date(c.hmo_expiry_date) < new Date() &&
+                                                ' (EXPIRED)'}
+                                            </span>
+                                          </p>
+                                        )}
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm text-gray-400 italic">
+                                        No HMO / Corporate Guarantor assigned.
+                                      </p>
                                     )}
                                   </div>
+                                )}
 
-                                  {c.affiliatedPatients && c.affiliatedPatients.length > 0 ? (
-                                    <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                                      {c.affiliatedPatients.map((pt: any, ptIdx: number) => (
-                                        <div
-                                          key={ptIdx}
-                                          className="p-2.5 bg-white border border-gray-200 rounded-lg hover:border-[#B0DCDA] transition flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs"
-                                        >
-                                          <div className="flex items-start gap-2.5 min-w-0">
-                                            <div className="w-7 h-7 rounded-full bg-[#E9FAFA] text-[#1B9387] font-black text-xs flex items-center justify-center shrink-0 border border-[#B0DCDA]">
-                                              {pt.name ? pt.name.charAt(0).toUpperCase() : 'P'}
-                                            </div>
-                                            <div className="min-w-0">
-                                              <div className="flex items-center gap-2 flex-wrap">
-                                                <span className="font-extrabold text-xs text-gray-800">
-                                                  {pt.name}
-                                                </span>
-                                                {pt.isRegistered ? (
-                                                  <span className="bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] px-1.5 py-0.5 rounded font-bold">
-                                                    Registered Patient
-                                                  </span>
-                                                ) : (
-                                                  <span className="bg-teal-50 text-teal-700 border border-teal-200 text-[9px] px-1.5 py-0.5 rounded font-bold">
-                                                    Billed Patient
-                                                  </span>
-                                                )}
-                                              </div>
-                                              <div className="text-[11px] text-gray-500 font-medium flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
-                                                {pt.cardNo && (
-                                                  <span>
-                                                    Card/Policy: <strong className="font-mono text-gray-700">{pt.cardNo}</strong>
-                                                  </span>
-                                                )}
-                                                {pt.loaNumbers && pt.loaNumbers.length > 0 && (
-                                                  <span>
-                                                    LOA: <strong className="font-mono text-gray-700">{pt.loaNumbers.join(', ')}</strong>
-                                                  </span>
-                                                )}
-                                                {pt.phone && <span>📞 {pt.phone}</span>}
-                                                {pt.email && <span>✉️ {pt.email}</span>}
-                                              </div>
-                                            </div>
-                                          </div>
-                                          <div className="text-right shrink-0 sm:self-center pl-9 sm:pl-0 flex sm:flex-col justify-between items-end">
-                                            <div className="text-xs font-mono font-black text-[#1B9387]">
-                                              ₱ {Number(pt.totalBilled || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                            </div>
-                                            <div className="text-[10px] text-gray-400 font-medium">
-                                              {pt.transactionCount} claim{pt.transactionCount === 1 ? '' : 's'}
-                                              {pt.recentRefNo ? ` • Ref: ${pt.recentRefNo}` : ''}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : (
-                                    <div className="text-xs text-gray-500 bg-white p-3 rounded-lg border border-dashed border-gray-200 text-center">
-                                      No patients currently registered or billed under this {c.type === 'HMO' ? 'HMO' : 'Corporate guarantor'}.
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
+                                {/* SEARCHABLE & SORTABLE PATIENTS LIST */}
+                                {(c.type === 'HMO' || c.type === 'CORPORATE') && (
+                                  <HmoAffiliatedPatientsList
+                                    contact={c}
+                                    onNavigate={onNavigate}
+                                  />
+                                )}
+                              </div>
 
-                            <div className="bg-white p-4 rounded-lg border border-orange-200 shadow-sm flex flex-col justify-center text-center h-full">
-                              <p className="text-[10px] text-orange-500 font-extrabold uppercase tracking-wider mb-1">
-                                Payable (Clinic Owes)
-                              </p>
-                              <p className="text-2xl font-mono font-black text-orange-500 mt-1">
-                                {formatCurrency(c.youOwe)}
-                              </p>
+                              <div className="bg-white p-4 rounded-lg border border-orange-200 shadow-sm flex flex-col justify-center text-center h-full">
+                                <p className="text-[10px] text-orange-500 font-extrabold uppercase tracking-wider mb-1">
+                                  Payable (Clinic Owes)
+                                </p>
+                                <p className="text-2xl font-mono font-black text-orange-500 mt-1">
+                                  {formatCurrency(c.youOwe)}
+                                </p>
+                              </div>
+                              <div className="bg-white p-4 rounded-lg border border-[#B0DCDA] shadow-sm flex flex-col justify-center text-center h-full">
+                                <p className="text-[10px] text-[#1B9387] font-extrabold uppercase tracking-wider mb-1">
+                                  Receivable (They Owe)
+                                </p>
+                                <p className="text-2xl font-mono font-black text-[#1B9387] mt-1">
+                                  {formatCurrency(c.theyOwe)}
+                                </p>
+                              </div>
                             </div>
-                            <div className="bg-white p-4 rounded-lg border border-[#B0DCDA] shadow-sm flex flex-col justify-center text-center h-full">
-                              <p className="text-[10px] text-[#1B9387] font-extrabold uppercase tracking-wider mb-1">
-                                Receivable (They Owe)
-                              </p>
-                              <p className="text-2xl font-mono font-black text-[#1B9387] mt-1">
-                                {formatCurrency(c.theyOwe)}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                )
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Pagination Footer */}
-      {!loading && filteredContacts.length > 0 && (
-        <div className="flex flex-col sm:flex-row justify-between items-center text-sm text-gray-500 pt-2">
-          <div className="mb-4 sm:mb-0">
-            Showing{' '}
-            <span className="font-bold text-gray-800">
-              {(currentPage - 1) * itemsPerPage + 1}–
-              {Math.min(currentPage * itemsPerPage, filteredContacts.length)}
-            </span>{' '}
-            of <span className="font-bold text-gray-800">{filteredContacts.length}</span> contacts
-          </div>
-          <div className="flex space-x-2">
-            <button
-              onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              disabled={currentPage === 1}
-              className="px-4 py-2 border rounded-md text-xs font-bold uppercase tracking-wider transition shadow-sm disabled:opacity-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed enabled:bg-[#FBF8F8] enabled:hover:bg-[#E9FAFA] enabled:text-gray-700 enabled:border-[#B0DCDA]"
-            >
-              &larr; Prev
-            </button>
-            <button
-              onClick={() => setCurrentPage((p) => p + 1)}
-              disabled={currentPage * itemsPerPage >= filteredContacts.length}
-              className="px-4 py-2 border rounded-md text-xs font-bold uppercase tracking-wider transition shadow-sm disabled:opacity-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed enabled:bg-[#FBF8F8] enabled:hover:bg-[#E9FAFA] enabled:text-gray-700 enabled:border-[#B0DCDA]"
-            >
-              Next &rarr;
-            </button>
-          </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  )
+                })
+              )}
+            </tbody>
+          </table>
         </div>
-      )}
 
-      </div> {/* closes inner white card container */}
+        {/* PAGINATION FOOTER */}
+        {!loading && filteredContacts.length > 0 && (
+          <div className="flex flex-col sm:flex-row justify-between items-center text-sm text-gray-500 pt-2">
+            <div className="mb-4 sm:mb-0">
+              Showing{' '}
+              <span className="font-bold text-gray-800">
+                {(currentPage - 1) * itemsPerPage + 1}–
+                {Math.min(currentPage * itemsPerPage, filteredContacts.length)}
+              </span>{' '}
+              of <span className="font-bold text-gray-800">{filteredContacts.length}</span> contacts
+            </div>
+            <div className="flex space-x-2">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-4 py-2 border rounded-md text-xs font-bold uppercase tracking-wider transition shadow-sm disabled:opacity-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed enabled:bg-[#FBF8F8] enabled:hover:bg-[#E9FAFA] enabled:text-gray-700 enabled:border-[#B0DCDA]"
+              >
+                &larr; Prev
+              </button>
+              <button
+                onClick={() => setCurrentPage((p) => p + 1)}
+                disabled={currentPage * itemsPerPage >= filteredContacts.length}
+                className="px-4 py-2 border rounded-md text-xs font-bold uppercase tracking-wider transition shadow-sm disabled:opacity-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed enabled:bg-[#FBF8F8] enabled:hover:bg-[#E9FAFA] enabled:text-gray-700 enabled:border-[#B0DCDA]"
+              >
+                Next &rarr;
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <NewContactModal
         isOpen={isModalOpen}
@@ -1073,7 +1254,6 @@ export function ContactDirectoryView({
                     className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:border-[#1B9387] focus:ring-1 focus:ring-[#1B9387] bg-white"
                   >
                     <option value="PATIENT">Patient</option>
-                    <option value="DOCTOR">Doctor</option>
                     <option value="HMO">HMO</option>
                     <option value="CORPORATE">Corporate</option>
                     <option value="SUPPLIER">Supplier</option>
@@ -1085,9 +1265,7 @@ export function ContactDirectoryView({
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    Email Address
-                  </label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Email Address</label>
                   <input
                     type="email"
                     value={editForm.email}
@@ -1119,9 +1297,7 @@ export function ContactDirectoryView({
                   />
                 </div>
                 <div className="col-span-1 md:col-span-2">
-                  <label className="block text-xs font-bold text-gray-700 mb-1">
-                    Physical Address
-                  </label>
+                  <label className="block text-xs font-bold text-gray-700 mb-1">Physical Address</label>
                   <textarea
                     rows={2}
                     value={editForm.address}
@@ -1131,7 +1307,6 @@ export function ContactDirectoryView({
                 </div>
               </div>
 
-              {/* ONLY SHOW HMO FIELDS FOR PATIENTS */}
               {editForm.type === 'PATIENT' && (
                 <div className="mt-4 pt-4 border-t border-gray-200">
                   <h4 className="text-xs font-extrabold text-[#1B9387] uppercase tracking-wider mb-3">
@@ -1139,9 +1314,7 @@ export function ContactDirectoryView({
                   </h4>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">
-                        Provider Name
-                      </label>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Provider Name</label>
                       <input
                         type="text"
                         placeholder="e.g. Maxicare"
@@ -1151,9 +1324,7 @@ export function ContactDirectoryView({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">
-                        Card / Policy Number
-                      </label>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Card / Policy Number</label>
                       <input
                         type="text"
                         value={editForm.hmoCardNo}
@@ -1162,9 +1333,7 @@ export function ContactDirectoryView({
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-gray-700 mb-1">
-                        Expiry Date
-                      </label>
+                      <label className="block text-xs font-bold text-gray-700 mb-1">Expiry Date</label>
                       <input
                         type="date"
                         value={editForm.hmoExpiryDate}
@@ -1182,14 +1351,14 @@ export function ContactDirectoryView({
             <div className="p-4 bg-gray-50 flex justify-end space-x-3 border-t border-gray-100">
               <button
                 onClick={() => setEditingContact(null)}
-                className="px-5 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-md transition"
+                className="px-5 py-2 text-sm font-bold text-gray-600 hover:bg-gray-200 rounded-md transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={submitEditContact}
                 disabled={!editForm.name}
-                className="px-5 py-2 text-sm font-bold text-white bg-[#1B9387] hover:bg-[#28958B] rounded-md transition shadow-sm disabled:opacity-50"
+                className="px-5 py-2 text-sm font-bold text-white bg-[#1B9387] hover:bg-[#28958B] rounded-md transition shadow-sm disabled:opacity-50 cursor-pointer"
               >
                 Save Changes
               </button>
