@@ -30,9 +30,9 @@
 - [x] Role management must exist for user and role `high` — 2026-10-09
 - [x] VAT configuration for services and medicines can be set on all items `high` — 2026-10-09
 - [x] Properly filter account categories per use / transaction type `high` — 2026-10-09
-- [ ] End-to-end verification of accounting flow from start to finish `high` — 2026-10-09
+- [x] End-to-end verification of accounting flow from start to finish `high` — 2026-10-09
 - [x] Dynamic accounting calendar configurable by user `high` — 2026-10-09
-- [ ] Unit testing on all book computations and reports `high` — 2026-10-09
-- [ ] Unit testing across 3 test datasets to fully verify correctness `high` — 2026-10-09
+- [x] Unit testing on all book computations and reports `high` — 2026-10-09
+- [x] Unit testing across 3 test datasets to fully verify correctness `high` — 2026-10-09
 - [x] Ensure all financial/tax reports comply with BIR standards `high` — 2026-10-09
-- [ ] Unit testing on journal entries and postings `high` — 2026-10-09
+- [x] Unit testing on journal entries and postings `high` — 2026-10-09
