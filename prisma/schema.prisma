@@ -285,6 +285,7 @@ model SystemSetting {
   id            String    @id @default(uuid())
   lock_date     DateTime? @db.Date
   auto_lock_day Int?
+  accounting_calendar String? @db.Text
   override_pin  String?   @db.VarChar(50) // ðŸ”¥ NEW: Admin Override PIN
 
   // Dynamic Payroll Multipliers (Default Philippine DOLE standard multipliers)
