@@ -1,7 +1,15 @@
 // src/shared/formatters.ts
+export const OFFICIAL_TAXPAYER_HEADER = {
+  businessName: 'SMARTGUYS COMMUNITY HEALTHCARE INC.',
+  tin: '000-000-000-000',
+  rdo: '057',
+  address: 'Katapatan Mutual Homes, Brgy. Banay-banay, City of Cabuyao, Laguna 4025',
+  taxStatus: 'VAT Registered'
+}
 
 /**
  * Cleans internal metadata tags like [META:...] and [ITEMS:...] from description strings.
+
  * If cleaning leaves the description empty, it extracts human-readable item descriptions
  * from the payload so the display is never a blank line.
  */

@@ -1,6 +1,6 @@
 // src/main/services/reports.service.ts
 import { PrismaClient } from '@prisma/client'
-import { cleanDescription } from '../../shared/formatters'
+import { cleanDescription, OFFICIAL_TAXPAYER_HEADER } from '../../shared/formatters'
 
 const prisma = new PrismaClient()
 
@@ -979,11 +979,7 @@ export class ReportsService {
 
   static getReportHeader(bookTitle: string, startDate?: string | Date, endDate?: string | Date) {
     return {
-      businessName: 'SMARTGUYS COMMUNITY HEALTHCARE INC.',
-      tin: '000-000-000-000',
-      rdo: '057',
-      address: 'Katapatan Mutual Homes, Brgy. Banay-banay, City of Cabuyao, Laguna 4025',
-      taxStatus: 'VAT Registered',
+      ...OFFICIAL_TAXPAYER_HEADER,
       bookTitle,
       startDate: startDate ? new Date(startDate).toISOString() : null,
       endDate: endDate ? new Date(endDate).toISOString() : null
