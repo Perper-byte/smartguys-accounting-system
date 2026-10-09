@@ -1,12 +1,12 @@
 # ROADMAP.md — Smartguys Accounting & Financial System
 
-> **Current Phase**: Phase 6
+> **Current Phase**: Phase 7
 > **Milestone**: v2.0 — Defense Panel Compliance & Core Accounting Hardening
 
 ## Must-Haves (from October 5, 2026 Defense Panel Comments)
 - [x] BIR CAS compliance: Official printable Books of Accounts with running totals (Cash Disbursements Journal)
 - [x] Dedicated Check Disbursement Report & Date-Filterable Sales Report with VAT breakdowns
-- [ ] Dynamic user-configurable Accounting Calendar & Period-End Books Closing mechanism
+- [x] Dynamic user-configurable Accounting Calendar & Period-End Books Closing mechanism
 - [ ] Configurable VAT on all services & medicines and Chart of Accounts category filtering
 - [ ] Auto-generated secure passwords on account creation & role management
 - [ ] Detailed Void Approval modal with line-item inspection & mandatory rejection reason
@@ -40,7 +40,7 @@
 **Requirements**: PANEL-CDJ-RUNNING-TOTAL, PANEL-CHECK-DISB-REPORT, PANEL-SALES-REPORT, PANEL-OBJ-3.3-BIR
 
 ### Phase 6: Dynamic Accounting Calendar & Period-End Books Closing Engine
-**Status**: ⚪ Pending
+**Status**: ✅ Complete
 **Objective**: Develop dynamic user-configurable accounting calendar (fiscal/calendar years, open/lock periods) and automated period-end/year-end closing of temporary revenue/expense accounts to Retained Earnings.
 **Requirements**: PANEL-ACCTG-CALENDAR, PANEL-BOOK-CLOSING
 

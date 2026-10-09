@@ -12,8 +12,8 @@
 - [ ] Implement role management `high` — 2026-10-09
 - [ ] Add expense filtering `high` — 2026-10-09
 - [x] Implement/verify Check Disbursement report `high` — 2026-10-09
-- [ ] Define accounting calendar `high` — 2026-10-09
-- [ ] Implement closing book of accounts / period-end closing `high` — 2026-10-09
+- [x] Define accounting calendar `high` — 2026-10-09
+- [x] Implement closing book of accounts / period-end closing `high` — 2026-10-09
 - [x] Cash Disbursement (CD) report must be printable and show running total `high` — 2026-10-09
 - [ ] Address SOP 3.3 requirements `high` — 2026-10-09
 - [ ] Display aging data (AR/AP aging) `high` — 2026-10-09
@@ -31,7 +31,7 @@
 - [ ] VAT configuration for services and medicines can be set on all items `high` — 2026-10-09
 - [ ] Properly filter account categories per use / transaction type `high` — 2026-10-09
 - [ ] End-to-end verification of accounting flow from start to finish `high` — 2026-10-09
-- [ ] Dynamic accounting calendar configurable by user `high` — 2026-10-09
+- [x] Dynamic accounting calendar configurable by user `high` — 2026-10-09
 - [ ] Unit testing on all book computations and reports `high` — 2026-10-09
 - [ ] Unit testing across 3 test datasets to fully verify correctness `high` — 2026-10-09
 - [ ] Ensure all financial/tax reports comply with BIR standards `high` — 2026-10-09
