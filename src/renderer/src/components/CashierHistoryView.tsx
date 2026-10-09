@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx'
 import { PatientInvoiceModal } from './PatientInvoiceModal'
 import { cleanDescription } from '../utils/formatters'
 
-export function CashierHistoryView({ userId }: { userId: string }) {
+export function CashierHistoryView({ userId, prefillData }: { userId: string; prefillData?: any }) {
   const [transactions, setTransactions] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [statusMessage, setStatusMessage] = useState<{

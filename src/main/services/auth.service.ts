@@ -6,7 +6,12 @@ const prisma = new PrismaClient()
 const SALT_ROUNDS = 12
 
 export class AuthService {
+  static hashPassword(password: string): string {
+    return crypto.createHash('sha256').update(password).digest('hex')
+  }
+
   static async login(usernameInput: string, passwordInput: string) {
+    if (!usernameInput || !passwordInput) throw new Error('Invalid Credentials')
     const user = await prisma.user.findUnique({ where: { username: usernameInput } })
     if (!user) throw new Error('Invalid username or password.')
 

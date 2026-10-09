@@ -65,6 +65,7 @@ import { DatabaseBackupView } from './components/DatabaseBackupView'
 import { ChartOfAccountsView } from './components/ChartOfAccountsView'
 import { ServicesManagerView } from './components/ServicesManagerView'
 
+// @ts-ignore
 import logoImage from './assets/smartguys_logo.jpg'
 
 type User = { id: string; username: string; role: string; permissions?: string[] }

@@ -92,7 +92,8 @@ describe('PayrollService - Phase 4 General Ledger Auto-Posting & Period Lock', (
     jest.spyOn(LedgerService, 'getLockDate').mockResolvedValue({
       lockDate: '2026-10-31T00:00:00.000Z',
       autoLockDay: 15,
-      hasOverridePin: true
+      hasOverridePin: true,
+      fiscalYearStartMonth: 1
     });
     jest.spyOn(LedgerService, 'verifyManagerPin').mockResolvedValue({
       success: false
@@ -116,7 +117,8 @@ describe('PayrollService - Phase 4 General Ledger Auto-Posting & Period Lock', (
     jest.spyOn(LedgerService, 'getLockDate').mockResolvedValue({
       lockDate: '2026-10-31T00:00:00.000Z',
       autoLockDay: 15,
-      hasOverridePin: true
+      hasOverridePin: true,
+      fiscalYearStartMonth: 1
     });
     jest.spyOn(LedgerService, 'verifyManagerPin').mockResolvedValue({
       success: true
@@ -124,6 +126,9 @@ describe('PayrollService - Phase 4 General Ledger Auto-Posting & Period Lock', (
 
     // Mock prisma transaction
     const mockTx = {
+      account: {
+        upsert: jest.fn().mockResolvedValue({})
+      },
       employeeLoan: {
         findUnique: jest.fn().mockResolvedValue(null),
         update: jest.fn()

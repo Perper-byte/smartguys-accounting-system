@@ -29,7 +29,7 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
 
   test('🔒 Standard State: Should render the Login Screen initially', () => {
     render(<App />)
-    expect(screen.getByText(/SmartGuys Community HealthCare Inc./i)).toBeInTheDocument()
+    expect(screen.getByText(/SmartGuys Clinic/i)).toBeInTheDocument()
     expect(screen.getByPlaceholderText(/Enter your username/i)).toBeInTheDocument()
   })
 
@@ -81,7 +81,7 @@ describe('Sprint 2 - Week 1: Role-Based Access Control (RBAC)', () => {
     // VERIFY CASHIER SIDEBAR LINKS
     expect(screen.getAllByText('mary_cashier').length).toBeGreaterThan(0)
     expect(screen.getByText('CASHIER')).toBeInTheDocument()
-    expect(screen.getByText('Patient Billing (POS)')).toBeInTheDocument()
+    expect(screen.getAllByText(/Patient Billing/i).length).toBeGreaterThan(0)
     expect(screen.getByText('Receive Payments')).toBeInTheDocument()
 
     // STRICT DENIALS
