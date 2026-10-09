@@ -337,8 +337,16 @@ export class ReportsService {
     })
 
     const formattedData: any[] = []
+    let runningTotal = 0
+
     for (const entry of entries) {
       for (const line of entry.lines) {
+        if (bookType === 'CDJ') runningTotal += Number(line.credit)
+        else if (bookType === 'CRJ') runningTotal += Number(line.debit)
+        else if (bookType === 'SJ') runningTotal += Number(line.debit)
+        else if (bookType === 'PJ') runningTotal += Number(line.credit)
+        else runningTotal += Number(line.debit)
+
         formattedData.push({
           date: entry.date,
           referenceNo: entry.reference_no,
@@ -348,11 +356,70 @@ export class ReportsService {
           accountCode: line.account_id,
           accountName: line.account.name,
           debit: Number(line.debit),
-          credit: Number(line.credit)
+          credit: Number(line.credit),
+          runningTotal
         })
       }
     }
     return formattedData
+  }
+
+  static async getCheckDisbursementReport(startDateStr: string, endDateStr: string) {
+    const startDate = new Date(startDateStr)
+    startDate.setHours(0, 0, 0, 0)
+    const endDate = new Date(endDateStr)
+    endDate.setHours(23, 59, 59, 999)
+
+    const entries = await prisma.journalEntry.findMany({
+      where: {
+        date: { gte: startDate, lte: endDate },
+        OR: [
+          { reference_no: { startsWith: 'CV-' } },
+          { description: { contains: 'check' } },
+          { description: { contains: 'voucher' } }
+        ]
+      },
+      include: { lines: { include: { account: true } }, payee: true },
+      orderBy: { date: 'asc' }
+    })
+
+    const report: any[] = []
+    let runningTotal = 0
+
+    for (const entry of entries) {
+      let grossAmount = 0
+      let withholdingTax = 0
+      let netCheckAmount = 0
+      let bankAccountName = ''
+
+      for (const line of entry.lines) {
+        grossAmount += Number(line.debit)
+        if (line.account_id === '2050') {
+          withholdingTax += Number(line.credit)
+        }
+        if (line.account_id === '1020') {
+          netCheckAmount += Number(line.credit)
+          bankAccountName = line.account.name
+        }
+      }
+
+      runningTotal += netCheckAmount
+
+      report.push({
+        date: entry.date,
+        referenceNo: entry.reference_no,
+        payeeName: entry.payee?.name || '',
+        payeeTin: entry.payee?.tin || '',
+        description: cleanDescription(entry.description),
+        bankAccount: bankAccountName || '1020',
+        grossAmount,
+        withholdingTax,
+        netCheckAmount,
+        runningTotal
+      })
+    }
+
+    return report
   }
 
   static async getAgedReceivables() {

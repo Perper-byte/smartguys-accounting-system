@@ -599,6 +599,14 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('reports:get-check-disbursements', async (e, startDate, endDate) => {
+    try {
+      return await ReportsService.getCheckDisbursementReport(startDate, endDate)
+    } catch (err: any) {
+      return { error: err.message }
+    }
+  })
+
   ipcMain.handle('ledger:getAllJournalEntries', async () => {
     try {
       return await LedgerService.getAllJournalEntries()
