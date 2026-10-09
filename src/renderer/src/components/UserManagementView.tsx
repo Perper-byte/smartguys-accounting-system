@@ -54,6 +54,7 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [activeTab, setActiveTab] = useState<'users' | 'roles'>('users')
   const [statusMessage, setStatusMessage] = useState<{
     type: 'success' | 'error'
     msg: string
@@ -267,6 +268,20 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
             Create and manage access credentials and fine-grained permissions.
           </p>
         </div>
+        <div className="flex gap-2">
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`px-4 py-2 font-bold rounded-md transition text-sm ${activeTab === 'users' ? 'bg-[#1B9387] text-white shadow-sm' : 'bg-white text-gray-600 border border-[#B0DCDA] hover:bg-[#E9FAFA]'}`}
+          >
+            Users List
+          </button>
+          <button
+            onClick={() => setActiveTab('roles')}
+            className={`px-4 py-2 font-bold rounded-md transition text-sm ${activeTab === 'roles' ? 'bg-[#1B9387] text-white shadow-sm' : 'bg-white text-gray-600 border border-[#B0DCDA] hover:bg-[#E9FAFA]'}`}
+          >
+            Role Permissions Matrix
+          </button>
+        </div>
       </div>
 
       {statusMessage && (
@@ -368,6 +383,7 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
           </form>
         </div>
 
+        {activeTab === 'users' && (
         <div className="col-span-2 bg-white border border-[#B0DCDA] rounded-xl shadow-sm overflow-hidden flex flex-col">
           <div className="p-4 border-b border-[#B0DCDA] bg-[#FBF8F8] flex justify-between items-center">
             <h3 className="text-lg font-extrabold text-gray-800 tracking-wide">System Users</h3>
@@ -479,6 +495,59 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
             </table>
           </div>
         </div>
+      )}
+
+      {activeTab === 'roles' && (
+        <div className="col-span-2 bg-white border border-[#B0DCDA] rounded-xl shadow-sm overflow-hidden flex flex-col p-6">
+          <h3 className="text-lg font-extrabold text-gray-800 mb-4">Role Permissions Matrix</h3>
+          <p className="text-sm text-gray-600 mb-6 font-medium max-w-4xl">
+            This matrix defines the standard responsibilities and module access for each role as per SOP 3.3. 
+            Default permissions are applied upon user creation. You can customize permissions for individual users in the Users List.
+          </p>
+
+          <div className="overflow-auto border border-gray-200 rounded-lg custom-scrollbar">
+            <table className="w-full text-left text-sm min-w-max">
+              <thead className="bg-[#FBF8F8] border-b border-gray-200 sticky top-0">
+                <tr>
+                  <th className="p-4 border-r border-gray-200 w-1/4 uppercase tracking-wider text-[10px] font-extrabold text-gray-500">Role Responsibilities</th>
+                  <th className="p-4 text-center border-r border-gray-200 text-blue-600 font-extrabold">CASHIER</th>
+                  <th className="p-4 text-center border-r border-gray-200 text-purple-600 font-extrabold">ACCOUNTANT</th>
+                  <th className="p-4 text-center border-r border-gray-200 text-amber-600 font-extrabold">MANAGER</th>
+                  <th className="p-4 text-center text-rose-600 font-extrabold">IT PERSONNEL</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                <tr className="bg-gray-50">
+                  <td className="p-4 border-r border-gray-200 text-xs text-gray-500 italic font-medium">
+                    Primary duties for the position.
+                  </td>
+                  <td className="p-4 border-r border-gray-200 text-xs text-gray-600 text-center">Front-desk POS,<br/>receive patient payments.</td>
+                  <td className="p-4 border-r border-gray-200 text-xs text-gray-600 text-center">Manage GL, Accounts Payable,<br/>Doctor Payouts.</td>
+                  <td className="p-4 border-r border-gray-200 text-xs text-gray-600 text-center">Approve voids, review Analytics,<br/>oversee operations.</td>
+                  <td className="p-4 text-xs text-gray-600 text-center">Manage users, database backups,<br/>audit logs.</td>
+                </tr>
+                {MODULES.map(mod => (
+                  <tr key={mod.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="p-3 border-r border-gray-200 font-bold text-gray-700">{mod.label}</td>
+                    <td className="p-3 border-r border-gray-200 text-center">
+                      {ROLE_DEFAULT_PERMISSIONS['CASHIER'].includes(mod.id) ? '✅' : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="p-3 border-r border-gray-200 text-center">
+                      {ROLE_DEFAULT_PERMISSIONS['ACCOUNTANT'].includes(mod.id) ? '✅' : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="p-3 border-r border-gray-200 text-center">
+                      {ROLE_DEFAULT_PERMISSIONS['MANAGER'].includes(mod.id) ? '✅' : <span className="text-gray-300">-</span>}
+                    </td>
+                    <td className="p-3 text-center">
+                      {ROLE_DEFAULT_PERMISSIONS['IT_PERSONNEL'].includes(mod.id) ? '✅' : <span className="text-gray-300">-</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
       </div>
 
       {userToEditPerms && (
