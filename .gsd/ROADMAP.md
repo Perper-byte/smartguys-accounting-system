@@ -1,6 +1,6 @@
 # ROADMAP.md — Smartguys Accounting & Financial System
 
-> **Current Phase**: Phase 8
+> **Current Phase**: Phase 9
 > **Milestone**: v2.0 — Defense Panel Compliance & Core Accounting Hardening
 
 ## Must-Haves (from October 5, 2026 Defense Panel Comments)
@@ -8,8 +8,8 @@
 - [x] Dedicated Check Disbursement Report & Date-Filterable Sales Report with VAT breakdowns
 - [x] Dynamic user-configurable Accounting Calendar & Period-End Books Closing mechanism
 - [x] Configurable VAT on all services & medicines and Chart of Accounts category filtering
-- [ ] Auto-generated secure passwords on account creation & role management
-- [ ] Detailed Void Approval modal with line-item inspection & mandatory rejection reason
+- [x] Auto-generated secure passwords on account creation & role management
+- [x] Detailed Void Approval modal with line-item inspection & mandatory rejection reason
 - [ ] Comprehensive End-to-End testing across 3 distinct datasets covering all books and entries
 
 ## Phases
@@ -50,7 +50,7 @@
 **Requirements**: PANEL-VAT-SERVICES-MEDS, PANEL-FILTER-CATEGORY, PANEL-FILTER-EXPENSE
 
 ### Phase 8: User Security, Role Management & Void Approvals Audit
-**Status**: ⚪ Pending
+**Status**: ✅ Complete
 **Objective**: Implement auto-generated passwords on user creation, dynamic role/permission management, itemized transaction inspection in void approvals, and mandatory rejection reason capture.
 **Requirements**: PANEL-AUTO-PASSWORD, PANEL-ROLE-MGMT, PANEL-VOID-APPROVAL-DETAILS
 

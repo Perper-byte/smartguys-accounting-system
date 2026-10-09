@@ -8,16 +8,16 @@
 ## Panel Suggestions (October 5, 2026 Defense)
 
 ### Sheet 1 (Panel: Joseph Cartagena)
-- [ ] Auto-generate password when user account is created `high` — 2026-10-09
-- [ ] Implement role management `high` — 2026-10-09
+- [x] Auto-generate password when user account is created `high` — 2026-10-09
+- [x] Implement role management `high` — 2026-10-09
 - [x] Add expense filtering `high` — 2026-10-09
 - [x] Implement/verify Check Disbursement report `high` — 2026-10-09
 - [x] Define accounting calendar `high` — 2026-10-09
 - [x] Implement closing book of accounts / period-end closing `high` — 2026-10-09
 - [x] Cash Disbursement (CD) report must be printable and show running total `high` — 2026-10-09
-- [ ] Address SOP 3.3 requirements `high` — 2026-10-09
-- [ ] Display aging data (AR/AP aging) `high` — 2026-10-09
-- [ ] Show transaction details when approving void account/transaction, and require reason on rejection `high` — 2026-10-09
+- [x] Address SOP 3.3 requirements `high` — 2026-10-09
+- [x] Display aging data (AR/AP aging) `high` — 2026-10-09
+- [x] Show transaction details when approving void account/transaction, and require reason on rejection `high` — 2026-10-09
 - [x] Add Sales Report with date filtering `high` — 2026-10-09
 
 ### Sheet 2 (Panel: Melissa Dimaculangan)
@@ -27,12 +27,12 @@
 - [x] Objective 3.3: Ensure full BIR compliance; reports must be auto-generated and printable `high` — 2026-10-09
 
 ### Sheet 3 (Panel: Darwin Cyril C. Turingan)
-- [ ] Role management must exist for user and role `high` — 2026-10-09
+- [x] Role management must exist for user and role `high` — 2026-10-09
 - [x] VAT configuration for services and medicines can be set on all items `high` — 2026-10-09
 - [x] Properly filter account categories per use / transaction type `high` — 2026-10-09
 - [ ] End-to-end verification of accounting flow from start to finish `high` — 2026-10-09
 - [x] Dynamic accounting calendar configurable by user `high` — 2026-10-09
 - [ ] Unit testing on all book computations and reports `high` — 2026-10-09
 - [ ] Unit testing across 3 test datasets to fully verify correctness `high` — 2026-10-09
-- [ ] Ensure all financial/tax reports comply with BIR standards `high` — 2026-10-09
+- [x] Ensure all financial/tax reports comply with BIR standards `high` — 2026-10-09
 - [ ] Unit testing on journal entries and postings `high` — 2026-10-09
