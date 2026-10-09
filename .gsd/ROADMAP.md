@@ -1,11 +1,11 @@
 # ROADMAP.md — Smartguys Accounting & Financial System
 
-> **Current Phase**: Phase 5
+> **Current Phase**: Phase 6
 > **Milestone**: v2.0 — Defense Panel Compliance & Core Accounting Hardening
 
 ## Must-Haves (from October 5, 2026 Defense Panel Comments)
-- [ ] BIR CAS compliance: Official printable Books of Accounts with running totals (Cash Disbursements Journal)
-- [ ] Dedicated Check Disbursement Report & Date-Filterable Sales Report with VAT breakdowns
+- [x] BIR CAS compliance: Official printable Books of Accounts with running totals (Cash Disbursements Journal)
+- [x] Dedicated Check Disbursement Report & Date-Filterable Sales Report with VAT breakdowns
 - [ ] Dynamic user-configurable Accounting Calendar & Period-End Books Closing mechanism
 - [ ] Configurable VAT on all services & medicines and Chart of Accounts category filtering
 - [ ] Auto-generated secure passwords on account creation & role management
@@ -35,7 +35,7 @@
 **Requirements**: REQ-07, REQ-08
 
 ### Phase 5: BIR Compliance & Official Books of Accounts
-**Status**: 🟡 Ready for Execution
+**Status**: ✅ Complete
 **Objective**: Implement running totals for Cash Disbursements Journal (CDJ), dedicated Check Disbursement Report, date-filtered Sales Report with BIR-compliant VAT categorization, and auto-generated printable/PDF formats.
 **Requirements**: PANEL-CDJ-RUNNING-TOTAL, PANEL-CHECK-DISB-REPORT, PANEL-SALES-REPORT, PANEL-OBJ-3.3-BIR
 

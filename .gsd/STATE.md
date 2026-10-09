@@ -4,16 +4,17 @@
 
 ## Current Position
 - **Milestone**: v2.0 — Defense Panel Compliance & Core Accounting Hardening
-- **Phase**: 5 (BIR Compliance & Official Books of Accounts)
-- **Task**: Planning complete
-- **Status**: Ready for execution
+- **Phase**: 5 (BIR Compliance & Official Books of Accounts) — COMPLETED & VERIFIED
+- **Status**: Stable & Verified (`npm run build` exits 0, all Jest tests pass)
 
 ## Context Health: Snapshot
-- **Warning Indicators**: None active. Jest unit tests and build passing cleanly.
-- **Recent Completed Items**:
-  1. Parsed defense panel comments from October 5, 2026 and cataloged into `.gsd/TODO.md`.
-  2. Researched Philippine accounting software architectures (JuanTax, Oojeema, Taxumo, SAP B1 PH) and BIR CAS regulations (RR 09-2009, RR 7-2024 EOPT Act).
-  3. Formulated Milestone v2.0 roadmap spanning Phases 5 through 9.
-  4. Authored atomic execution plans `5.1-PLAN.md`, `5.2-PLAN.md`, and `5.3-PLAN.md` for Phase 5.
+- **Warning Indicators**: None. Jest tests passing cleanly.
+- **Recent Completed Items (Phase 5)**:
+  1. Cash Disbursements Journal running totals calculation in `ReportsService.getBooksOfAccounts`.
+  2. Dedicated `ReportsService.getCheckDisbursementReport` with Check No., Bank, Gross, EWT, Net Check, and running balances.
+  3. Date-filtered `ReportsService.getSalesReport` with 12% Vatable Sales, VAT-Exempt Sales, Output Tax, Senior/PWD discounts, and Net AR/Collections.
+  4. Official BIR CAS taxpayer header formatter with clinic registered details (TIN, RDO 057, Address).
+  5. UI enhancements in `BooksOfAccountsView.tsx` with dedicated Check Disbursements tab, running total column, date filters, and 1-click printable layout.
+  6. Independent verification by `gsd-verifier` passed.
 - **Next Steps**:
-  1. `/execute 5` — Execute Phase 5 plans (Cash Disbursements running totals, Check Disbursement report, date-filtered Sales Report, and official BIR printable formats).
+  1. `/plan 6` — Plan Phase 6: Dynamic Accounting Calendar & Period-End Books Closing Engine.
