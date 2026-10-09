@@ -212,6 +212,36 @@ export function InventoryView({ userId, role }: { userId: string; role: string }
         {/* LEFT PANE */}
         <div className="w-1/3 bg-white border border-[#B0DCDA] rounded-xl shadow-sm flex flex-col overflow-hidden">
           <div className="p-4 bg-[#FBF8F8] border-b border-[#B0DCDA] space-y-3">
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (window.confirm("Set ALL medicines to 12% VAT?")) {
+                    const api = (window as any).api || (window as any).electronAPI;
+                    api.setAllMedicinesVat(true).then(() => {
+                      fetchItems();
+                      setStatusMessage({ type: 'success', msg: 'All medicines updated to 12% VAT' });
+                    });
+                  }
+                }}
+                className="w-1/2 px-2 py-1.5 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-md text-[10px] font-bold shadow-sm transition-colors cursor-pointer text-center uppercase"
+              >
+                Set All 12% VAT
+              </button>
+              <button
+                onClick={() => {
+                  if (window.confirm("Set ALL medicines to VAT-Exempt?")) {
+                    const api = (window as any).api || (window as any).electronAPI;
+                    api.setAllMedicinesVat(false).then(() => {
+                      fetchItems();
+                      setStatusMessage({ type: 'success', msg: 'All medicines updated to Exempt' });
+                    });
+                  }
+                }}
+                className="w-1/2 px-2 py-1.5 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-md text-[10px] font-bold transition-colors cursor-pointer text-center uppercase"
+              >
+                Set All Exempt
+              </button>
+            </div>
             <div className="relative">
               <Search
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
@@ -344,13 +374,25 @@ export function InventoryView({ userId, role }: { userId: string; role: string }
                       </span>
                     </div>
                   </div>
-                  <div className="flex justify-between mt-1">
+                  <div className="flex justify-between mt-1 items-center">
                     <span className="text-[10px] text-gray-400 font-mono font-bold">
                       {item.code}
                     </span>
-                    <span className="text-[10px] text-gray-400 uppercase font-bold">
-                      {item.location || 'No Loc'}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const api = (window as any).api || (window as any).electronAPI;
+                          api.updateMedicineVat(item.id, !item.is_vatable).then(() => fetchItems());
+                        }}
+                        className={`text-[9px] px-2 py-0.5 rounded-full font-bold cursor-pointer ${item.is_vatable ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                      >
+                        {item.is_vatable ? '12% VAT' : 'Exempt'}
+                      </button>
+                      <span className="text-[10px] text-gray-400 uppercase font-bold">
+                        {item.location || 'No Loc'}
+                      </span>
+                    </div>
                   </div>
                 </div>
               ))
