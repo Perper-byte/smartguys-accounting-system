@@ -1,6 +1,6 @@
 // src/renderer/src/components/BooksOfAccountsView.tsx
 import * as React from 'react'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 
 const getLocalDateString = (date: Date) => {
   return new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().split('T')[0]
@@ -13,9 +13,8 @@ export function BooksOfAccountsView() {
   const [startDate, setStartDate] = useState(getLocalDateString(firstDay))
   const [endDate, setEndDate] = useState(getLocalDateString(today))
 
-  // Defaulting to the Sales Journal
   const [bookType, setBookType] = useState('SJ')
-
+  const [subTab, setSubTab] = useState('Journal') // 'Journal' | 'Checks'
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
 
@@ -34,9 +33,9 @@ export function BooksOfAccountsView() {
 
   useEffect(() => {
     fetchBooks()
+    setSubTab('Journal')
   }, [bookType])
 
-  // UX: Return null/dash for zeros to keep the ledger clean
   const formatCurrency = (amount: number) => {
     if (!amount || amount === 0) return null
     return `₱ ${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
@@ -79,6 +78,10 @@ export function BooksOfAccountsView() {
     document.body.removeChild(link)
   }
 
+  const handlePrint = () => {
+    window.print()
+  }
+
   const getBookTitle = () => {
     switch (bookType) {
       case 'SJ':
@@ -99,12 +102,119 @@ export function BooksOfAccountsView() {
   const totalDebit = data.reduce((sum, row) => sum + row.debit, 0)
   const totalCredit = data.reduce((sum, row) => sum + row.credit, 0)
 
+  // Derived Check Reports for CDJ
+  const checkReports = useMemo(() => {
+    if (bookType !== 'CDJ' || subTab !== 'Checks') return []
+    const grouped: any = {}
+    data.forEach((row) => {
+      if (!grouped[row.referenceNo]) {
+        grouped[row.referenceNo] = {
+          date: row.date,
+          refNo: row.referenceNo,
+          bankAccount: '',
+          payee: row.payeeName || '',
+          particulars: row.description || '',
+          gross: 0,
+          ewt: 0,
+          net: 0
+        }
+      }
+      const isEwt = row.accountCode === '2050' || (row.accountName || '').toLowerCase().includes('ewt') || (row.accountName || '').toLowerCase().includes('withholding')
+      const isBank = (row.accountName || '').toLowerCase().includes('bank') || (row.accountName || '').toLowerCase().includes('cash in bank') || row.accountCode === '1010' || row.accountCode === '1020'
+
+      if (row.debit > 0) {
+        grouped[row.referenceNo].gross += row.debit
+      }
+      if (row.credit > 0) {
+        if (isEwt) {
+          grouped[row.referenceNo].ewt += row.credit
+        } else if (isBank) {
+          grouped[row.referenceNo].net += row.credit
+          grouped[row.referenceNo].bankAccount = row.accountName
+        } else {
+          grouped[row.referenceNo].net += row.credit
+        }
+      }
+    })
+    return Object.values(grouped).sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }, [data, bookType, subTab])
+
+  const checkTotals = useMemo(() => checkReports.reduce((acc: any, row: any) => {
+    acc.gross += row.gross
+    acc.ewt += row.ewt
+    acc.net += row.net
+    return acc
+  }, { gross: 0, ewt: 0, net: 0 }), [checkReports])
+
+  // Derived Sales Reports for SJ
+  const salesReports = useMemo(() => {
+    if (bookType !== 'SJ') return []
+    const grouped: any = {}
+    data.forEach((row) => {
+      if (!grouped[row.referenceNo]) {
+        grouped[row.referenceNo] = {
+          date: row.date,
+          refNo: row.referenceNo,
+          customer: row.payeeName || '',
+          description: row.description || '',
+          vatableSales: 0,
+          vatExemptSales: 0,
+          outputTax: 0,
+          total: 0
+        }
+      }
+      const isOutputTax = row.accountCode === '2040' || (row.accountName || '').toLowerCase().includes('output tax') || (row.accountName || '').toLowerCase().includes('output vat')
+      const isSales = (row.accountName || '').toLowerCase().includes('sales') || row.accountCode?.startsWith('4')
+
+      if (row.credit > 0) {
+        if (isOutputTax) {
+          grouped[row.referenceNo].outputTax += row.credit
+        } else if (isSales) {
+          grouped[row.referenceNo].vatableSales += row.credit
+        }
+      }
+      if (row.debit > 0) {
+        grouped[row.referenceNo].total += row.debit
+      }
+    })
+
+    return Object.values(grouped)
+      .map((s: any) => {
+        if (s.outputTax === 0 && s.vatableSales > 0) {
+          s.vatExemptSales = s.vatableSales
+          s.vatableSales = 0
+        }
+        return s
+      })
+      .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  }, [data, bookType])
+
+  const salesTotals = useMemo(() => salesReports.reduce((acc: any, row: any) => {
+    acc.vatable += row.vatableSales
+    acc.exempt += row.vatExemptSales
+    acc.tax += row.outputTax
+    acc.total += row.total
+    return acc
+  }, { vatable: 0, exempt: 0, tax: 0, total: 0 }), [salesReports])
+
+  let runningBalance = 0
+  let salesRunningTotal = 0
+
   return (
-    // ✨ UX FIX: Full-page flex centering wrapper
-    <div className="w-full h-full flex items-center justify-center p-4 lg:p-8 bg-gray-50/30">
-      <div className="w-full max-w-7xl h-full bg-white border border-transparent rounded-xl p-6 shadow-sm flex flex-col font-sans text-gray-800">
-        {/* HEADER */}
-        <div className="flex justify-between items-end mb-6 border-b border-[#B0DCDA] pb-6 shrink-0">
+    <div className="w-full h-full flex items-center justify-center p-4 lg:p-8 bg-gray-50/30 print:p-0 print:bg-white print:block">
+      <div className="w-full max-w-7xl h-full bg-white border border-transparent rounded-xl p-6 shadow-sm flex flex-col font-sans text-gray-800 print:shadow-none print:border-none print:p-0 print:block">
+        
+        {/* PRINT ONLY HEADER */}
+        <div className="hidden print:block text-center mb-6">
+          <h1 className="text-xl font-bold uppercase tracking-wider">SMARTGUYS COMMUNITY HEALTHCARE INC.</h1>
+          <p className="text-sm">TIN: 123-456-789-000 | RDO 057</p>
+          <p className="text-sm">123 Healthway Ave, Medical City, Philippines</p>
+          <h2 className="text-lg font-bold mt-4 uppercase underline">{getBookTitle()} {subTab === 'Checks' && '- Check Disbursements'}</h2>
+          <p className="text-sm mt-1 font-medium">Period Covered: {startDate} to {endDate}</p>
+        </div>
+
+        {/* HEADER (Screen Only) */}
+        <div className="flex justify-between items-end mb-6 border-b border-[#B0DCDA] pb-6 shrink-0 print:hidden">
           <div>
             <h2 className="text-2xl font-extrabold text-gray-800 tracking-wide">
               BIR Books of Accounts
@@ -115,189 +225,235 @@ export function BooksOfAccountsView() {
           </div>
 
           <div className="flex flex-col items-end space-y-4">
-            {/* DATE FILTERS */}
             <div className="flex items-center space-x-3">
               <div className="flex items-center space-x-2 bg-white border border-[#B0DCDA] rounded-md px-3 py-1.5 shadow-sm">
-                <span className="text-[10px] text-gray-500 uppercase font-extrabold tracking-wider">
-                  From
-                </span>
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="bg-transparent text-sm text-gray-800 font-bold outline-none cursor-pointer"
-                />
-                <span className="text-[10px] text-gray-500 uppercase font-extrabold tracking-wider pl-3 border-l border-gray-200">
-                  To
-                </span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="bg-transparent text-sm text-gray-800 font-bold outline-none cursor-pointer"
-                />
+                <span className="text-[10px] text-gray-500 uppercase font-extrabold tracking-wider">From</span>
+                <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="bg-transparent text-sm text-gray-800 font-bold outline-none cursor-pointer" />
+                <span className="text-[10px] text-gray-500 uppercase font-extrabold tracking-wider pl-3 border-l border-gray-200">To</span>
+                <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="bg-transparent text-sm text-gray-800 font-bold outline-none cursor-pointer" />
               </div>
-              <button
-                onClick={fetchBooks}
-                disabled={loading}
-                className="bg-[#1B9387] hover:bg-[#15796f] text-white px-4 py-2 rounded-md text-xs font-extrabold uppercase tracking-wider transition cursor-pointer shadow-sm disabled:opacity-50"
-              >
+              <button onClick={fetchBooks} disabled={loading} className="bg-[#1B9387] hover:bg-[#15796f] text-white px-4 py-2 rounded-md text-xs font-extrabold uppercase tracking-wider transition cursor-pointer shadow-sm disabled:opacity-50">
                 {loading ? '...' : 'Apply'}
               </button>
             </div>
 
-            {/* TABS & EXPORT */}
             <div className="flex space-x-4">
-              {/* Segmented Control for Books */}
               <div className="flex bg-[#FBF8F8] p-1 rounded-lg border border-[#B0DCDA] shadow-inner">
                 {['SJ', 'CRJ', 'PJ', 'CDJ', 'GJ'].map((type) => (
-                  <button
-                    key={type}
-                    onClick={() => setBookType(type)}
-                    className={`px-5 py-2 text-xs font-bold rounded-md transition uppercase tracking-wider cursor-pointer ${bookType === type ? 'bg-[#1B9387] text-white shadow-md' : 'text-gray-500 hover:text-[#1B9387] hover:bg-[#E9FAFA]'}`}
-                  >
-                    {type === 'SJ'
-                      ? 'Sales'
-                      : type === 'CRJ'
-                        ? 'Receipts'
-                        : type === 'PJ'
-                          ? 'Purchases'
-                          : type === 'CDJ'
-                            ? 'Disbursements'
-                            : 'General'}
+                  <button key={type} onClick={() => setBookType(type)} className={`px-5 py-2 text-xs font-bold rounded-md transition uppercase tracking-wider cursor-pointer ${bookType === type ? 'bg-[#1B9387] text-white shadow-md' : 'text-gray-500 hover:text-[#1B9387] hover:bg-[#E9FAFA]'}`}>
+                    {type === 'SJ' ? 'Sales' : type === 'CRJ' ? 'Receipts' : type === 'PJ' ? 'Purchases' : type === 'CDJ' ? 'Disbursements' : 'General'}
                   </button>
                 ))}
               </div>
-              <button
-                onClick={handleExportCSV}
-                disabled={data.length === 0}
-                className="flex items-center space-x-2 bg-white hover:bg-[#FBF8F8] disabled:opacity-50 text-gray-700 px-4 py-2 rounded-md text-sm font-bold transition border border-[#B0DCDA] cursor-pointer shadow-sm"
-              >
-                <span>📥</span>
-                <span className="text-xs uppercase tracking-wider">Export CSV</span>
+              
+              {bookType === 'CDJ' && (
+                <div className="flex bg-[#FBF8F8] p-1 rounded-lg border border-[#B0DCDA] shadow-inner">
+                  <button onClick={() => setSubTab('Journal')} className={`px-4 py-2 text-xs font-bold rounded-md transition uppercase tracking-wider cursor-pointer ${subTab === 'Journal' ? 'bg-[#1B9387] text-white shadow-md' : 'text-gray-500 hover:text-[#1B9387] hover:bg-[#E9FAFA]'}`}>Journal</button>
+                  <button onClick={() => setSubTab('Checks')} className={`px-4 py-2 text-xs font-bold rounded-md transition uppercase tracking-wider cursor-pointer ${subTab === 'Checks' ? 'bg-[#1B9387] text-white shadow-md' : 'text-gray-500 hover:text-[#1B9387] hover:bg-[#E9FAFA]'}`}>Checks Report</button>
+                </div>
+              )}
+
+              <button onClick={handleExportCSV} disabled={data.length === 0} className="flex items-center space-x-2 bg-white hover:bg-[#FBF8F8] disabled:opacity-50 text-gray-700 px-4 py-2 rounded-md text-sm font-bold transition border border-[#B0DCDA] cursor-pointer shadow-sm">
+                <span>📥</span><span className="text-xs uppercase tracking-wider">Export</span>
+              </button>
+              <button onClick={handlePrint} disabled={data.length === 0} className="flex items-center space-x-2 bg-white hover:bg-[#FBF8F8] disabled:opacity-50 text-gray-700 px-4 py-2 rounded-md text-sm font-bold transition border border-[#B0DCDA] cursor-pointer shadow-sm">
+                <span>🖨️</span><span className="text-xs uppercase tracking-wider">Print</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* MAIN LEDGER TABLE */}
-        <div className="bg-white border border-[#B0DCDA] rounded-xl flex-1 flex flex-col overflow-hidden shadow-sm">
-          {/* Table Title Bar */}
-          <div className="bg-[#FBF8F8] p-4 border-b border-[#B0DCDA] flex justify-between items-center shrink-0">
-            <h3 className="text-base font-extrabold text-gray-800 uppercase tracking-widest">
-              {getBookTitle()}
-            </h3>
+        {/* MAIN CONTENT AREA */}
+        <div className="bg-white border border-[#B0DCDA] print:border-none print:rounded-none rounded-xl flex-1 flex flex-col overflow-hidden shadow-sm print:shadow-none print:h-auto print:overflow-visible relative">
+          
+          <div className="bg-[#FBF8F8] p-4 border-b border-[#B0DCDA] flex justify-between items-center shrink-0 print:hidden">
+            <h3 className="text-base font-extrabold text-gray-800 uppercase tracking-widest">{getBookTitle()} {subTab === 'Checks' && '- Checks'}</h3>
             <span className="text-xs font-bold text-gray-500">{data.length} entries found</span>
           </div>
 
-          {/* Table Content */}
-          <div className="flex-1 overflow-auto relative">
-            {loading ? (
-              <div className="absolute inset-0 flex justify-center items-center bg-white/50 backdrop-blur-sm z-20 text-[#1B9387] font-bold animate-pulse">
-                Loading Journal Data...
-              </div>
-            ) : null}
+          <div className="flex-1 overflow-auto relative print:overflow-visible print:h-auto">
+            {loading && <div className="absolute inset-0 flex justify-center items-center bg-white/50 backdrop-blur-sm z-20 text-[#1B9387] font-bold animate-pulse">Loading Journal Data...</div>}
 
-            <table className="w-full text-left text-sm whitespace-nowrap min-w-max">
-              <thead className="bg-white sticky top-0 z-10 shadow-[0_2px_5px_rgba(0,0,0,0.02)] border-b-2 border-gray-100">
-                <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold">
-                  <th className="p-4 pl-6">Date</th>
-                  <th className="p-4">Ref No.</th>
-                  <th className="p-4">Account</th>
-                  <th className="p-4">Payee / Description</th>
-                  <th className="p-4 text-right">Debit (₱)</th>
-                  <th className="p-4 text-right pr-6">Credit (₱)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {data.length === 0 && !loading ? (
-                  <tr>
-                    <td colSpan={6} className="p-16 text-center text-gray-400">
-                      <span className="block text-4xl mb-3 opacity-50">📂</span>
-                      <span className="italic font-medium text-sm">
-                        No entries found for this book in the selected date range.
-                      </span>
-                    </td>
+            {subTab === 'Checks' && bookType === 'CDJ' ? (
+              <table className="w-full text-left text-sm whitespace-nowrap min-w-max print:min-w-full">
+                <thead className="bg-white sticky top-0 z-10 print:static shadow-[0_2px_5px_rgba(0,0,0,0.02)] print:shadow-none border-b-2 border-gray-100 print:border-black">
+                  <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold print:text-black">
+                    <th className="p-4 pl-6">Check Date</th>
+                    <th className="p-4">Check/Voucher No.</th>
+                    <th className="p-4">Bank Account</th>
+                    <th className="p-4">Payee & TIN</th>
+                    <th className="p-4">Particulars</th>
+                    <th className="p-4 text-right">Gross (₱)</th>
+                    <th className="p-4 text-right">EWT 2050 (₱)</th>
+                    <th className="p-4 text-right pr-6">Net Check (₱)</th>
                   </tr>
-                ) : (
-                  data.map((row: any, i: number) => {
+                </thead>
+                <tbody className="divide-y divide-gray-100 print:divide-black">
+                  {checkReports.map((row: any, i: number) => (
+                    <tr key={i} className="hover:bg-[#E9FAFA]/40 transition-colors">
+                      <td className="p-4 pl-6 text-gray-500 font-medium print:text-black">{new Date(row.date).toLocaleDateString()}</td>
+                      <td className="p-4 font-mono text-[#1B9387] font-extrabold print:text-black">{row.refNo}</td>
+                      <td className="p-4 text-xs font-bold">{row.bankAccount}</td>
+                      <td className="p-4 text-xs font-extrabold">{row.payee}</td>
+                      <td className="p-4 text-xs truncate max-w-xs">{row.particulars}</td>
+                      <td className="p-4 text-right font-mono tabular-nums font-bold">{formatCurrency(row.gross) || '-'}</td>
+                      <td className="p-4 text-right font-mono tabular-nums font-bold">{formatCurrency(row.ewt) || '-'}</td>
+                      <td className="p-4 pr-6 text-right font-mono tabular-nums font-bold">{formatCurrency(row.net) || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : bookType === 'SJ' ? (
+              <table className="w-full text-left text-sm whitespace-nowrap min-w-max print:min-w-full">
+                <thead className="bg-white sticky top-0 z-10 print:static shadow-[0_2px_5px_rgba(0,0,0,0.02)] print:shadow-none border-b-2 border-gray-100 print:border-black">
+                  <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold print:text-black">
+                    <th className="p-4 pl-6">Date</th>
+                    <th className="p-4">Invoice No.</th>
+                    <th className="p-4">Customer</th>
+                    <th className="p-4 text-right">Vatable Sales (₱)</th>
+                    <th className="p-4 text-right">VAT-Exempt Sales (₱)</th>
+                    <th className="p-4 text-right">Output Tax (₱)</th>
+                    <th className="p-4 text-right">Total (₱)</th>
+                    <th className="p-4 text-right pr-6">Running Total (₱)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 print:divide-black">
+                  {salesReports.map((row: any, i: number) => {
+                    salesRunningTotal += row.total
+                    return (
+                      <tr key={i} className="hover:bg-[#E9FAFA]/40 transition-colors">
+                        <td className="p-4 pl-6 text-gray-500 font-medium print:text-black">{new Date(row.date).toLocaleDateString()}</td>
+                        <td className="p-4 font-mono text-[#1B9387] font-extrabold print:text-black">{row.refNo}</td>
+                        <td className="p-4 font-extrabold text-gray-800">{row.customer}</td>
+                        <td className="p-4 text-right font-mono tabular-nums">{formatCurrency(row.vatableSales) || '-'}</td>
+                        <td className="p-4 text-right font-mono tabular-nums">{formatCurrency(row.vatExemptSales) || '-'}</td>
+                        <td className="p-4 text-right font-mono tabular-nums">{formatCurrency(row.outputTax) || '-'}</td>
+                        <td className="p-4 text-right font-mono tabular-nums font-bold">{formatCurrency(row.total) || '-'}</td>
+                        <td className="p-4 pr-6 text-right font-mono tabular-nums font-bold text-[#1B9387] print:text-black">{formatCurrency(salesRunningTotal)}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <table className="w-full text-left text-sm whitespace-nowrap min-w-max print:min-w-full">
+                <thead className="bg-white sticky top-0 z-10 print:static shadow-[0_2px_5px_rgba(0,0,0,0.02)] print:shadow-none border-b-2 border-gray-100 print:border-black">
+                  <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold print:text-black">
+                    <th className="p-4 pl-6">Date</th>
+                    <th className="p-4">Ref No.</th>
+                    <th className="p-4">Account</th>
+                    <th className="p-4">Payee / Description</th>
+                    <th className="p-4 text-right">Debit (₱)</th>
+                    <th className="p-4 text-right">Credit (₱)</th>
+                    <th className="p-4 text-right pr-6">Running Total (₱)</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100 print:divide-black">
+                  {data.map((row: any, i: number) => {
                     const debitStr = formatCurrency(row.debit)
                     const creditStr = formatCurrency(row.credit)
+                    runningBalance += (row.debit - row.credit)
 
                     return (
                       <tr key={i} className="hover:bg-[#E9FAFA]/40 transition-colors group">
-                        <td className="p-4 pl-6 text-gray-500 font-medium">
-                          {new Date(row.date).toLocaleDateString()}
-                        </td>
-                        <td className="p-4 font-mono text-[#1B9387] font-extrabold">
-                          {row.referenceNo}
-                        </td>
+                        <td className="p-4 pl-6 text-gray-500 font-medium print:text-black">{new Date(row.date).toLocaleDateString()}</td>
+                        <td className="p-4 font-mono text-[#1B9387] font-extrabold print:text-black">{row.referenceNo}</td>
                         <td className="p-4">
                           <p className="font-mono font-bold text-gray-800">{row.accountCode}</p>
-                          <p className="text-[10px] uppercase tracking-wider text-gray-500 truncate w-48 font-bold mt-0.5">
-                            {row.accountName}
-                          </p>
+                          <p className="text-[10px] uppercase tracking-wider text-gray-500 truncate w-48 font-bold mt-0.5">{row.accountName}</p>
                         </td>
                         <td className="p-4">
-                          {row.payeeName && (
-                            <p className="font-extrabold text-gray-800">{row.payeeName}</p>
-                          )}
-                          <p
-                            className={`text-xs truncate w-72 mt-0.5 ${row.payeeName ? 'text-gray-500' : 'text-gray-800 font-bold'}`}
-                            title={row.description}
-                          >
-                            {row.description}
-                          </p>
+                          {row.payeeName && <p className="font-extrabold text-gray-800">{row.payeeName}</p>}
+                          <p className={`text-xs truncate w-72 mt-0.5 ${row.payeeName ? 'text-gray-500' : 'text-gray-800 font-bold'}`} title={row.description}>{row.description}</p>
                         </td>
                         <td className="p-4 text-right font-mono tabular-nums text-gray-800">
-                          {debitStr ? (
-                            <span className="font-bold">{debitStr}</span>
-                          ) : (
-                            <span className="text-gray-300">-</span>
-                          )}
+                          {debitStr ? <span className="font-bold">{debitStr}</span> : <span className="text-gray-300">-</span>}
                         </td>
-                        <td className="p-4 pr-6 text-right font-mono tabular-nums text-gray-800">
-                          {creditStr ? (
-                            <span className="font-bold">{creditStr}</span>
-                          ) : (
-                            <span className="text-gray-300">-</span>
-                          )}
+                        <td className="p-4 text-right font-mono tabular-nums text-gray-800">
+                          {creditStr ? <span className="font-bold">{creditStr}</span> : <span className="text-gray-300">-</span>}
+                        </td>
+                        <td className="p-4 pr-6 text-right font-mono tabular-nums font-bold text-[#1B9387] print:text-black">
+                          {formatCurrency(Math.abs(runningBalance))} {runningBalance >= 0 ? 'DR' : 'CR'}
                         </td>
                       </tr>
                     )
-                  })
-                )}
-              </tbody>
-            </table>
+                  })}
+                </tbody>
+              </table>
+            )}
           </div>
 
           {/* STICKY FOOTER TOTALS */}
-          <div className="bg-[#FBF8F8] border-t border-[#B0DCDA] p-5 px-6 flex justify-end space-x-16 shadow-[0_-5px_15px_rgba(0,0,0,0.02)] shrink-0 z-20">
-            <div className="flex items-center space-x-4">
-              <span className="text-gray-500 font-extrabold uppercase tracking-widest text-[10px]">
-                Total Debit
-              </span>
-              <span className="text-gray-800 font-mono font-black text-xl tabular-nums">
-                ₱{' '}
-                {totalDebit.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                })}
-              </span>
+          <div className="bg-[#FBF8F8] border-t border-[#B0DCDA] p-5 px-6 flex justify-end space-x-16 shadow-[0_-5px_15px_rgba(0,0,0,0.02)] shrink-0 z-20 print:static print:border-black print:border-t-2 print:border-b-2 print:shadow-none print:bg-white print:mt-4">
+            {subTab === 'Checks' && bookType === 'CDJ' ? (
+              <>
+                <div className="flex items-center space-x-4">
+                  <span className="text-gray-500 font-extrabold uppercase tracking-widest text-[10px] print:text-black">Total Gross</span>
+                  <span className="text-gray-800 font-mono font-black text-xl tabular-nums border-b-4 border-double border-gray-400 print:border-black">₱ {checkTotals.gross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <span className="text-gray-500 font-extrabold uppercase tracking-widest text-[10px] print:text-black">Total EWT</span>
+                  <span className="text-gray-800 font-mono font-black text-xl tabular-nums border-b-4 border-double border-gray-400 print:border-black">₱ {checkTotals.ewt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <span className="text-gray-500 font-extrabold uppercase tracking-widest text-[10px] print:text-black">Total Net Checks</span>
+                  <span className="text-gray-800 font-mono font-black text-xl tabular-nums border-b-4 border-double border-gray-400 print:border-black">₱ {checkTotals.net.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </>
+            ) : bookType === 'SJ' ? (
+              <>
+                <div className="flex items-center space-x-4">
+                  <span className="text-gray-500 font-extrabold uppercase tracking-widest text-[10px] print:text-black">Vatable</span>
+                  <span className="text-gray-800 font-mono font-black text-xl tabular-nums border-b-4 border-double border-gray-400 print:border-black">₱ {salesTotals.vatable.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <span className="text-gray-500 font-extrabold uppercase tracking-widest text-[10px] print:text-black">Exempt</span>
+                  <span className="text-gray-800 font-mono font-black text-xl tabular-nums border-b-4 border-double border-gray-400 print:border-black">₱ {salesTotals.exempt.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <span className="text-gray-500 font-extrabold uppercase tracking-widest text-[10px] print:text-black">Output Tax</span>
+                  <span className="text-gray-800 font-mono font-black text-xl tabular-nums border-b-4 border-double border-gray-400 print:border-black">₱ {salesTotals.tax.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <span className="text-gray-500 font-extrabold uppercase tracking-widest text-[10px] print:text-black">Total Sales</span>
+                  <span className="text-gray-800 font-mono font-black text-xl tabular-nums border-b-4 border-double border-gray-400 print:border-black">₱ {salesTotals.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center space-x-4">
+                  <span className="text-gray-500 font-extrabold uppercase tracking-widest text-[10px] print:text-black">Total Debit</span>
+                  <span className="text-gray-800 font-mono font-black text-xl tabular-nums border-b-4 border-double border-gray-400 print:border-black">₱ {totalDebit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <span className="text-gray-500 font-extrabold uppercase tracking-widest text-[10px] print:text-black">Total Credit</span>
+                  <span className="text-gray-800 font-mono font-black text-xl tabular-nums border-b-4 border-double border-gray-400 print:border-black">₱ {totalCredit.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                </div>
+              </>
+            )}
+          </div>
+          
+          {/* PRINT ONLY FOOTER */}
+          <div className="hidden print:flex justify-between mt-16 pt-8 px-8">
+            <div className="text-center">
+              <p className="border-b border-black w-48 mb-2"></p>
+              <p className="text-xs font-bold uppercase">Prepared by</p>
             </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-gray-500 font-extrabold uppercase tracking-widest text-[10px]">
-                Total Credit
-              </span>
-              <span className="text-gray-800 font-mono font-black text-xl tabular-nums">
-                ₱{' '}
-                {totalCredit.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2
-                })}
-              </span>
+            <div className="text-center">
+              <p className="border-b border-black w-48 mb-2"></p>
+              <p className="text-xs font-bold uppercase">Reviewed by (Accountant)</p>
+            </div>
+            <div className="text-center">
+              <p className="border-b border-black w-48 mb-2"></p>
+              <p className="text-xs font-bold uppercase">Approved by (Manager)</p>
             </div>
           </div>
+          
+          {/* PAGE NUMBER PLACEHOLDER */}
+          <div className="hidden print:block text-right text-xs mt-4">
+            Page ___ of ___
+          </div>
+
         </div>
       </div>
     </div>
