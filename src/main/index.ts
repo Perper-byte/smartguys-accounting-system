@@ -472,6 +472,19 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('medicines:update-vat', async (e, id: string, isVatable: boolean) => {
+    try {
+      await prisma.inventoryItem.update({
+        where: { id },
+        data: { is_vatable: isVatable }
+      })
+      await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Updated medicine ID ${id} VAT to: ${isVatable ? '12% VAT' : 'EXEMPT'}`)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
   ipcMain.handle('get-all-service-items', async () => {
     try {
       return typeof LedgerService.getAllServiceItems === 'function'
