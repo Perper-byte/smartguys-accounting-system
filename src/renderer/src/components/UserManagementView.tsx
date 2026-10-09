@@ -59,12 +59,23 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
     msg: string
   } | null>(null)
 
+  const generateSecurePassword = () => {
+    const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_+';
+    let password = '';
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  };
+
   const [newUser, setNewUser] = useState({
     username: '',
-    password: '',
+    password: generateSecurePassword(),
     role: 'CASHIER',
     isActive: true
   })
+
+  const [createdUserCredentials, setCreatedUserCredentials] = useState<{username: string, role: string, password: string} | null>(null)
 
   const [userToToggle, setUserToToggle] = useState<{
     id: string
@@ -115,8 +126,9 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
       const result = await api.createUser(newUser, adminUser)
 
       if (result.success) {
+        setCreatedUserCredentials({ username: newUser.username, role: newUser.role, password: newUser.password });
         setStatusMessage({ type: 'success', msg: `User ${newUser.username} created successfully!` })
-        setNewUser({ username: '', password: '', role: 'CASHIER', isActive: true })
+        setNewUser({ username: '', password: generateSecurePassword(), role: 'CASHIER', isActive: true })
         fetchUsers()
         setTimeout(() => setStatusMessage(null), 3000)
       } else {
@@ -295,14 +307,24 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
               <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
                 Temporary Password
               </label>
-              <input
-                type="text"
-                required
-                placeholder="Set initial password"
-                value={newUser.password}
-                onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-2.5 text-sm text-gray-800 font-medium focus:border-[#1B9387] outline-none transition"
-              />
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  required
+                  placeholder="Set initial password"
+                  value={newUser.password}
+                  onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                  className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-2.5 text-sm text-gray-800 font-medium focus:border-[#1B9387] outline-none transition"
+                />
+                <button
+                  type="button"
+                  onClick={() => setNewUser({ ...newUser, password: generateSecurePassword() })}
+                  className="px-3 bg-white border border-[#B0DCDA] text-[#1B9387] rounded-md hover:bg-[#E9FAFA] transition cursor-pointer"
+                  title="Regenerate Password"
+                >
+                  🔄
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
@@ -601,6 +623,36 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {createdUserCredentials && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-2xl p-8 w-[420px] animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-extrabold text-gray-800 mb-2 uppercase tracking-wide">
+              Account Created & Credentials
+            </h3>
+            <div className="bg-[#FBF8F8] border border-[#B0DCDA] p-4 rounded-md mb-4 space-y-2">
+              <p className="text-sm"><span className="font-bold text-gray-500 w-20 inline-block">Username:</span> <span className="font-extrabold">{createdUserCredentials.username}</span></p>
+              <p className="text-sm"><span className="font-bold text-gray-500 w-20 inline-block">Role:</span> <span className="font-extrabold">{createdUserCredentials.role}</span></p>
+              <p className="text-sm"><span className="font-bold text-gray-500 w-20 inline-block">Password:</span> <span className="font-extrabold font-mono bg-white px-2 py-1 border rounded">{createdUserCredentials.password}</span></p>
+            </div>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(`Username: ${createdUserCredentials.username}\nRole: ${createdUserCredentials.role}\nPassword: ${createdUserCredentials.password}`);
+                alert('Copied to clipboard!');
+              }}
+              className="w-full bg-[#1B9387] hover:bg-[#28958B] text-white font-bold py-2 rounded-md transition mb-2 shadow-sm uppercase tracking-wider text-sm cursor-pointer"
+            >
+              Copy Password
+            </button>
+            <button
+              onClick={() => setCreatedUserCredentials(null)}
+              className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-bold py-2 rounded-md transition uppercase tracking-wider text-sm cursor-pointer"
+            >
+              Close
+            </button>
           </div>
         </div>
       )}
