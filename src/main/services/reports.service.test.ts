@@ -27,3 +27,41 @@ describe('Sprint 3 - Week 1: Financial Reporting Engine', () => {
     expect(balanceSheet.isEquationBalanced).toBe(true)
   })
 })
+
+describe('Phase 5: CDJ and Check Disbursements', () => {
+  test('CDJ entries receive correct sequential running totals', async () => {
+    const data = await ReportsService.getBooksOfAccounts('CDJ', '2000-01-01', '2100-01-01')
+    expect(Array.isArray(data)).toBe(true)
+    
+    if (data.length > 0) {
+      let expectedTotal = 0
+      for (const row of data) {
+        expectedTotal += Number(row.credit)
+        expect(row.runningTotal).toBe(expectedTotal)
+      }
+    }
+  })
+
+  test('getCheckDisbursementReport calculates Gross, EWT, Net and running totals', async () => {
+    const report = await ReportsService.getCheckDisbursementReport('2000-01-01', '2100-01-01')
+    expect(Array.isArray(report)).toBe(true)
+    
+    if (report.length > 0) {
+      let expectedRunning = 0
+      for (const row of report) {
+        expect(row.grossAmount).toBeGreaterThanOrEqual(0)
+        expect(row.withholdingTax).toBeGreaterThanOrEqual(0)
+        expect(row.netCheckAmount).toBeGreaterThanOrEqual(0)
+        
+        expectedRunning += row.netCheckAmount
+        expect(row.runningTotal).toBe(expectedRunning)
+      }
+    }
+  })
+
+  test('Boundary date range filtering excludes records outside start and end dates', async () => {
+    const report = await ReportsService.getCheckDisbursementReport('2199-01-01', '2199-12-31')
+    expect(Array.isArray(report)).toBe(true)
+    expect(report.length).toBe(0)
+  })
+})
