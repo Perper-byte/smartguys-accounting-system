@@ -67,6 +67,7 @@ const [sourceAccount, setSourceAccount] = useState('1030') // Default to 1030 Ca
   const [voucherToPrint, setVoucherToPrint] = useState<any | null>(null)
   const [isDragging, setIsDragging] = useState(false)
   const [searchHistoryQuery, setSearchHistoryQuery] = useState('')
+  const [filterExpenseCategory, setFilterExpenseCategory] = useState('All Categories')
 
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -224,16 +225,30 @@ const [sourceAccount, setSourceAccount] = useState('1030') // Default to 1030 Ca
 
   // Filtered History
   const filteredVouchers = useMemo(() => {
-    if (!searchHistoryQuery.trim()) return recentVouchers
+    let result = recentVouchers;
+    
+    if (filterExpenseCategory !== 'All Categories') {
+      const match = filterExpenseCategory.match(/\((\d{4})\)/);
+      if (match) {
+        const code = match[1];
+        result = result.filter(v => v.expenseAccountCode === code);
+      }
+    }
+
+    if (!searchHistoryQuery.trim()) return result
     const q = searchHistoryQuery.toLowerCase()
-    return recentVouchers.filter(
+    return result.filter(
       (v) =>
         v.referenceNo.toLowerCase().includes(q) ||
         (v.payeeName && v.payeeName.toLowerCase().includes(q)) ||
         (v.description && v.description.toLowerCase().includes(q)) ||
         (v.expenseAccountName && v.expenseAccountName.toLowerCase().includes(q))
     )
-  }, [recentVouchers, searchHistoryQuery])
+  }, [recentVouchers, searchHistoryQuery, filterExpenseCategory])
+
+  const filteredExpensesTotal = useMemo(() => {
+    return filteredVouchers.reduce((sum, v) => sum + (Number(v.amount) || 0), 0)
+  }, [filteredVouchers])
 
   // Form Submission
   const handleSubmit = async (e: React.FormEvent) => {
@@ -733,25 +748,52 @@ const [sourceAccount, setSourceAccount] = useState('1030') // Default to 1030 Ca
 
         {/* RIGHT COLUMN: RECENT VOUCHERS LIST */}
         <div className="xl:col-span-5 bg-white border border-[#B0DCDA] rounded-2xl shadow-sm flex flex-col overflow-hidden max-h-[800px]">
-          <div className="px-5 py-4 bg-[#FBF8F8] border-b border-[#B0DCDA] flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-xs font-black text-gray-800 uppercase tracking-wider">
-                Recent Cashier Vouchers
-              </h3>
-              <p className="text-[10px] text-gray-400 font-medium">
-                Petty cash disbursements recorded by cashier
-              </p>
+          <div className="px-5 py-4 bg-[#FBF8F8] border-b border-[#B0DCDA] flex flex-col gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-xs font-black text-gray-800 uppercase tracking-wider">
+                  Recent Cashier Vouchers
+                </h3>
+                <p className="text-[10px] text-gray-400 font-medium">
+                  Petty cash disbursements recorded by cashier
+                </p>
+              </div>
+              <div className="text-right">
+                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">
+                  Filtered Expenses Total
+                </span>
+                <span className="text-lg font-black font-mono text-[#1B9387]">
+                  ₱ {filteredExpensesTotal.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
             </div>
-            {/* Search filter */}
-            <div className="relative min-w-[150px]">
-              <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
-              <input
-                type="text"
-                placeholder="Search..."
-                value={searchHistoryQuery}
-                onChange={(e) => setSearchHistoryQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1 bg-white border border-gray-200 rounded-lg text-xs font-medium outline-none focus:border-[#1B9387]"
-              />
+
+            <div className="flex gap-2">
+              <select
+                value={filterExpenseCategory}
+                onChange={(e) => setFilterExpenseCategory(e.target.value)}
+                className="w-1/2 p-2 bg-white border border-gray-200 rounded-lg text-xs font-medium outline-none focus:border-[#1B9387]"
+              >
+                <option value="All Categories">All Categories</option>
+                <option value="Medical Supplies (5010)">Medical Supplies (5010)</option>
+                <option value="Utilities (5020)">Utilities (5020)</option>
+                <option value="Professional Fees (5030)">Professional Fees (5030)</option>
+                <option value="Office Supplies (5060)">Office Supplies (5060)</option>
+                <option value="Meals & Refreshments (5070)">Meals & Refreshments (5070)</option>
+                <option value="Transportation (5080)">Transportation (5080)</option>
+                <option value="Miscellaneous (5090)">Miscellaneous (5090)</option>
+              </select>
+
+              <div className="relative w-1/2">
+                <Search className="w-3.5 h-3.5 text-gray-400 absolute left-2.5 top-2.5" />
+                <input
+                  type="text"
+                  placeholder="Search..."
+                  value={searchHistoryQuery}
+                  onChange={(e) => setSearchHistoryQuery(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 bg-white border border-gray-200 rounded-lg text-xs font-medium outline-none focus:border-[#1B9387]"
+                />
+              </div>
             </div>
           </div>
 
@@ -787,8 +829,8 @@ const [sourceAccount, setSourceAccount] = useState('1030') // Default to 1030 Ca
                     <span className="font-bold truncate max-w-[200px]">
                       {v.payeeName || 'Cash Out'}
                     </span>
-                    <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded font-mono truncate max-w-[130px]">
-                      {v.expenseAccountName || 'Expense'}
+                    <span className="text-[10px] text-[#1B9387] bg-[#E9FAFA] border border-[#B0DCDA] px-1.5 py-0.5 rounded font-bold truncate max-w-[130px]">
+                      {v.expenseAccountCode ? `${v.expenseAccountCode} - ` : ''}{v.expenseAccountName || 'Expense'}
                     </span>
                   </div>
 
