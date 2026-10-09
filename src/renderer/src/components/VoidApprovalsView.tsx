@@ -27,14 +27,15 @@ export function VoidApprovalsView({ userId }: { userId: string }) {
 
   // Status Banner and Custom Modal States
   const [status, setStatus] = useState<{ type: 'success' | 'error'; msg: string } | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
   const [confirmDialog, setConfirmDialog] = useState<{
     isOpen: boolean
     action: 'APPROVE' | 'REJECT' | null
-    id: string | null
+    entry: any | null
   }>({
     isOpen: false,
     action: null,
-    id: null
+    entry: null
   })
 
   const fetchVoids = async () => {
@@ -81,21 +82,27 @@ export function VoidApprovalsView({ userId }: { userId: string }) {
   }, [status])
 
   // Opens the custom modal
-  const initiateAction = (id: string, action: 'APPROVE' | 'REJECT') => {
-    setConfirmDialog({ isOpen: true, action, id })
+  const initiateAction = (entry: any, action: 'APPROVE' | 'REJECT') => {
+    setConfirmDialog({ isOpen: true, action, entry })
+    setRejectReason('')
     setStatus(null) // Clear previous alerts
   }
 
   // Executes the action
   const executeAction = async () => {
-    if (!confirmDialog.id || !confirmDialog.action) return
+    if (!confirmDialog.entry || !confirmDialog.action) return
+    
+    if (confirmDialog.action === 'REJECT' && !rejectReason.trim()) {
+      setStatus({ type: 'error', msg: 'Rejection reason is required.' })
+      return
+    }
 
     try {
       const api = (window as any).api || (window as any).electronAPI
       if (confirmDialog.action === 'APPROVE') {
-        await api.approveVoid(confirmDialog.id, userId)
+        await api.approveVoid(confirmDialog.entry.id, userId)
       } else {
-        await api.rejectVoid(confirmDialog.id)
+        await api.rejectVoid(confirmDialog.entry.id, rejectReason.trim(), userId)
       }
 
       fetchVoids() // Refresh pending list automatically
@@ -107,7 +114,7 @@ export function VoidApprovalsView({ userId }: { userId: string }) {
       console.error(error)
       setStatus({ type: 'error', msg: 'Action failed. See console for details.' })
     } finally {
-      setConfirmDialog({ isOpen: false, action: null, id: null })
+      setConfirmDialog({ isOpen: false, action: null, entry: null })
     }
   }
 
@@ -306,13 +313,13 @@ export function VoidApprovalsView({ userId }: { userId: string }) {
                   </td>
                   <td className="p-4 text-center space-x-2">
                     <button
-                      onClick={() => initiateAction(v.id, 'APPROVE')}
+                      onClick={() => initiateAction(v, 'APPROVE')}
                       className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-1.5 rounded text-xs font-bold cursor-pointer transition-colors shadow-sm"
                     >
                       Approve
                     </button>
                     <button
-                      onClick={() => initiateAction(v.id, 'REJECT')}
+                      onClick={() => initiateAction(v, 'REJECT')}
                       className="bg-white hover:bg-red-50 border border-gray-300 hover:border-red-200 text-gray-700 hover:text-red-600 px-4 py-1.5 rounded text-xs font-bold cursor-pointer transition-colors"
                     >
                       Reject
@@ -369,52 +376,141 @@ export function VoidApprovalsView({ userId }: { userId: string }) {
       </div>
 
       {/* Custom Confirmation Modal */}
-      {confirmDialog.isOpen && (
+      {confirmDialog.isOpen && confirmDialog.entry && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white border border-gray-200 rounded-xl shadow-2xl p-6 w-[420px]">
-            <div className="flex items-center space-x-3 mb-4">
-              <div
-                className={`p-2 rounded-full ${confirmDialog.action === 'APPROVE' ? 'bg-teal-100' : 'bg-red-100'}`}
-              >
-                <AlertCircle
-                  className={`w-6 h-6 ${confirmDialog.action === 'APPROVE' ? 'text-teal-600' : 'text-red-600'}`}
-                />
+          <div className="bg-white border border-gray-200 rounded-xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto">
+            {confirmDialog.action === 'APPROVE' && (
+              <div className="w-[600px] max-w-full">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="p-2 rounded-full bg-teal-100">
+                    <AlertCircle className="w-6 h-6 text-teal-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 uppercase tracking-wide">
+                    Confirm & Execute Void
+                  </h3>
+                </div>
+                <div className="grid grid-cols-2 gap-4 text-sm mb-4 bg-gray-50 p-4 rounded-md border border-gray-100">
+                  <div>
+                    <span className="text-gray-500 text-xs uppercase block font-semibold mb-1">Ref No.</span>
+                    <strong className="text-gray-900">{confirmDialog.entry.reference_no}</strong>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 text-xs uppercase block font-semibold mb-1">Transaction Date</span>
+                    <strong className="text-gray-900">{new Date(confirmDialog.entry.date).toLocaleString()}</strong>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 text-xs uppercase block font-semibold mb-1">Payee / Patient</span>
+                    <strong className="text-gray-900">{confirmDialog.entry.payee?.name || '—'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-gray-500 text-xs uppercase block font-semibold mb-1">Requested By</span>
+                    <strong className="text-gray-900">{confirmDialog.entry.user?.username || '—'}</strong>
+                  </div>
+                </div>
+                
+                <div className="bg-amber-50 border border-amber-200 text-amber-900 p-4 rounded-md mb-6 shadow-sm">
+                  <span className="font-bold text-xs uppercase text-amber-700 block mb-1">Void Request Reason</span>
+                  <p className="italic text-sm">"{confirmDialog.entry.void_reason}"</p>
+                </div>
+
+                <div className="mb-6 overflow-hidden border border-gray-200 rounded-md">
+                  <table className="w-full text-left text-sm">
+                    <thead className="bg-gray-100 border-b border-gray-200 text-gray-600 text-xs uppercase">
+                      <tr>
+                        <th className="p-3 font-semibold">Code</th>
+                        <th className="p-3 font-semibold">Account Title</th>
+                        <th className="p-3 font-semibold text-right">Debit (₱)</th>
+                        <th className="p-3 font-semibold text-right">Credit (₱)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {confirmDialog.entry.lines?.map((line: any) => (
+                        <tr key={line.id} className="hover:bg-gray-50">
+                          <td className="p-3 font-mono text-xs">{line.account?.code}</td>
+                          <td className="p-3">{line.account?.title}</td>
+                          <td className="p-3 text-right">{Number(line.debit) > 0 ? Number(line.debit).toLocaleString(undefined, {minimumFractionDigits: 2}) : '-'}</td>
+                          <td className="p-3 text-right">{Number(line.credit) > 0 ? Number(line.credit).toLocaleString(undefined, {minimumFractionDigits: 2}) : '-'}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-gray-50 font-bold border-t border-gray-300">
+                        <td colSpan={2} className="p-3 text-right text-gray-700 uppercase text-xs">Totals</td>
+                        <td className="p-3 text-right text-teal-700">{confirmDialog.entry.lines?.reduce((sum: number, l: any) => sum + Number(l.debit), 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                        <td className="p-3 text-right text-teal-700">{confirmDialog.entry.lines?.reduce((sum: number, l: any) => sum + Number(l.credit), 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                
+                <p className="text-xs text-red-600 mb-6 font-bold uppercase tracking-wide flex items-center gap-2 bg-red-50 p-3 rounded border border-red-100">
+                  <AlertCircle className="w-5 h-5 flex-shrink-0" /> 
+                  Warning: This transaction will be marked VOIDED and cannot be undone.
+                </p>
+                
+                <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => setConfirmDialog({ isOpen: false, action: null, entry: null })}
+                    className="px-5 py-2.5 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-md text-sm font-bold transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={executeAction}
+                    className="px-5 py-2.5 text-white bg-teal-600 hover:bg-teal-700 rounded-md text-sm font-bold shadow-sm transition-colors cursor-pointer flex items-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    Confirm & Execute Void
+                  </button>
+                </div>
               </div>
-              <h3 className="text-lg font-bold text-gray-900 uppercase tracking-wide">
-                Confirm Action
-              </h3>
-            </div>
+            )}
 
-            <p className="text-sm text-gray-600 mb-6 leading-relaxed">
-              Are you sure you want to{' '}
-              <strong
-                className={confirmDialog.action === 'APPROVE' ? 'text-teal-600' : 'text-red-600'}
-              >
-                {confirmDialog.action?.toLowerCase()}
-              </strong>{' '}
-              this void request?
-              {confirmDialog.action === 'APPROVE' &&
-                ' This will permanently generate a reversing entry in the ledger.'}
-            </p>
-
-            <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
-              <button
-                onClick={() => setConfirmDialog({ isOpen: false, action: null, id: null })}
-                className="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-md text-sm font-bold transition-colors cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={executeAction}
-                className={`px-4 py-2 text-white rounded-md text-sm font-bold shadow-sm transition-colors cursor-pointer ${
-                  confirmDialog.action === 'APPROVE'
-                    ? 'bg-teal-600 hover:bg-teal-700'
-                    : 'bg-red-600 hover:bg-red-700'
-                }`}
-              >
-                Yes, {confirmDialog.action === 'APPROVE' ? 'Approve' : 'Reject'}
-              </button>
-            </div>
+            {confirmDialog.action === 'REJECT' && (
+              <div className="w-[420px] max-w-full">
+                <div className="flex items-center space-x-3 mb-4">
+                  <div className="p-2 rounded-full bg-red-100">
+                    <XCircle className="w-6 h-6 text-red-600" />
+                  </div>
+                  <h3 className="text-lg font-bold text-gray-900 uppercase tracking-wide">
+                    Reject Void Request
+                  </h3>
+                </div>
+                
+                <p className="text-sm text-gray-600 mb-6 leading-relaxed">
+                  You are rejecting the void request for reference <strong>{confirmDialog.entry.reference_no}</strong>. The transaction will remain active.
+                </p>
+                
+                <div className="mb-6">
+                  <label className="block text-sm font-bold text-gray-700 mb-2 uppercase tracking-wide text-xs">
+                    Reason for Rejection <span className="text-red-500">*</span>
+                  </label>
+                  <textarea
+                    value={rejectReason}
+                    onChange={e => setRejectReason(e.target.value)}
+                    className="w-full p-3 text-sm border border-gray-300 rounded-md focus:ring-2 focus:ring-teal-500 focus:outline-none"
+                    rows={4}
+                    placeholder="Explain why this void request is being denied..."
+                    required
+                  />
+                </div>
+                
+                <div className="flex justify-end space-x-3 pt-4 border-t border-gray-100">
+                  <button
+                    onClick={() => setConfirmDialog({ isOpen: false, action: null, entry: null })}
+                    className="px-5 py-2.5 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-md text-sm font-bold transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={executeAction}
+                    disabled={!rejectReason.trim()}
+                    className="px-5 py-2.5 text-white bg-red-600 hover:bg-red-700 disabled:bg-red-300 rounded-md text-sm font-bold shadow-sm transition-colors cursor-pointer flex items-center gap-2"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Submit Rejection
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

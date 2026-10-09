@@ -102,7 +102,7 @@ export const api = {
   // Voids
   requestVoid: (id: string, reason: string) => ipcRenderer.invoke('request-void', id, reason),
   getPendingVoids: () => ipcRenderer.invoke('get-pending-voids'),
-  rejectVoid: (id: string) => ipcRenderer.invoke('reject-void', id),
+  rejectVoid: (id: string, reason?: string, userId?: string) => ipcRenderer.invoke('reject-void', id, reason, userId),
   approveVoid: (id: string, managerId: string, overridePin?: string) =>
     ipcRenderer.invoke('approve-void', id, managerId, overridePin),
 

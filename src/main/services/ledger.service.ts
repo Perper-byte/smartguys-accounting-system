@@ -894,10 +894,10 @@ export const LedgerService = {
         }));
     },
 
-    async rejectVoid(entryId: string) {
+    async rejectVoid(entryId: string, reason?: string) {
         return await prisma.journalEntry.update({
             where: { id: entryId },
-            data: { status: 'ACTIVE', void_reason: null }
+            data: { status: 'ACTIVE', void_reason: reason ? `Rejected: ${reason}` : null }
         });
     },
 

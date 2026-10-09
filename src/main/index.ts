@@ -925,10 +925,10 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('reject-void', async (e, id) => {
+  ipcMain.handle('reject-void', async (e, id, reason, userId) => {
     try {
-      await LedgerService.rejectVoid(id)
-      await AuditService.logAction('SYSTEM', 'VOID REJECTED', `Void rejected`)
+      await LedgerService.rejectVoid(id, reason)
+      await AuditService.logAction(userId || 'SYSTEM', 'VOID REJECTED', `Void rejected: ${reason}`)
       return { success: true }
     } catch (err: any) {
       return { error: err.message }
