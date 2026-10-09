@@ -470,7 +470,7 @@ export default function App() {
                   onNavigate={setActiveTab}
                 />
               )}
-              {activeTab === 'settings' && <SystemSettingsView />}
+              {activeTab === 'settings' && <SystemSettingsView userId={currentUser.id} />}
               {activeTab === 'analytics' && <DashboardView />}
               {activeTab === 'reconciliation' && <ReconciliationView userId={currentUser.id} />}
               {activeTab === 'books' && <BooksOfAccountsView />}
