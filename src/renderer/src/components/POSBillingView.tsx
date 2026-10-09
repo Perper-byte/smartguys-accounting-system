@@ -590,7 +590,7 @@ ${itemsListFormatted || '  - None'}
         description: t.name,
         quantity: 1,
         price: price,
-        isVatable: Boolean(t.isVatable),
+        isVatable: Boolean(t.is_vatable),
         isHmoCovered: isHmo,
         hmoCoverage: isHmo ? price : ('' as number | '')
       }

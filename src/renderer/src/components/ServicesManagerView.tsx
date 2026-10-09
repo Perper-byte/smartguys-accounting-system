@@ -358,6 +358,36 @@ export function ServicesManagerView() {
             Manage clinic procedures, laboratory tests, and their fixed prices.
           </p>
         </div>
+        <div className="flex gap-2 relative">
+          <button
+            onClick={() => {
+              if (window.confirm("Set ALL services to 12% VAT?")) {
+                const api = (window as any).api || (window as any).electronAPI;
+                api.setAllServicesVat(true).then(() => {
+                  fetchServices();
+                  setStatusMessage({ type: 'success', msg: 'All services updated to 12% VAT' });
+                });
+              }
+            }}
+            className="px-4 py-2 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-md text-sm font-bold shadow-sm transition-colors cursor-pointer"
+          >
+            Set All 12% VAT
+          </button>
+          <button
+            onClick={() => {
+              if (window.confirm("Set ALL services to VAT-Exempt?")) {
+                const api = (window as any).api || (window as any).electronAPI;
+                api.setAllServicesVat(false).then(() => {
+                  fetchServices();
+                  setStatusMessage({ type: 'success', msg: 'All services updated to Exempt' });
+                });
+              }
+            }}
+            className="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-md text-sm font-bold transition-colors cursor-pointer"
+          >
+            Set All VAT-Exempt
+          </button>
+        </div>
       </div>
 
       {statusMessage && (
@@ -556,6 +586,7 @@ export function ServicesManagerView() {
                       />
                     </button>
                   </th>
+                  <th className="p-3.5 border-r border-gray-100 text-center w-28">VAT Status</th>
                   <th className="p-3.5 border-r border-gray-100 text-right w-32">
                     <button
                       onClick={() => toggleSort('price')}
@@ -634,6 +665,17 @@ export function ServicesManagerView() {
                           >
                             <td className="px-4 py-2.5 border-r border-gray-100 font-extrabold text-gray-800">
                               {s.name}
+                            </td>
+                            <td className="px-4 py-2.5 border-r border-gray-100 text-center">
+                              <button
+                                onClick={() => {
+                                  const api = (window as any).api || (window as any).electronAPI
+                                  api.updateServiceVat(s.id, !s.is_vatable).then(() => fetchServices())
+                                }}
+                                className={`text-xs px-2 py-1 rounded-md font-bold cursor-pointer ${s.is_vatable ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                              >
+                                {s.is_vatable ? '12% VAT' : 'Exempt'}
+                              </button>
                             </td>
                             <td className="px-4 py-2.5 border-r border-gray-100 text-right">
                               {editingId === s.id ? (
