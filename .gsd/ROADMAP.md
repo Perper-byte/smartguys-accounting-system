@@ -1,13 +1,16 @@
-﻿# ROADMAP.md — HR & Payroll Overhaul
+# ROADMAP.md — Smartguys Accounting & Financial System
 
-> **Current Phase**: Not started
-> **Milestone**: v1.0 — DOLE-Compliant HR & Payroll System
+> **Current Phase**: Phase 5
+> **Milestone**: v2.0 — Defense Panel Compliance & Core Accounting Hardening
 
-## Must-Haves (from SPEC)
-- [x] Configurable DOLE rate multipliers in database settings
-- [x] Gross-to-Net payroll service with statutory contributions & tax computation
-- [x] Interactive multi-tab Payroll Overhaul UI grid matching clinic sheets
-- [x] PDF payslip generator & auto-posted GL journal entries
+## Must-Haves (from October 5, 2026 Defense Panel Comments)
+- [ ] BIR CAS compliance: Official printable Books of Accounts with running totals (Cash Disbursements Journal)
+- [ ] Dedicated Check Disbursement Report & Date-Filterable Sales Report with VAT breakdowns
+- [ ] Dynamic user-configurable Accounting Calendar & Period-End Books Closing mechanism
+- [ ] Configurable VAT on all services & medicines and Chart of Accounts category filtering
+- [ ] Auto-generated secure passwords on account creation & role management
+- [ ] Detailed Void Approval modal with line-item inspection & mandatory rejection reason
+- [ ] Comprehensive End-to-End testing across 3 distinct datasets covering all books and entries
 
 ## Phases
 
@@ -31,6 +34,27 @@
 **Objective**: Implement PDF payslip export for employees and automated GL journal entry posting upon payroll run approval.
 **Requirements**: REQ-07, REQ-08
 
+### Phase 5: BIR Compliance & Official Books of Accounts
+**Status**: 🟡 Ready for Execution
+**Objective**: Implement running totals for Cash Disbursements Journal (CDJ), dedicated Check Disbursement Report, date-filtered Sales Report with BIR-compliant VAT categorization, and auto-generated printable/PDF formats.
+**Requirements**: PANEL-CDJ-RUNNING-TOTAL, PANEL-CHECK-DISB-REPORT, PANEL-SALES-REPORT, PANEL-OBJ-3.3-BIR
 
+### Phase 6: Dynamic Accounting Calendar & Period-End Books Closing Engine
+**Status**: ⚪ Pending
+**Objective**: Develop dynamic user-configurable accounting calendar (fiscal/calendar years, open/lock periods) and automated period-end/year-end closing of temporary revenue/expense accounts to Retained Earnings.
+**Requirements**: PANEL-ACCTG-CALENDAR, PANEL-BOOK-CLOSING
 
+### Phase 7: Services & Medicines VAT Configuration & Account Category Filtering
+**Status**: ⚪ Pending
+**Objective**: Enable global and category-level VAT configuration across services and medicines. Refine Chart of Accounts filtering per transaction use case and expense voucher.
+**Requirements**: PANEL-VAT-SERVICES-MEDS, PANEL-FILTER-CATEGORY, PANEL-FILTER-EXPENSE
 
+### Phase 8: User Security, Role Management & Void Approvals Audit
+**Status**: ⚪ Pending
+**Objective**: Implement auto-generated passwords on user creation, dynamic role/permission management, itemized transaction inspection in void approvals, and mandatory rejection reason capture.
+**Requirements**: PANEL-AUTO-PASSWORD, PANEL-ROLE-MGMT, PANEL-VOID-APPROVAL-DETAILS
+
+### Phase 9: End-to-End Flow Verification & 3-Dataset Unit Testing Suite
+**Status**: ⚪ Pending
+**Objective**: Build comprehensive unit and integration testing suite validating complete accounting flows (Sales, Disbursements, HMO, Adjustments, Closing) across 3 distinct datasets.
+**Requirements**: PANEL-3-DATASETS, PANEL-UNIT-TEST-BOOKS, PANEL-DOUBLE-CHECK-FLOWS

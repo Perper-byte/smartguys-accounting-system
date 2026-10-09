@@ -1,23 +1,19 @@
 # Project State
 
-> **Last Updated**: 2026-10-02
+> **Last Updated**: 2026-10-09
 
 ## Current Position
-- **Milestone**: v1.0 — DOLE & Statutory Compliance Enhancements
-- **Active Task**: Statutory contributions dynamic auto-triggering on hours input
-- **Status**: Stable & Verified (`npm run build` exits 0)
+- **Milestone**: v2.0 — Defense Panel Compliance & Core Accounting Hardening
+- **Phase**: 5 (BIR Compliance & Official Books of Accounts)
+- **Task**: Planning complete
+- **Status**: Ready for execution
 
 ## Context Health: Snapshot
-- **Warning Indicators**: None active (no 3-strike failures, no circular loops, build passing cleanly).
+- **Warning Indicators**: None active. Jest unit tests and build passing cleanly.
 - **Recent Completed Items**:
-  1. Updated SSS, PhilHealth (5%), Pag-IBIG (₱200 cap), and BIR TRAIN withholding calculations to 2026 standards.
-  2. Fixed Prisma `systemSetting.update` validation crash.
-  3. Added Excel-like editable grid and modal for SSS contribution brackets.
-  4. Enabled toggling of statutory rate deductions.
-  5. Fixed statutory deductions (SSS, PhilHealth, Pag-IBIG, Tax) to dynamically auto-trigger once hours/earnings are input, staying at 0 when no hours are worked.
-- **Files Modified**:
-  - `src/renderer/src/components/payroll/PayrollGridTab.tsx`: Dynamic deduction triggering based on active hours/earnings.
-  - `src/main/services/payroll.service.ts`: Whitelisted schema fields on system setting updates.
-  - `src/renderer/src/components/payroll/DtrImportTab.tsx`: Range filtering and accurate hours mapping.
-  - `src/renderer/src/utils/statutory-rates.ts`: 2026 statutory rates and formulas.
-- **Next Steps**: User acceptance / review on payroll grid interaction.
+  1. Parsed defense panel comments from October 5, 2026 and cataloged into `.gsd/TODO.md`.
+  2. Researched Philippine accounting software architectures (JuanTax, Oojeema, Taxumo, SAP B1 PH) and BIR CAS regulations (RR 09-2009, RR 7-2024 EOPT Act).
+  3. Formulated Milestone v2.0 roadmap spanning Phases 5 through 9.
+  4. Authored atomic execution plans `5.1-PLAN.md`, `5.2-PLAN.md`, and `5.3-PLAN.md` for Phase 5.
+- **Next Steps**:
+  1. `/execute 5` — Execute Phase 5 plans (Cash Disbursements running totals, Check Disbursement report, date-filtered Sales Report, and official BIR printable formats).
