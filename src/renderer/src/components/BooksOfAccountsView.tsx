@@ -312,7 +312,7 @@ export function BooksOfAccountsView() {
                     <th className="p-4">Customer</th>
                     <th className="p-4 text-right">Vatable Sales (₱)</th>
                     <th className="p-4 text-right">VAT-Exempt Sales (₱)</th>
-                    <th className="p-4 text-right">Output Tax (₱)</th>
+                    <th className="p-4 text-right">Output Tax (12%) (₱)</th>
                     <th className="p-4 text-right">Total (₱)</th>
                     <th className="p-4 text-right pr-6">Running Total (₱)</th>
                   </tr>
