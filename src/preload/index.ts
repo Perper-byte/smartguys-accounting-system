@@ -81,6 +81,9 @@ export const api = {
   updatePayee: (id: string, data: any) => ipcRenderer.invoke('update-payee', id, data),
 
   // Services & Procedures (POS Items)
+  setAllServicesVat: (isVatable: boolean) => ipcRenderer.invoke('services:set-all-vat', isVatable),
+  setAllMedicinesVat: (isVatable: boolean) => ipcRenderer.invoke('medicines:set-all-vat', isVatable),
+  updateServiceVat: (id: number, isVatable: boolean) => ipcRenderer.invoke('services:update-vat', id, isVatable),
   getAllServiceItems: () => ipcRenderer.invoke('get-all-service-items'),
   createServiceItem: (data: any) => ipcRenderer.invoke('create-service-item', data),
   updateServiceItem: (id: number, data: any) => ipcRenderer.invoke('update-service-item', id, data),

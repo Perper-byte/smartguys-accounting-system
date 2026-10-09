@@ -58,6 +58,7 @@ model InventoryItem {
   stock     Int     @default(0) // The "Quantity On Hand"
   uom       String? @default("Pieces")
   is_active Boolean @default(true)
+  is_vatable Boolean @default(false) // 12% VAT flag
 
   logs InventoryLog[]
 
@@ -259,6 +260,7 @@ model ServiceItem {
   name      String  @db.VarChar(150)
   price     Decimal @default(0.00) @db.Decimal(15, 2)
   is_active Boolean @default(true)
+  is_vatable Boolean @default(false) // 12% VAT flag
 
   @@map("service_items")
 }
@@ -288,6 +290,9 @@ model SystemSetting {
   accounting_calendar String? @db.Text
   override_pin  String?   @db.VarChar(50) // ðŸ”¥ NEW: Admin Override PIN
   fiscal_year_start_month Int @default(1)
+
+  services_vatable Boolean @default(false)
+  medicines_vatable Boolean @default(false)
 
   // Dynamic Payroll Multipliers (Default Philippine DOLE standard multipliers)
   regular_ot_rate                        Decimal @default(1.25) @db.Decimal(5, 4)

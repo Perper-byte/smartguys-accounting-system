@@ -413,6 +413,65 @@ app.whenReady().then(() => {
   })
 
   // Services
+  ipcMain.handle('services:set-all-vat', async (e, isVatable: boolean) => {
+    try {
+      const settings = await prisma.systemSetting.findFirst()
+      if (settings) {
+        await prisma.systemSetting.update({
+          where: { id: settings.id },
+          data: { services_vatable: isVatable }
+        })
+      } else {
+        await prisma.systemSetting.create({
+          data: { services_vatable: isVatable }
+        })
+      }
+      await prisma.serviceItem.updateMany({
+        data: { is_vatable: isVatable }
+      })
+      await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Set ALL services VAT to: ${isVatable ? '12% VAT' : 'EXEMPT'}`)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('medicines:set-all-vat', async (e, isVatable: boolean) => {
+    try {
+      const settings = await prisma.systemSetting.findFirst()
+      if (settings) {
+        await prisma.systemSetting.update({
+          where: { id: settings.id },
+          data: { medicines_vatable: isVatable }
+        })
+      } else {
+        await prisma.systemSetting.create({
+          data: { medicines_vatable: isVatable }
+        })
+      }
+      await prisma.inventoryItem.updateMany({
+        data: { is_vatable: isVatable }
+      })
+      await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Set ALL medicines VAT to: ${isVatable ? '12% VAT' : 'EXEMPT'}`)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('services:update-vat', async (e, id: number, isVatable: boolean) => {
+    try {
+      await prisma.serviceItem.update({
+        where: { id },
+        data: { is_vatable: isVatable }
+      })
+      await AuditService.logAction('SYSTEM', 'SYSTEM CONFIG', `Updated service ID ${id} VAT to: ${isVatable ? '12% VAT' : 'EXEMPT'}`)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
   ipcMain.handle('get-all-service-items', async () => {
     try {
       return typeof LedgerService.getAllServiceItems === 'function'
