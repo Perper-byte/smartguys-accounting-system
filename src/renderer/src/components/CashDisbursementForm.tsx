@@ -79,6 +79,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
   const [lineItems, setLineItems] = useState<DisbursementLineItem[]>([
     { id: '1', accountId: '', description: '', amount: '', isVatable: false }
   ])
+  const [activeExpenseCategory, setActiveExpenseCategory] = useState<string>('All Applicable')
 
   // Section 3: Supporting Info
   const [remarks, setRemarks] = useState('')
@@ -282,6 +283,25 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
       cashAmount
     }
   }, [filteredHistoryVouchers])
+
+  const filteredExpenseAccounts = useMemo(() => {
+    return expenseAccounts.filter((acc) => {
+      if (activeExpenseCategory === 'All Applicable') return true
+      if (activeExpenseCategory === 'Operating Expenses (5xxx)') return acc.code.startsWith('5')
+      if (activeExpenseCategory === 'Medical Supplies (5010)') return acc.code === '5010' || acc.name.toLowerCase().includes('medical')
+      if (activeExpenseCategory === 'Utilities & Facilities') return acc.code === '5020' || acc.name.toLowerCase().includes('utilit') || acc.name.toLowerCase().includes('facilit')
+      if (activeExpenseCategory === 'Liabilities / Payables (2xxx)') return acc.code.startsWith('2')
+      if (activeExpenseCategory === 'Assets (1xxx)') return acc.code.startsWith('1')
+      return true
+    })
+  }, [expenseAccounts, activeExpenseCategory])
+
+  const groupedExpenseAccounts = useMemo(() => {
+    const expenses = filteredExpenseAccounts.filter(a => a.account_type?.name === 'Expense')
+    const liabilities = filteredExpenseAccounts.filter(a => a.account_type?.name === 'Liability')
+    const assets = filteredExpenseAccounts.filter(a => a.account_type?.name === 'Asset')
+    return { Expenses: expenses, Liabilities: liabilities, Assets: assets }
+  }, [filteredExpenseAccounts])
 
   // Only fetch sequence if a payment method is selected
   useEffect(() => {
@@ -883,6 +903,29 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                 </select>
               </div>
 
+              {/* Account Category Filter */}
+              <div className="mb-4">
+                <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-2">
+                  Distribution Account Filter
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {['All Applicable', 'Operating Expenses (5xxx)', 'Medical Supplies (5010)', 'Utilities & Facilities', 'Liabilities / Payables (2xxx)', 'Assets (1xxx)'].map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setActiveExpenseCategory(cat)}
+                      className={`px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider rounded-full transition cursor-pointer border ${
+                        activeExpenseCategory === cat
+                          ? 'bg-[#1B9387] text-white border-[#1B9387] shadow-sm'
+                          : 'bg-white text-gray-500 border-gray-200 hover:bg-[#FBF8F8]'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Line Items Table */}
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
@@ -931,11 +974,33 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                                 <option value="" disabled className="text-gray-400 font-normal">
                                   -- Select Account --
                                 </option>
-                                {expenseAccounts.map((acc) => (
-                                  <option key={acc.code} value={acc.code}>
-                                    {acc.code} - {acc.name}
-                                  </option>
-                                ))}
+                                {groupedExpenseAccounts.Expenses.length > 0 && (
+                                  <optgroup label="Expenses">
+                                    {groupedExpenseAccounts.Expenses.map((acc) => (
+                                      <option key={acc.code} value={acc.code}>
+                                        {acc.code} - {acc.name}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {groupedExpenseAccounts.Liabilities.length > 0 && (
+                                  <optgroup label="Liabilities">
+                                    {groupedExpenseAccounts.Liabilities.map((acc) => (
+                                      <option key={acc.code} value={acc.code}>
+                                        {acc.code} - {acc.name}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
+                                {groupedExpenseAccounts.Assets.length > 0 && (
+                                  <optgroup label="Assets">
+                                    {groupedExpenseAccounts.Assets.map((acc) => (
+                                      <option key={acc.code} value={acc.code}>
+                                        {acc.code} - {acc.name}
+                                      </option>
+                                    ))}
+                                  </optgroup>
+                                )}
                               </select>
                             </td>
                             <td className="py-3 px-3">
