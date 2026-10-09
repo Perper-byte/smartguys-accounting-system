@@ -184,4 +184,170 @@ export class AccountingPeriodService {
         }
         return false;
     }
+    static async closePeriod(year: number, periodNumber: number, userId: string): Promise<void> {
+        const calendar = await this.getCalendar(year);
+        const period = calendar.find(p => p.periodNumber === periodNumber);
+        
+        if (!period) throw new Error('Period not found');
+        if (period.status === 'CLOSED') throw new Error('Period is already closed');
+
+        const startDate = new Date(period.startDate);
+        const endDate = new Date(period.endDate);
+
+        // Fetch all lines in the period for Revenue/Expense
+        const lines = await prisma.journalLine.findMany({
+            where: {
+                entry: { date: { gte: startDate, lte: endDate }, status: 'ACTIVE' },
+                account: { account_type: { name: { in: ['Revenue', 'Expenses'] } } }
+            },
+            include: { account: { include: { account_type: true } } }
+        });
+
+        // Calculate balances per account
+        const accountBalances: Record<string, { type: string; balance: number }> = {};
+        let totalRevenue = 0;
+        let totalExpense = 0;
+
+        for (const line of lines) {
+            const accId = line.account_id;
+            if (!accountBalances[accId]) {
+                accountBalances[accId] = { type: line.account.account_type.name, balance: 0 };
+            }
+            if (line.account.account_type.name === 'Revenue') {
+                const amt = Number(line.credit) - Number(line.debit);
+                accountBalances[accId].balance += amt;
+                totalRevenue += amt;
+            } else if (line.account.account_type.name === 'Expenses') {
+                const amt = Number(line.debit) - Number(line.credit);
+                accountBalances[accId].balance += amt;
+                totalExpense += amt;
+            }
+        }
+
+        const netIncome = totalRevenue - totalExpense;
+
+        const closingLines: { accountId: string; debit: number; credit: number }[] = [];
+        let totalDebits = 0;
+        let totalCredits = 0;
+
+        for (const [accId, data] of Object.entries(accountBalances)) {
+            if (data.balance === 0) continue;
+
+            if (data.type === 'Revenue') {
+                if (data.balance > 0) {
+                    closingLines.push({ accountId: accId, debit: data.balance, credit: 0 });
+                    totalDebits += data.balance;
+                } else {
+                    closingLines.push({ accountId: accId, debit: 0, credit: Math.abs(data.balance) });
+                    totalCredits += Math.abs(data.balance);
+                }
+            } else if (data.type === 'Expenses') {
+                if (data.balance > 0) {
+                    closingLines.push({ accountId: accId, debit: 0, credit: data.balance });
+                    totalCredits += data.balance;
+                } else {
+                    closingLines.push({ accountId: accId, debit: Math.abs(data.balance), credit: 0 });
+                    totalDebits += Math.abs(data.balance);
+                }
+            }
+        }
+
+        // Close to Retained Earnings (Owner's Capital '3010')
+        if (netIncome > 0) {
+            closingLines.push({ accountId: '3010', debit: 0, credit: netIncome });
+            totalCredits += netIncome;
+        } else if (netIncome < 0) {
+            closingLines.push({ accountId: '3010', debit: Math.abs(netIncome), credit: 0 });
+            totalDebits += Math.abs(netIncome);
+        }
+
+        // Strict balance check (allowing small floating point diffs just in case, but should be exact)
+        if (Math.abs(totalDebits - totalCredits) > 0.005) {
+            throw new Error(`Closing entries do not balance: Debits ${totalDebits} vs Credits ${totalCredits}`);
+        }
+
+        let entryId: string | undefined;
+
+        if (closingLines.length > 0) {
+            const entry = await prisma.journalEntry.create({
+                data: {
+                    date: endDate,
+                    reference_no: `CLOSE-${year}-P${periodNumber}`,
+                    description: `Period-End Closing Entry for Period ${periodNumber} (${year})`,
+                    user_id: userId,
+                    vat_type: 'EXEMPT',
+                    lines: {
+                        create: closingLines.map(l => ({
+                            account_id: l.accountId,
+                            debit: l.debit,
+                            credit: l.credit
+                        }))
+                    }
+                }
+            });
+            entryId = entry.id;
+        }
+
+        // Update period status
+        let setting = await prisma.systemSetting.findFirst();
+        if (!setting) {
+            setting = await prisma.systemSetting.create({ data: {} });
+        }
+        
+        let allPeriods: AccountingPeriod[] = setting.accounting_calendar ? JSON.parse(setting.accounting_calendar) : [];
+        let p = allPeriods.find(p => p.year === year && p.periodNumber === periodNumber);
+        if (!p) {
+            p = { ...period };
+            allPeriods.push(p);
+        }
+        
+        p.status = 'CLOSED';
+        p.closedAt = new Date().toISOString();
+        p.closedBy = userId;
+        p.closingEntryId = entryId;
+        
+        await prisma.systemSetting.update({
+            where: { id: setting.id },
+            data: { accounting_calendar: JSON.stringify(allPeriods) }
+        });
+        
+        await AuditService.logAction(userId, 'PERIOD_MANAGEMENT', `Closed period ${periodNumber} of ${year} with net income ${netIncome}`);
+    }
+
+    static async reopenPeriod(year: number, periodNumber: number, userId: string, managerPin: string): Promise<void> {
+        const { LedgerService } = require('./ledger.service');
+        const pinCheck = await LedgerService.verifyManagerPin(managerPin);
+        if (!pinCheck.success) {
+            throw new Error(pinCheck.error);
+        }
+
+        const setting = await prisma.systemSetting.findFirst();
+        if (!setting || !setting.accounting_calendar) {
+            throw new Error('No accounting calendar found');
+        }
+
+        const allPeriods: AccountingPeriod[] = JSON.parse(setting.accounting_calendar);
+        const period = allPeriods.find(p => p.year === year && p.periodNumber === periodNumber);
+
+        if (!period) throw new Error('Period not found');
+        if (period.status !== 'CLOSED') throw new Error('Period is not closed');
+
+        if (period.closingEntryId) {
+            // Delete the closing entry completely
+            await prisma.journalLine.deleteMany({ where: { entry_id: period.closingEntryId } });
+            await prisma.journalEntry.delete({ where: { id: period.closingEntryId } });
+        }
+
+        period.status = 'OPEN';
+        period.closedAt = undefined;
+        period.closedBy = undefined;
+        period.closingEntryId = undefined;
+
+        await prisma.systemSetting.update({
+            where: { id: setting.id },
+            data: { accounting_calendar: JSON.stringify(allPeriods) }
+        });
+
+        await AuditService.logAction(userId, 'REOPEN_PERIOD', `Reopened period ${periodNumber} of ${year}`);
+    }
 }

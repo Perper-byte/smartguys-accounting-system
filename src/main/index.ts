@@ -1559,6 +1559,22 @@ app.whenReady().then(() => {
     await AccountingPeriodService.updatePeriodStatus(year, period, status, userId)
     return { success: true }
   })
+  ipcMain.handle('calendar:close-period', async (e, year, period, userId) => {
+    try {
+      await AccountingPeriodService.closePeriod(year, period, userId)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+  ipcMain.handle('calendar:reopen-period', async (e, year, period, userId, managerPin) => {
+    try {
+      await AccountingPeriodService.reopenPeriod(year, period, userId, managerPin)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
   ipcMain.handle('config:getServerIp', () => {
     const configPath = path.join(app.getPath('userData'), 'server-config.json')
     if (fs.existsSync(configPath)) {

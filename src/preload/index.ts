@@ -177,6 +177,10 @@ export const api = {
   getCalendar: (year?: number) => ipcRenderer.invoke('calendar:get', year),
   updatePeriodStatus: (year: number, period: number, status: string, userId: string) =>
     ipcRenderer.invoke('calendar:update-status', year, period, status, userId),
+  closePeriod: (year: number, period: number, userId: string) =>
+    ipcRenderer.invoke('calendar:close-period', year, period, userId),
+  reopenPeriod: (year: number, period: number, userId: string, managerPin: string) =>
+    ipcRenderer.invoke('calendar:reopen-period', year, period, userId, managerPin),
 
   // Backups & Tax
   triggerBackup: () => ipcRenderer.invoke('backup:triggerBackup'),
