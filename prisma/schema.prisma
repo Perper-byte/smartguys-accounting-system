@@ -316,7 +316,7 @@ model Payslip {
   reference_no     String   @db.VarChar(100)
 
   // Earnings
-  base_pay       Decimal @default(0.00) @db.Decimal(15, 2)
+  base_pay Decimal @default(0.00) @db.Decimal(15, 2)
 
   overtime       Decimal @default(0.00) @db.Decimal(15, 2)
   night_diff     Decimal @default(0.00) @db.Decimal(15, 2)

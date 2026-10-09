@@ -66,3 +66,4 @@ Periods are stored in `SystemSetting.accounting_calendar` JSON or dedicated peri
 ### Plan 6.3: Accounting Calendar UI & Period Closing Management Interface
 - Enhance `SystemSettingsView.tsx` with an interactive "Accounting Calendar & Period Closing" tab.
 - Visual grid of the 12 fiscal periods showing date ranges, period status badge (`OPEN`, `LOCKED`, `CLOSED`), net income preview, and "Close Books" / "Reopen" action buttons with confirmation modals.
+

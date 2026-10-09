@@ -19,6 +19,7 @@ import { TaxService } from './services/tax.service'
 import { BackupService } from './services/backup.service'
 import { ReportsService, resolvePeriodDateRange } from './services/reports.service'
 import { LedgerService } from './services/ledger.service'
+import { AccountingPeriodService } from './services/accounting-period.service'
 import { ExportService } from './services/export.service'
 import { AuthService } from './services/auth.service'
 import { UserService } from './services/user.service'
@@ -1553,6 +1554,11 @@ app.whenReady().then(() => {
   // Settings & System
   ipcMain.handle('get-lock-date', async () => await LedgerService.getLockDate())
   ipcMain.handle('set-lock-date', async (_, data) => await LedgerService.setLockDate(data))
+  ipcMain.handle('calendar:get', async (e, year) => await AccountingPeriodService.getCalendar(year))
+  ipcMain.handle('calendar:update-status', async (e, year, period, status, userId) => {
+    await AccountingPeriodService.updatePeriodStatus(year, period, status, userId)
+    return { success: true }
+  })
   ipcMain.handle('config:getServerIp', () => {
     const configPath = path.join(app.getPath('userData'), 'server-config.json')
     if (fs.existsSync(configPath)) {
