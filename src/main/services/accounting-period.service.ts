@@ -1,4 +1,5 @@
-import { prisma } from '../env'
+import { PrismaClient } from '@prisma/client'
+const prisma = new PrismaClient()
 import { AuditService } from './audit.service'
 
 export type PeriodStatus = 'OPEN' | 'LOCKED' | 'CLOSED';

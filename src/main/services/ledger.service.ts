@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { cleanDescription } from '../../shared/formatters';
+import { AccountingPeriodService } from './accounting-period.service';
 
 const prisma = new PrismaClient();
 
@@ -35,6 +36,14 @@ export type JournalEntryInput = {
     attachments?: Array<{ name?: string; type?: string; size?: number; data?: string; fileName?: string; fileType?: string; fileData?: string }>;
     overridePin?: string; // 🔥 NEW
 };
+
+
+async function checkPeriodClosed(date: Date) {
+    const isClosed = await AccountingPeriodService.isDateInClosedPeriod(date);
+    if (isClosed) {
+        throw new Error("PERIOD CLOSED: Accounting period for this date is CLOSED. Transactions cannot be posted or modified in a closed period.");
+    }
+}
 
 export const LedgerService = {
 
@@ -403,6 +412,7 @@ export const LedgerService = {
     // 🔥 UPGRADED: Added Month-End Lock Security Check
     async createJournalEntry(data: JournalEntryInput) {
         const entryDate = new Date(data.date);
+        await checkPeriodClosed(entryDate);
 
         // 1. Check Lock Date & PIN
         const setting = await prisma.systemSetting.findFirst();
@@ -457,6 +467,7 @@ export const LedgerService = {
         try {
             const setting = await prisma.systemSetting.findFirst();
             const entryDate = new Date(data.date);
+            await checkPeriodClosed(entryDate);
             if (setting?.lock_date && entryDate <= setting.lock_date) {
                 if (!verifyPinMatch(data.overridePin, setting.override_pin)) {
                     throw new Error(`PERIOD LOCKED: Transaction is from a locked period on or before ${setting.lock_date.toISOString().split('T')[0]}. Invalid or missing Override PIN.`);
@@ -890,6 +901,7 @@ export const LedgerService = {
     async approveVoid(entryId: string, managerId: string, overridePin?: string) {
         // 🔥 Includes reconciliation to check if it's matched to a bank feed
         const original = await prisma.journalEntry.findUnique({ where: { id: entryId }, include: { lines: true, reconciliation: true } });
+        if (original) await checkPeriodClosed(new Date(original.date));
         if (!original) throw new Error("Entry not found.");
 
         // 🔥 SAFEGUARD 1: RECONCILIATION LOCK
@@ -1196,6 +1208,7 @@ export const LedgerService = {
     async acknowledgeCashierDisbursement(entryId: string, acknowledgedBy: string = 'Accountant', note?: string) {
         try {
             const entry = await prisma.journalEntry.findUnique({ where: { id: entryId } });
+        if (entry) await checkPeriodClosed(new Date(entry.date));
             if (!entry) throw new Error("Voucher not found");
 
             const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
