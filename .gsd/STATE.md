@@ -4,17 +4,15 @@
 
 ## Current Position
 - **Milestone**: v2.0 — Defense Panel Compliance & Core Accounting Hardening
-- **Phase**: 5 (BIR Compliance & Official Books of Accounts) — COMPLETED & VERIFIED
-- **Status**: Stable & Verified (`npm run build` exits 0, all Jest tests pass)
+- **Phase**: 6 (Dynamic Accounting Calendar & Period-End Books Closing Engine)
+- **Task**: Planning complete
+- **Status**: Ready for execution
 
 ## Context Health: Snapshot
-- **Warning Indicators**: None. Jest tests passing cleanly.
-- **Recent Completed Items (Phase 5)**:
-  1. Cash Disbursements Journal running totals calculation in `ReportsService.getBooksOfAccounts`.
-  2. Dedicated `ReportsService.getCheckDisbursementReport` with Check No., Bank, Gross, EWT, Net Check, and running balances.
-  3. Date-filtered `ReportsService.getSalesReport` with 12% Vatable Sales, VAT-Exempt Sales, Output Tax, Senior/PWD discounts, and Net AR/Collections.
-  4. Official BIR CAS taxpayer header formatter with clinic registered details (TIN, RDO 057, Address).
-  5. UI enhancements in `BooksOfAccountsView.tsx` with dedicated Check Disbursements tab, running total column, date filters, and 1-click printable layout.
-  6. Independent verification by `gsd-verifier` passed.
+- **Warning Indicators**: None. Jest unit tests and build passing cleanly.
+- **Recent Completed Items**:
+  1. Completed Phase 5 with running totals on CDJ, Check Disbursements report, date-filtered Sales Report, and official BIR printable formats.
+  2. Researched dynamic accounting calendar architecture and PFRS period-end books closing rules ([.gsd/phases/6/RESEARCH.md](file:///c:/Users/MY%20PC/Desktop/lol/smartguys-accounting-system/.gsd/phases/6/RESEARCH.md)).
+  3. Created atomic execution plans `6.1-PLAN.md`, `6.2-PLAN.md`, and `6.3-PLAN.md`.
 - **Next Steps**:
-  1. `/plan 6` — Plan Phase 6: Dynamic Accounting Calendar & Period-End Books Closing Engine.
+  1. `/execute 6` — Execute Phase 6 plans (Accounting Calendar, Period Guards, Books Closing Engine to Retained Earnings, and Calendar Management UI).
