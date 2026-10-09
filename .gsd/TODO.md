@@ -10,7 +10,7 @@
 ### Sheet 1 (Panel: Joseph Cartagena)
 - [ ] Auto-generate password when user account is created `high` — 2026-10-09
 - [ ] Implement role management `high` — 2026-10-09
-- [ ] Add expense filtering `high` — 2026-10-09
+- [x] Add expense filtering `high` — 2026-10-09
 - [x] Implement/verify Check Disbursement report `high` — 2026-10-09
 - [x] Define accounting calendar `high` — 2026-10-09
 - [x] Implement closing book of accounts / period-end closing `high` — 2026-10-09
@@ -28,8 +28,8 @@
 
 ### Sheet 3 (Panel: Darwin Cyril C. Turingan)
 - [ ] Role management must exist for user and role `high` — 2026-10-09
-- [ ] VAT configuration for services and medicines can be set on all items `high` — 2026-10-09
-- [ ] Properly filter account categories per use / transaction type `high` — 2026-10-09
+- [x] VAT configuration for services and medicines can be set on all items `high` — 2026-10-09
+- [x] Properly filter account categories per use / transaction type `high` — 2026-10-09
 - [ ] End-to-end verification of accounting flow from start to finish `high` — 2026-10-09
 - [x] Dynamic accounting calendar configurable by user `high` — 2026-10-09
 - [ ] Unit testing on all book computations and reports `high` — 2026-10-09
