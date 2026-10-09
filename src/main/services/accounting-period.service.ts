@@ -32,16 +32,20 @@ export class AccountingPeriodService {
             }
         }
 
+        const startMonth = (setting?.fiscal_year_start_month || 1) - 1;
+
         // Generate 12 months if missing
         if (calendar.length === 0) {
             calendar = Array.from({ length: 12 }).map((_, i) => {
-                const month = i;
-                const startDate = new Date(targetYear, month, 1);
-                const endDate = new Date(targetYear, month + 1, 0, 23, 59, 59, 999);
+                const monthOffset = startMonth + i;
+                const actualYear = targetYear + Math.floor(monthOffset / 12);
+                const actualMonth = monthOffset % 12;
+                const startDate = new Date(actualYear, actualMonth, 1);
+                const endDate = new Date(actualYear, actualMonth + 1, 0, 23, 59, 59, 999);
                 return {
                     year: targetYear,
                     periodNumber: i + 1,
-                    name: startDate.toLocaleString('en-US', { month: 'long' }) + ' ' + targetYear,
+                    name: startDate.toLocaleString('en-US', { month: 'long' }) + ' ' + actualYear,
                     startDate: startDate.toISOString(),
                     endDate: endDate.toISOString(),
                     status: 'OPEN'
@@ -51,13 +55,15 @@ export class AccountingPeriodService {
             // Fill in missing periods if calendar exists but is incomplete
             for (let i = 0; i < 12; i++) {
                 if (!calendar.find(p => p.periodNumber === i + 1)) {
-                    const month = i;
-                    const startDate = new Date(targetYear, month, 1);
-                    const endDate = new Date(targetYear, month + 1, 0, 23, 59, 59, 999);
+                    const monthOffset = startMonth + i;
+                    const actualYear = targetYear + Math.floor(monthOffset / 12);
+                    const actualMonth = monthOffset % 12;
+                    const startDate = new Date(actualYear, actualMonth, 1);
+                    const endDate = new Date(actualYear, actualMonth + 1, 0, 23, 59, 59, 999);
                     calendar.push({
                         year: targetYear,
                         periodNumber: i + 1,
-                        name: startDate.toLocaleString('en-US', { month: 'long' }) + ' ' + targetYear,
+                        name: startDate.toLocaleString('en-US', { month: 'long' }) + ' ' + actualYear,
                         startDate: startDate.toISOString(),
                         endDate: endDate.toISOString(),
                         status: 'OPEN'
@@ -67,13 +73,19 @@ export class AccountingPeriodService {
             calendar.sort((a, b) => a.periodNumber - b.periodNumber);
         }
 
+        const fiscalStart = new Date(targetYear + Math.floor(startMonth / 12), startMonth % 12, 1);
+        const endMonthOffset = startMonth + 11;
+        const endYear = targetYear + Math.floor(endMonthOffset / 12);
+        const endMonth = endMonthOffset % 12;
+        const fiscalEnd = new Date(endYear, endMonth + 1, 0, 23, 59, 59, 999);
+
         // Fetch all revenue and expense lines for the target year
         const lines = await prisma.journalLine.findMany({
             where: {
                 entry: {
                     date: {
-                        gte: new Date(targetYear, 0, 1),
-                        lte: new Date(targetYear, 11, 31, 23, 59, 59, 999)
+                        gte: fiscalStart,
+                        lte: fiscalEnd
                     }
                 },
                 account: {
@@ -136,12 +148,16 @@ export class AccountingPeriodService {
         // Ensure standard bounds for the requested period if missing
         let period = allPeriods.find(p => p.year === year && p.periodNumber === periodNumber);
         if (!period) {
-            const startDate = new Date(year, periodNumber - 1, 1);
-            const endDate = new Date(year, periodNumber, 0, 23, 59, 59, 999);
+            const startMonth = (setting.fiscal_year_start_month || 1) - 1;
+            const monthOffset = startMonth + (periodNumber - 1);
+            const actualYear = year + Math.floor(monthOffset / 12);
+            const actualMonth = monthOffset % 12;
+            const startDate = new Date(actualYear, actualMonth, 1);
+            const endDate = new Date(actualYear, actualMonth + 1, 0, 23, 59, 59, 999);
             period = {
                 year,
                 periodNumber,
-                name: startDate.toLocaleString('en-US', { month: 'long' }) + ' ' + year,
+                name: startDate.toLocaleString('en-US', { month: 'long' }) + ' ' + actualYear,
                 startDate: startDate.toISOString(),
                 endDate: endDate.toISOString(),
                 status: 'OPEN'
@@ -169,12 +185,25 @@ export class AccountingPeriodService {
 
     static async isDateInClosedPeriod(date: Date): Promise<boolean> {
         const year = date.getFullYear();
-        const month = date.getMonth() + 1; // 1-12
+        const month = date.getMonth(); // 0-11
         const setting = await prisma.systemSetting.findFirst();
+        const startMonth = (setting?.fiscal_year_start_month || 1) - 1;
+        
+        let fiscalYear = year;
+        let periodNumber = 0;
+        
+        if (month >= startMonth) {
+            fiscalYear = year;
+            periodNumber = month - startMonth + 1;
+        } else {
+            fiscalYear = year - 1;
+            periodNumber = (12 - startMonth) + month + 1;
+        }
+
         if (setting?.accounting_calendar) {
             try {
                 const allPeriods: AccountingPeriod[] = JSON.parse(setting.accounting_calendar);
-                const period = allPeriods.find(p => p.year === year && p.periodNumber === month);
+                const period = allPeriods.find(p => p.year === fiscalYear && p.periodNumber === periodNumber);
                 if (period && period.status === 'CLOSED') {
                     return true;
                 }

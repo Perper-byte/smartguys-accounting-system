@@ -257,6 +257,8 @@ function AccountingCalendarTab({
   const [year, setYear] = useState<number>(new Date().getFullYear())
   const [periods, setPeriods] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
+  const [fiscalYearStartMonth, setFiscalYearStartMonth] = useState<number>(1)
+  const [originalFiscalYearStartMonth, setOriginalFiscalYearStartMonth] = useState<number>(1)
 
   // Modals
   const [closeModalPeriod, setCloseModalPeriod] = useState<any | null>(null)
@@ -267,8 +269,32 @@ function AccountingCalendarTab({
     setLoading(true)
     try {
       const api = (window as any).api || (window as any).electronAPI
-      const res = await api.getCalendar(year)
-      setPeriods(res || [])
+      const [calendarRes, lockRes] = await Promise.all([
+        api.getCalendar(year),
+        api.getLockDate()
+      ])
+      setPeriods(calendarRes || [])
+      if (lockRes?.fiscalYearStartMonth) {
+        setFiscalYearStartMonth(lockRes.fiscalYearStartMonth)
+        setOriginalFiscalYearStartMonth(lockRes.fiscalYearStartMonth)
+      }
+    } catch (error: any) {
+      setGlobalStatus({ type: 'error', msg: error.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSaveStartMonth = async () => {
+    setLoading(true)
+    try {
+      const api = (window as any).api || (window as any).electronAPI
+      const result = await api.setLockDate({ fiscalYearStartMonth })
+      if (result.success) {
+        setOriginalFiscalYearStartMonth(fiscalYearStartMonth)
+        setGlobalStatus({ type: 'success', msg: 'Fiscal year setting updated successfully!' })
+        fetchCalendar()
+      }
     } catch (error: any) {
       setGlobalStatus({ type: 'error', msg: error.message })
     } finally {
@@ -324,6 +350,30 @@ function AccountingCalendarTab({
         <div>
           <h3 className="text-lg font-extrabold text-gray-800">Fiscal Year</h3>
           <p className="text-sm text-gray-500 font-medium">Manage monthly books closing and view period summaries.</p>
+        </div>
+        <div className="flex gap-4 items-center">
+          <div className="flex flex-col">
+            <label className="text-[10px] font-bold text-gray-500 uppercase">Start Month</label>
+            <select
+              value={fiscalYearStartMonth}
+              onChange={(e) => setFiscalYearStartMonth(Number(e.target.value))}
+              className="border border-gray-300 rounded-md p-2 font-bold text-gray-800 focus:border-[#1B9387] outline-none text-sm"
+            >
+              {Array.from({ length: 12 }).map((_, i) => (
+                <option key={i + 1} value={i + 1}>
+                  {new Date(0, i).toLocaleString('en-US', { month: 'long' })}
+                </option>
+              ))}
+            </select>
+          </div>
+          {fiscalYearStartMonth !== originalFiscalYearStartMonth && (
+            <button
+              onClick={handleSaveStartMonth}
+              className="mt-4 p-2 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-md transition text-sm font-bold"
+            >
+              <Save size={16} />
+            </button>
+          )}
         </div>
         <div className="flex gap-4 items-center">
           <select

@@ -71,11 +71,12 @@ export const LedgerService = {
         return {
             lockDate: setting?.lock_date ? setting.lock_date.toISOString() : null,
             autoLockDay: setting?.auto_lock_day || null,
-            hasOverridePin: !!setting?.override_pin
+            hasOverridePin: !!setting?.override_pin,
+            fiscalYearStartMonth: setting?.fiscal_year_start_month || 1
         };
     },
 
-    async setLockDate(data: { lockDate: string | null, autoLockDay: number | null, overridePin: string | null }) {
+    async setLockDate(data: { lockDate?: string | null, autoLockDay?: number | null, overridePin?: string | null, fiscalYearStartMonth?: number }) {
         let setting = await prisma.systemSetting.findFirst();
         let pinToStore = setting?.override_pin || null;
 
@@ -92,19 +93,22 @@ export const LedgerService = {
         if (!setting) {
             setting = await prisma.systemSetting.create({
                 data: {
-                    lock_date: data.lockDate ? new Date(data.lockDate) : null,
-                    auto_lock_day: data.autoLockDay,
-                    override_pin: pinToStore
+                    lock_date: data.lockDate !== undefined ? (data.lockDate ? new Date(data.lockDate) : null) : null,
+                    auto_lock_day: data.autoLockDay !== undefined ? data.autoLockDay : null,
+                    override_pin: pinToStore,
+                    fiscal_year_start_month: data.fiscalYearStartMonth !== undefined ? data.fiscalYearStartMonth : 1
                 }
             });
         } else {
+            const updateData: any = {};
+            if (data.lockDate !== undefined) updateData.lock_date = data.lockDate ? new Date(data.lockDate) : null;
+            if (data.autoLockDay !== undefined) updateData.auto_lock_day = data.autoLockDay;
+            if (data.overridePin !== undefined) updateData.override_pin = pinToStore;
+            if (data.fiscalYearStartMonth !== undefined) updateData.fiscal_year_start_month = data.fiscalYearStartMonth;
+
             setting = await prisma.systemSetting.update({
                 where: { id: setting.id },
-                data: {
-                    lock_date: data.lockDate ? new Date(data.lockDate) : null,
-                    auto_lock_day: data.autoLockDay,
-                    override_pin: pinToStore
-                }
+                data: updateData
             });
         }
         return { success: true };
