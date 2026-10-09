@@ -976,4 +976,92 @@ export class ReportsService {
       netIncreaseInCash: Number(netIncreaseInCash.toFixed(2))
     }
   }
+
+  static getReportHeader(bookTitle: string, startDate?: string | Date, endDate?: string | Date) {
+    return {
+      businessName: 'SMARTGUYS COMMUNITY HEALTHCARE INC.',
+      tin: '000-000-000-000',
+      rdo: '057',
+      address: 'Katapatan Mutual Homes, Brgy. Banay-banay, City of Cabuyao, Laguna 4025',
+      taxStatus: 'VAT Registered',
+      bookTitle,
+      startDate: startDate ? new Date(startDate).toISOString() : null,
+      endDate: endDate ? new Date(endDate).toISOString() : null
+    }
+  }
+
+  static async getSalesReport(startDateStr: string, endDateStr: string) {
+    const startDate = new Date(startDateStr)
+    startDate.setHours(0, 0, 0, 0)
+    const endDate = new Date(endDateStr)
+    endDate.setHours(23, 59, 59, 999)
+
+    const entries = await prisma.journalEntry.findMany({
+      where: {
+        date: { gte: startDate, lte: endDate },
+        OR: [
+          { reference_no: { startsWith: 'INV-' } },
+          { reference_no: { startsWith: 'SYS-' } },
+          { lines: { some: { account_id: { in: ['4010', '4020', '4040', '1200'] } } } }
+        ],
+        status: { not: 'VOIDED' }
+      },
+      include: { lines: { include: { account: true } }, payee: true },
+      orderBy: { date: 'asc' }
+    })
+
+    const report: any[] = []
+    let cumulativeSalesTotal = 0
+
+    for (const entry of entries) {
+      let grossSalesAmount = 0
+      let vatableSales = 0
+      let vatExemptSales = 0
+      let zeroRatedSales = 0
+      let outputVat = 0
+      let discounts = 0
+      let netAROrCash = 0
+
+      for (const line of entry.lines) {
+        if (['4010', '4020', '4040'].includes(line.account_id)) {
+          grossSalesAmount += Number(line.credit)
+        }
+        if (line.account_id === '2020') {
+          outputVat += Number(line.credit)
+        }
+        if (line.account_id === '4030') {
+          discounts += Number(line.debit)
+        }
+        if (['1010', '1020', '1030', '1200'].includes(line.account_id)) {
+          netAROrCash += Number(line.debit)
+        }
+      }
+
+      if (outputVat > 0) {
+        vatableSales = Number((grossSalesAmount / 1.12).toFixed(2))
+      } else {
+        vatExemptSales = grossSalesAmount
+      }
+
+      cumulativeSalesTotal += grossSalesAmount
+
+      report.push({
+        date: entry.date,
+        referenceNo: entry.reference_no,
+        payeeName: entry.payee?.name || 'Walk-in / Cash',
+        payeeTin: entry.payee?.tin || '',
+        description: cleanDescription(entry.description),
+        grossSalesAmount,
+        vatableSales,
+        vatExemptSales,
+        zeroRatedSales,
+        outputVat,
+        discounts,
+        netAROrCash,
+        cumulativeSalesTotal
+      })
+    }
+
+    return report
+  }
 }

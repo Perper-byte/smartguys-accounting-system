@@ -65,3 +65,41 @@ describe('Phase 5: CDJ and Check Disbursements', () => {
     expect(report.length).toBe(0)
   })
 })
+
+describe('Phase 5.2: Sales Report & BIR Metadata', () => {
+  test('getSalesReport accurately segregates vatable vs exempt sales and provides cumulative sales totals', async () => {
+    const report = await ReportsService.getSalesReport('2000-01-01', '2100-01-01')
+    expect(Array.isArray(report)).toBe(true)
+    
+    if (report.length > 0) {
+      let expectedRunning = 0
+      for (const row of report) {
+        expect(row).toHaveProperty('grossSalesAmount')
+        expect(row).toHaveProperty('vatableSales')
+        expect(row).toHaveProperty('vatExemptSales')
+        
+        expectedRunning += row.grossSalesAmount
+        expect(row.cumulativeSalesTotal).toBe(expectedRunning)
+        
+        if (row.outputVat > 0) {
+          expect(row.vatableSales).toBe(Number((row.grossSalesAmount / 1.12).toFixed(2)))
+        } else {
+          expect(row.vatExemptSales).toBe(row.grossSalesAmount)
+        }
+      }
+    }
+  })
+
+  test('getReportHeader produces official taxpayer header structure', () => {
+    const header = ReportsService.getReportHeader('Sales Book', '2026-01-01', '2026-12-31')
+    expect(header).toMatchObject({
+      businessName: 'SMARTGUYS COMMUNITY HEALTHCARE INC.',
+      tin: '000-000-000-000',
+      rdo: '057',
+      taxStatus: 'VAT Registered',
+      bookTitle: 'Sales Book'
+    })
+    expect(header.startDate).toBeTruthy()
+    expect(header.endDate).toBeTruthy()
+  })
+})

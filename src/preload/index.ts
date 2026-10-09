@@ -124,6 +124,8 @@ export const api = {
     ipcRenderer.invoke('get-books-of-accounts', bookType, startDate, endDate),
   getCheckDisbursementReport: (startDate: string, endDate: string) =>
     ipcRenderer.invoke('reports:get-check-disbursements', startDate, endDate),
+  getSalesReport: (startDate: string, endDate: string) =>
+    ipcRenderer.invoke('reports:get-sales-report', startDate, endDate),
   getAgedReceivables: () => ipcRenderer.invoke('get-aged-receivables'),
   getAgedPayables: () => ipcRenderer.invoke('get-aged-payables'),
   getInvoiceTracker: () => ipcRenderer.invoke('get-invoice-tracker'),
