@@ -413,9 +413,9 @@ function AccountingCalendarTab({
             >
               <div>
                 <div className="flex justify-between items-center mb-2">
-                  <h4 className="font-extrabold text-gray-800 text-lg">{period.periodName}</h4>
+                  <h4 className="font-extrabold text-gray-800 text-base">{period.periodName || period.name}</h4>
                   <span
-                    className={`px-2 py-1 rounded text-[10px] font-black tracking-wider uppercase ${
+                    className={`px-2 py-0.5 rounded text-[10px] font-black tracking-wider uppercase ${
                       period.status === 'OPEN'
                         ? 'bg-emerald-100 text-emerald-700'
                         : period.status === 'LOCKED'
@@ -426,23 +426,27 @@ function AccountingCalendarTab({
                     {period.status}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 font-bold mb-4">
+                <p className="text-xs text-gray-500 font-bold mb-3">
                   {new Date(period.startDate).toLocaleDateString()} - {new Date(period.endDate).toLocaleDateString()}
                 </p>
 
                 <div className="space-y-1 mb-4 border-t pt-2 border-gray-100">
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Revenue:</span>
-                    <span className="font-bold text-emerald-600">₱{(period.totalRevenue || 0).toLocaleString()}</span>
+                    <span className="text-gray-500 font-medium">Revenue:</span>
+                    <span className="font-bold text-emerald-600">
+                      ₱{(period.totalRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
                   </div>
                   <div className="flex justify-between text-sm">
-                    <span className="text-gray-500">Expenses:</span>
-                    <span className="font-bold text-red-600">₱{(period.totalExpenses || 0).toLocaleString()}</span>
+                    <span className="text-gray-500 font-medium">Expenses:</span>
+                    <span className="font-bold text-red-600">
+                      ₱{(period.totalExpenses ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
                   </div>
                   <div className="flex justify-between text-sm font-extrabold mt-1 pt-1 border-t border-gray-100">
                     <span className="text-gray-700">Net Income:</span>
-                    <span className={period.netIncome >= 0 ? 'text-emerald-700' : 'text-red-700'}>
-                      ₱{(period.netIncome || 0).toLocaleString()}
+                    <span className={(period.netIncome ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700'}>
+                      ₱{(period.netIncome ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -452,9 +456,10 @@ function AccountingCalendarTab({
                 {period.status === 'OPEN' || period.status === 'LOCKED' ? (
                   <button
                     onClick={() => setCloseModalPeriod(period)}
-                    className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-md text-xs font-bold uppercase tracking-wider flex justify-center items-center gap-2 transition"
+                    className="w-full py-2.5 bg-[#1B9387] hover:bg-[#28958B] !text-white rounded-md text-xs font-bold uppercase tracking-wider flex justify-center items-center gap-2 transition cursor-pointer shadow-sm"
+                    style={{ color: '#ffffff' }}
                   >
-                    <FileCheck size={14} /> Close Books
+                    <FileCheck size={15} className="!text-white" /> Close Books
                   </button>
                 ) : (
                   <div>
@@ -465,7 +470,7 @@ function AccountingCalendarTab({
                     )}
                     <button
                       onClick={() => setReopenModalPeriod(period)}
-                      className="w-full py-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-md text-xs font-bold uppercase tracking-wider flex justify-center items-center gap-2 transition"
+                      className="w-full py-2 bg-white border border-red-200 hover:bg-red-50 text-red-600 rounded-md text-xs font-bold uppercase tracking-wider flex justify-center items-center gap-2 transition cursor-pointer"
                     >
                       <Unlock size={14} /> Reopen Period
                     </button>
@@ -481,7 +486,7 @@ function AccountingCalendarTab({
       {closeModalPeriod && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <h3 className="text-xl font-extrabold text-gray-900 mb-2">Close Books: {closeModalPeriod.periodName}</h3>
+            <h3 className="text-xl font-extrabold text-gray-900 mb-2">Close Books: {closeModalPeriod.periodName || closeModalPeriod.name}</h3>
             <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 p-3 rounded-lg text-sm font-bold mb-4 flex gap-2">
               <AlertTriangle size={18} className="shrink-0 text-yellow-600" />
               <p>
@@ -492,17 +497,21 @@ function AccountingCalendarTab({
             
             <div className="bg-gray-50 p-4 rounded-lg mb-6">
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-500">Total Revenue</span>
-                <span className="font-bold">₱{(closeModalPeriod.totalRevenue || 0).toLocaleString()}</span>
+                <span className="text-gray-500 font-medium">Total Revenue</span>
+                <span className="font-bold text-emerald-600">
+                  ₱{(closeModalPeriod.totalRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
               </div>
               <div className="flex justify-between text-sm mb-1">
-                <span className="text-gray-500">Total Expenses</span>
-                <span className="font-bold">₱{(closeModalPeriod.totalExpenses || 0).toLocaleString()}</span>
+                <span className="text-gray-500 font-medium">Total Expenses</span>
+                <span className="font-bold text-red-600">
+                  ₱{(closeModalPeriod.totalExpenses ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
               </div>
               <div className="flex justify-between text-base font-extrabold mt-2 pt-2 border-t border-gray-200">
                 <span className="text-gray-800">Net Income to Transfer</span>
-                <span className={closeModalPeriod.netIncome >= 0 ? 'text-emerald-600' : 'text-red-600'}>
-                  ₱{(closeModalPeriod.netIncome || 0).toLocaleString()}
+                <span className={(closeModalPeriod.netIncome ?? 0) >= 0 ? 'text-emerald-700' : 'text-red-700'}>
+                  ₱{(closeModalPeriod.netIncome ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
             </div>
@@ -510,15 +519,16 @@ function AccountingCalendarTab({
             <div className="flex gap-3 justify-end">
               <button
                 onClick={() => setCloseModalPeriod(null)}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-sm font-bold uppercase"
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-md text-sm font-bold uppercase cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={handleClosePeriod}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-md text-sm font-bold uppercase flex items-center gap-2"
+                className="px-5 py-2.5 bg-[#1B9387] hover:bg-[#28958B] !text-white rounded-md text-sm font-bold uppercase flex items-center gap-2 cursor-pointer shadow-sm"
+                style={{ color: '#ffffff' }}
               >
-                <FileCheck size={16} /> Confirm Close
+                <FileCheck size={16} className="!text-white" /> Confirm Close
               </button>
             </div>
           </div>
@@ -531,7 +541,7 @@ function AccountingCalendarTab({
           <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
             <h3 className="text-xl font-extrabold text-red-600 mb-2">Reopen Period</h3>
             <p className="text-sm text-gray-600 font-medium mb-4">
-              Reopening <strong>{reopenModalPeriod.periodName}</strong> will void the closing entry and allow new transactions.
+              Reopening <strong>{reopenModalPeriod.periodName || reopenModalPeriod.name}</strong> will void the closing entry and allow new transactions.
             </p>
             <div className="mb-6">
               <label className="block text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">

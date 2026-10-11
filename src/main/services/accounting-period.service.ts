@@ -8,12 +8,15 @@ export interface AccountingPeriod {
     year: number;
     periodNumber: number;
     name: string;
+    periodName?: string;
     startDate: string;
     endDate: string;
     status: PeriodStatus;
     closedAt?: string;
     closedBy?: string;
     closingEntryId?: string;
+    totalRevenue?: number;
+    totalExpenses?: number;
     netIncome?: number;
 }
 
@@ -42,13 +45,18 @@ export class AccountingPeriodService {
                 const actualMonth = monthOffset % 12;
                 const startDate = new Date(actualYear, actualMonth, 1);
                 const endDate = new Date(actualYear, actualMonth + 1, 0, 23, 59, 59, 999);
+                const periodName = startDate.toLocaleString('en-US', { month: 'long' }) + ' ' + actualYear;
                 return {
                     year: targetYear,
                     periodNumber: i + 1,
-                    name: startDate.toLocaleString('en-US', { month: 'long' }) + ' ' + actualYear,
+                    name: periodName,
+                    periodName: periodName,
                     startDate: startDate.toISOString(),
                     endDate: endDate.toISOString(),
-                    status: 'OPEN'
+                    status: 'OPEN',
+                    totalRevenue: 0,
+                    totalExpenses: 0,
+                    netIncome: 0
                 } as AccountingPeriod;
             });
         } else if (calendar.length < 12) {
@@ -60,13 +68,18 @@ export class AccountingPeriodService {
                     const actualMonth = monthOffset % 12;
                     const startDate = new Date(actualYear, actualMonth, 1);
                     const endDate = new Date(actualYear, actualMonth + 1, 0, 23, 59, 59, 999);
+                    const periodName = startDate.toLocaleString('en-US', { month: 'long' }) + ' ' + actualYear;
                     calendar.push({
                         year: targetYear,
                         periodNumber: i + 1,
-                        name: startDate.toLocaleString('en-US', { month: 'long' }) + ' ' + actualYear,
+                        name: periodName,
+                        periodName: periodName,
                         startDate: startDate.toISOString(),
                         endDate: endDate.toISOString(),
-                        status: 'OPEN'
+                        status: 'OPEN',
+                        totalRevenue: 0,
+                        totalExpenses: 0,
+                        netIncome: 0
                     });
                 }
             }
@@ -79,13 +92,17 @@ export class AccountingPeriodService {
         const endMonth = endMonthOffset % 12;
         const fiscalEnd = new Date(endYear, endMonth + 1, 0, 23, 59, 59, 999);
 
-        // Fetch all revenue and expense lines for the target year
+        // Fetch all revenue and expense lines for the target year (exclude voided entries & closing entries)
         const lines = await prisma.journalLine.findMany({
             where: {
                 entry: {
                     date: {
                         gte: fiscalStart,
                         lte: fiscalEnd
+                    },
+                    status: 'ACTIVE',
+                    NOT: {
+                        reference_no: { startsWith: 'CLOSE-' }
                     }
                 },
                 account: {
@@ -116,14 +133,19 @@ export class AccountingPeriodService {
 
             for (const line of periodLines) {
                 const amount = Number(line.credit) - Number(line.debit);
-                if (line.account.account_type.name === 'Revenue') {
+                if (line.account?.account_type?.name === 'Revenue') {
                     totalRevenue += amount;
-                } else if (line.account.account_type.name === 'Expenses') {
+                } else if (line.account?.account_type?.name === 'Expenses') {
                     // Expenses have normal debit balance, so debit - credit
                     totalExpense += (Number(line.debit) - Number(line.credit));
                 }
             }
 
+            const formattedName = period.name || period.periodName || `${start.toLocaleString('en-US', { month: 'long' })} ${period.year}`;
+            period.name = formattedName;
+            period.periodName = formattedName;
+            period.totalRevenue = Number(totalRevenue.toFixed(2));
+            period.totalExpenses = Number(totalExpense.toFixed(2));
             period.netIncome = Number((totalRevenue - totalExpense).toFixed(2));
         }
 
@@ -223,10 +245,16 @@ export class AccountingPeriodService {
         const startDate = new Date(period.startDate);
         const endDate = new Date(period.endDate);
 
-        // Fetch all lines in the period for Revenue/Expense
+        // Fetch all lines in the period for Revenue/Expense (excluding previous closing entries)
         const lines = await prisma.journalLine.findMany({
             where: {
-                entry: { date: { gte: startDate, lte: endDate }, status: 'ACTIVE' },
+                entry: { 
+                    date: { gte: startDate, lte: endDate }, 
+                    status: 'ACTIVE',
+                    NOT: {
+                        reference_no: { startsWith: 'CLOSE-' }
+                    }
+                },
                 account: { account_type: { name: { in: ['Revenue', 'Expenses'] } } }
             },
             include: { account: { include: { account_type: true } } }
