@@ -189,7 +189,7 @@ export function LabTestsModal({
                   type="button"
                   onClick={() => setAllSelectedHmo(true)}
                   disabled={selectedIds.size === 0}
-                  className="text-xs font-bold px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm cursor-pointer"
+                  className="text-xs font-bold px-2.5 py-1 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm cursor-pointer"
                 >
                   Cover All
                 </button>
@@ -303,7 +303,7 @@ export function LabTestsModal({
                             onClick={() => toggleHmo(test.id)}
                             className={`text-xs px-2.5 py-1 rounded-lg font-bold uppercase transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
                               isHmo
-                                ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                ? 'bg-[#1B9387] text-white hover:bg-[#28958B]'
                                 : 'bg-gray-100 text-gray-600 hover:bg-gray-200 border border-gray-200'
                             }`}
                           >

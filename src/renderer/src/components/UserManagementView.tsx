@@ -686,7 +686,7 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
                 <button
                   type="submit"
                   disabled={!newPassword}
-                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-md text-sm font-bold transition cursor-pointer shadow-sm"
+                  className="px-5 py-2.5 bg-[#1B9387] hover:bg-[#28958B] disabled:bg-gray-300 disabled:text-gray-500 text-white rounded-md text-sm font-bold transition cursor-pointer shadow-sm"
                 >
                   Update Password
                 </button>

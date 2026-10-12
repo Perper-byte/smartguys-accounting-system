@@ -2041,11 +2041,11 @@ export function PayrollGridTab({
       {showDraftsModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[85vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="px-5 py-3.5 border-b border-gray-200 flex items-center justify-between bg-slate-50">
+            <div className="px-5 py-3.5 border-b border-[#B0DCDA] flex items-center justify-between bg-[#FBF8F8]">
               <div className="flex items-center gap-2">
-                <FolderOpen className="w-5 h-5 text-indigo-600" />
-                <h3 className="text-sm font-bold text-slate-800">Saved Payroll Drafts</h3>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 font-semibold">
+                <FolderOpen className="w-5 h-5 text-teal-700" />
+                <h3 className="text-sm font-extrabold text-gray-800">Saved Payroll Drafts</h3>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-[#E9FAFA] text-teal-800 font-bold">
                   {draftsList.length}
                 </span>
               </div>
@@ -2088,7 +2088,7 @@ export function PayrollGridTab({
                     return (
                       <div
                         key={draft.id}
-                        className="p-3.5 border border-slate-200 hover:border-indigo-300 rounded-lg bg-slate-50/50 hover:bg-indigo-50/20 transition-colors flex items-center justify-between gap-4"
+                        className="p-3.5 border border-[#B0DCDA] hover:border-[#1B9387] rounded-lg bg-[#FBF8F8] hover:bg-[#E9FAFA]/50 transition-colors flex items-center justify-between gap-4"
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
@@ -2124,7 +2124,7 @@ export function PayrollGridTab({
                           <button
                             type="button"
                             onClick={() => handleResumeDraft(draft)}
-                            className="px-3 py-1.5 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded shadow-sm transition-colors cursor-pointer"
+                            className="px-3 py-1.5 text-xs font-semibold text-white bg-[#1B9387] hover:bg-[#28958B] rounded shadow-sm transition-colors cursor-pointer"
                           >
                             Resume
                           </button>

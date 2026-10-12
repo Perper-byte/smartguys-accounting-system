@@ -86,32 +86,30 @@ export const DatabaseBackupView: React.FC = () => {
         {/* ACTION PANEL */}
         <div className="col-span-1 space-y-4">
           {/* BACKUP BUTTON */}
-          <div className="bg-[#121214] border border-[#29292e] rounded-md p-4">
-            <h3 className="text-white font-bold mb-2">Create Local Backup</h3>
-            <p className="text-xs text-[#8d8d99] mb-4">
+          <div className="bg-white border border-[#B0DCDA] rounded-xl p-6 shadow-sm">
+            <h3 className="text-gray-900 font-extrabold mb-1">Create Local Backup</h3>
+            <p className="text-xs text-gray-500 mb-5 font-medium">
               Generates a complete `.sql` snapshot of the accounting database.
             </p>
             <button
               onClick={handleTriggerBackup}
               disabled={loading}
-              /* 🔥 FIXED: Bulletproof Indigo Button */
-              className="w-full !bg-indigo-600 disabled:!bg-gray-200 disabled:!text-gray-500 !text-white text-sm font-bold py-3 rounded transition hover:!bg-indigo-700 shadow-md flex justify-center items-center cursor-pointer"
+              className="w-full bg-[#1B9387] hover:bg-[#28958B] disabled:bg-gray-200 disabled:text-gray-500 text-white text-sm font-bold py-3 rounded-lg transition shadow-md flex justify-center items-center cursor-pointer"
             >
               {loading ? 'Processing...' : '💾 Run Backup Now'}
             </button>
           </div>
 
           {/* RESTORE BUTTON */}
-          <div className="bg-[#121214] border border-[#29292e] rounded-md p-4">
-            <h3 className="text-white font-bold mb-2">Restore Backup</h3>
-            <p className="text-xs text-[#8d8d99] mb-4">
+          <div className="bg-white border border-[#B0DCDA] rounded-xl p-6 shadow-sm">
+            <h3 className="text-gray-900 font-extrabold mb-1">Restore Backup</h3>
+            <p className="text-xs text-gray-500 mb-5 font-medium">
               Restores the system from a previous `.sql` snapshot. Overwrites current data.
             </p>
             <button
               onClick={handleTriggerRestore}
               disabled={loading}
-              /* 🔥 FIXED: Bulletproof Light Red Button that turns solid red on hover */
-              className="w-full !bg-red-50 !text-red-600 border border-red-200 disabled:!bg-gray-200 disabled:!text-gray-500 text-sm font-bold py-3 rounded transition hover:!bg-red-600 hover:!text-white shadow-md flex justify-center items-center cursor-pointer"
+              className="w-full bg-rose-50 text-rose-600 border border-rose-200 disabled:bg-gray-200 disabled:text-gray-500 text-sm font-bold py-3 rounded-lg transition hover:bg-rose-600 hover:text-white shadow-sm flex justify-center items-center cursor-pointer"
             >
               {loading ? 'Processing...' : '📂 Restore Database'}
             </button>

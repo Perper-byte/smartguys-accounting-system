@@ -1375,7 +1375,7 @@ ${itemsSummary}
                     </label>
                     <div className="flex gap-2">
                       {['STANDARD', 'PRE-EMP', 'APE'].map(type => (
-                        <label key={type} className={`flex-1 cursor-pointer flex items-center justify-center py-2 px-1 rounded-lg border text-[10px] font-bold transition-colors ${examType === type ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'}`}>
+                        <label key={type} className={`flex-1 cursor-pointer flex items-center justify-center py-2 px-1 rounded-lg border text-[10px] font-bold transition-colors ${examType === type ? 'bg-[#1B9387] border-[#1B9387] text-white shadow-sm' : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'}`}>
                           <input
                             type="radio"
                             className="hidden"
