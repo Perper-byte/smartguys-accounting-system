@@ -131,7 +131,8 @@ export function LabTestsModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-700 bg-white hover:bg-gray-100 p-2 rounded-full transition border border-gray-200 shadow-sm cursor-pointer"
+            className="text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 p-2 rounded-full transition border border-gray-300 shadow-xs cursor-pointer flex items-center justify-center shrink-0"
+            title="Close"
           >
             <X className="w-5 h-5" />
           </button>
@@ -163,7 +164,7 @@ export function LabTestsModal({
                   type="button"
                   onClick={() => setAllSelectedVatable(true)}
                   disabled={selectedIds.size === 0}
-                  className="text-xs font-bold px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm cursor-pointer"
+                  className="text-xs font-bold px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded-lg disabled:bg-gray-100 disabled:text-gray-400 disabled:border disabled:border-gray-200 disabled:cursor-not-allowed transition shadow-xs cursor-pointer"
                 >
                   Mark All Vatable
                 </button>
@@ -171,7 +172,7 @@ export function LabTestsModal({
                   type="button"
                   onClick={() => setAllSelectedVatable(false)}
                   disabled={selectedIds.size === 0}
-                  className="text-xs font-bold px-2.5 py-1 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm cursor-pointer"
+                  className="text-xs font-bold px-2.5 py-1 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed transition shadow-xs cursor-pointer"
                 >
                   Mark All Non-VAT
                 </button>
@@ -181,15 +182,15 @@ export function LabTestsModal({
 
               {/* HMO / Corp Controls */}
               <div className="flex items-center gap-1.5">
-                <span className="text-xs font-bold text-indigo-700 uppercase tracking-wider flex items-center gap-1">
-                  <ShieldCheck className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="text-xs font-bold text-teal-800 uppercase tracking-wider flex items-center gap-1">
+                  <ShieldCheck className="w-3.5 h-3.5 text-teal-700" />
                   HMO / Corp:
                 </span>
                 <button
                   type="button"
                   onClick={() => setAllSelectedHmo(true)}
                   disabled={selectedIds.size === 0}
-                  className="text-xs font-bold px-2.5 py-1 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm cursor-pointer"
+                  className="text-xs font-bold px-2.5 py-1 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-lg disabled:bg-gray-100 disabled:text-gray-400 disabled:border disabled:border-gray-200 disabled:cursor-not-allowed transition shadow-xs cursor-pointer"
                 >
                   Cover All
                 </button>
@@ -197,7 +198,7 @@ export function LabTestsModal({
                   type="button"
                   onClick={() => setAllSelectedHmo(false)}
                   disabled={selectedIds.size === 0}
-                  className="text-xs font-bold px-2.5 py-1 bg-white hover:bg-gray-100 text-gray-700 border border-gray-300 rounded-lg disabled:opacity-40 disabled:cursor-not-allowed transition shadow-sm cursor-pointer"
+                  className="text-xs font-bold px-2.5 py-1 bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 rounded-lg disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed transition shadow-xs cursor-pointer"
                 >
                   Self-Pay All
                 </button>

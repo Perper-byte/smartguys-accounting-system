@@ -697,7 +697,8 @@ export function PayrollDirectoryTab({
               </div>
               <button
                 onClick={() => setIsImportModalOpen(false)}
-                className="text-gray-400 hover:text-gray-600 transition p-1 rounded cursor-pointer"
+                className="text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 p-1.5 rounded-full transition border border-gray-300 shadow-xs cursor-pointer flex items-center justify-center shrink-0"
+                title="Close"
               >
                 <X className="w-5 h-5" />
               </button>

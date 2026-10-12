@@ -157,7 +157,7 @@ export function PatientHistoryModal({
                 onClick={fetchHistory}
                 disabled={loading}
                 title="Refresh patient transactions"
-                className="px-3 py-1.5 rounded-xl border border-gray-200 hover:border-[#B0DCDA] bg-white text-gray-700 hover:text-[#1B9387] text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:opacity-50"
+                className="px-3 py-1.5 rounded-xl border border-gray-200 hover:border-[#B0DCDA] bg-white text-gray-700 hover:text-[#1B9387] text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-2xs disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 disabled:cursor-not-allowed"
               >
                 <span className={loading ? 'animate-spin' : ''}>🔄</span>
                 <span>Refresh</span>
@@ -186,7 +186,8 @@ export function PatientHistoryModal({
               <button
                 type="button"
                 onClick={onClose}
-                className="text-gray-400 hover:text-gray-700 bg-white hover:bg-gray-100 p-2 rounded-full transition border border-gray-200 shadow-2xs cursor-pointer"
+                className="text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 p-2 rounded-full transition border border-gray-300 shadow-xs cursor-pointer flex items-center justify-center shrink-0"
+                title="Close"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -271,7 +272,7 @@ export function PatientHistoryModal({
                 type="button"
                 onClick={handleBulkPrint}
                 disabled={selectedTxIds.size === 0}
-                className="px-4 py-1.5 bg-[#1B9387] hover:bg-[#15796f] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-lg text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer"
+                className="px-4 py-1.5 bg-[#1B9387] hover:bg-[#15796f] disabled:bg-gray-100 disabled:text-gray-400 disabled:border disabled:border-gray-200 disabled:cursor-not-allowed text-white font-bold rounded-lg text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer"
               >
                 <Printer className="w-3.5 h-3.5" />
                 <span>Print Selected ({selectedTxIds.size} Pages PDF)</span>

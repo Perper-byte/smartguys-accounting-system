@@ -576,7 +576,8 @@ export function AgedReceivablesView({
               <button
                 type="button"
                 onClick={() => setSelectedEntity(null)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition cursor-pointer"
+                className="text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 p-2 rounded-full transition border border-gray-300 shadow-xs cursor-pointer flex items-center justify-center shrink-0"
+                title="Close"
               >
                 <X size={20} />
               </button>

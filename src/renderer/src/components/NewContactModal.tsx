@@ -2,6 +2,7 @@
 
 import * as React from 'react'
 import { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
 
 interface NewContactModalProps {
   isOpen: boolean
@@ -203,15 +204,16 @@ export function NewContactModal({
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-red-500 cursor-pointer font-bold text-2xl leading-none transition-colors"
+            className="text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 p-2 rounded-full transition border border-gray-300 shadow-xs cursor-pointer flex items-center justify-center shrink-0"
+            title="Close"
           >
-            ×
+            <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* TAB */}
         <div className="flex px-8 border-b border-[#B0DCDA] text-xs font-bold text-gray-500 uppercase tracking-widest bg-[#FBF8F8] shrink-0">
-          <div className="py-4 text-[#4f46e5] border-b-2 border-[#4f46e5] mr-8">
+          <div className="py-4 text-[#1B9387] border-b-2 border-[#1B9387] mr-8">
             General Details
           </div>
         </div>
@@ -229,7 +231,7 @@ export function NewContactModal({
               <select
                 value={formData.type}
                 onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                className="bg-white border border-[#B0DCDA] rounded-md px-4 py-2 text-sm font-bold text-[#4f46e5] outline-none cursor-pointer shadow-sm transition focus:border-[#4f46e5] min-w-[150px]"
+                className="bg-white border border-[#B0DCDA] rounded-md px-4 py-2 text-sm font-bold text-[#1B9387] outline-none cursor-pointer shadow-sm transition focus:border-[#1B9387] min-w-[150px]"
               >
                 <option value="PATIENT">👤 Patient</option>
                 <option value="HMO">🏥 HMO</option>
@@ -267,7 +269,7 @@ export function NewContactModal({
                           ? 'e.g. Prime Realty / Landlord Corp'
                           : 'e.g. Juan Dela Cruz'
                   }
-                  className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#4f46e5] outline-none transition placeholder-gray-400"
+                  className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#1B9387] outline-none transition placeholder-gray-400"
                 />
               </div>
               <div>
@@ -279,15 +281,15 @@ export function NewContactModal({
                   placeholder="000-000-000-000"
                   value={formData.tin}
                   onChange={(e) => setFormData({ ...formData, tin: e.target.value })}
-                  className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-mono focus:border-[#4f46e5] outline-none transition placeholder-gray-400"
+                  className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-mono focus:border-[#1B9387] outline-none transition placeholder-gray-400"
                 />
               </div>
             </div>
 
             {/* HMO AFFILIATION BLOCK */}
             {formData.type === 'PATIENT' && (
-              <div className="bg-blue-50/40 border border-blue-200 rounded-lg p-5">
-                <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">
+              <div className="bg-[#E9FAFA]/60 border border-[#B0DCDA] rounded-lg p-5">
+                <label className="block text-xs font-bold text-[#1B9387] uppercase tracking-wider mb-2">
                   Primary HMO Carrier / Primary Corporate (Optional)
                 </label>
                 <select
@@ -299,7 +301,7 @@ export function NewContactModal({
                       setHmoExpiry('')
                     }
                   }}
-                  className="w-full bg-white border border-blue-200 rounded-md p-3 text-sm text-gray-800 font-bold focus:border-[#4f46e5] outline-none transition cursor-pointer shadow-sm"
+                  className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-bold focus:border-[#1B9387] outline-none transition cursor-pointer shadow-sm"
                 >
                   <option value="">-- No HMO / Private Pay --</option>
                   {hmoList.map((hmo) => (
@@ -310,9 +312,9 @@ export function NewContactModal({
                 </select>
 
                 {hmoAffiliation && (
-                  <div className="grid grid-cols-2 gap-6 mt-4 pt-4 border-t border-blue-200 animate-in fade-in">
+                  <div className="grid grid-cols-2 gap-6 mt-4 pt-4 border-t border-[#B0DCDA] animate-in fade-in">
                     <div>
-                      <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">
+                      <label className="block text-xs font-bold text-[#1B9387] uppercase tracking-wider mb-2">
                         Card No. / Policy ID
                       </label>
                       <input
@@ -320,18 +322,18 @@ export function NewContactModal({
                         value={hmoCardNo}
                         onChange={(e) => setHmoCardNo(e.target.value)}
                         placeholder="e.g. 10002939"
-                        className="w-full bg-white border border-blue-200 rounded-md p-3 text-sm font-mono font-bold text-gray-800 focus:border-[#4f46e5] outline-none transition shadow-sm"
+                        className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm font-mono font-bold text-gray-800 focus:border-[#1B9387] outline-none transition shadow-sm"
                       />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-blue-600 uppercase tracking-wider mb-2">
+                      <label className="block text-xs font-bold text-[#1B9387] uppercase tracking-wider mb-2">
                         Card Expiry Date
                       </label>
                       <input
                         type="date"
                         value={hmoExpiry}
                         onChange={(e) => setHmoExpiry(e.target.value)}
-                        className="w-full bg-white border border-blue-200 rounded-md p-3 text-sm text-gray-800 font-bold focus:border-[#4f46e5] outline-none transition shadow-sm cursor-pointer"
+                        className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-bold focus:border-[#1B9387] outline-none transition shadow-sm cursor-pointer"
                       />
                     </div>
                   </div>
@@ -350,7 +352,7 @@ export function NewContactModal({
                   placeholder="e.g. email@address.com"
                   value={formData.email}
                   onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#4f46e5] outline-none transition placeholder-gray-400"
+                  className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#1B9387] outline-none transition placeholder-gray-400"
                 />
               </div>
               <div>
@@ -362,7 +364,7 @@ export function NewContactModal({
                   placeholder="0912 345 6789"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#4f46e5] outline-none transition placeholder-gray-400"
+                  className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#1B9387] outline-none transition placeholder-gray-400"
                 />
               </div>
             </div>
@@ -376,7 +378,7 @@ export function NewContactModal({
                 value={formData.address}
                 onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                 placeholder="Full physical address..."
-                className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#4f46e5] outline-none h-20 resize-none transition placeholder-gray-400"
+                className="w-full bg-white border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 focus:border-[#1B9387] outline-none h-20 resize-none transition placeholder-gray-400"
               />
             </div>
           </div>
@@ -393,7 +395,7 @@ export function NewContactModal({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="px-8 py-2.5 bg-[#4f46e5] hover:bg-[#5b54f6] text-white rounded-md text-sm font-bold shadow-lg transition-colors disabled:opacity-50 cursor-pointer tracking-wide"
+              className="px-8 py-2.5 bg-[#1B9387] hover:bg-[#28958B] text-white rounded-md text-sm font-bold shadow-md transition-colors disabled:opacity-50 cursor-pointer tracking-wide"
             >
               {isSubmitting ? 'Saving...' : `Save ${getTypeName()}`}
             </button>

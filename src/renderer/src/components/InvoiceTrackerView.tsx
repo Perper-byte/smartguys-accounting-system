@@ -537,7 +537,8 @@ export function InvoiceTrackerView({ onNavigate }: InvoiceTrackerProps) {
               </div>
               <button
                 onClick={() => setSelectedInvoice(null)}
-                className="p-2 text-gray-400 hover:text-gray-700 hover:bg-gray-200 rounded-full transition"
+                className="text-gray-600 hover:text-gray-900 bg-gray-100 hover:bg-gray-200 p-2 rounded-full transition border border-gray-300 shadow-xs cursor-pointer flex items-center justify-center shrink-0"
+                title="Close"
               >
                 <X size={20} />
               </button>
