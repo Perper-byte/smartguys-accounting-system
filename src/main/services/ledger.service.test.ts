@@ -1,6 +1,6 @@
 // src/main/services/ledger.service.test.ts
-import { describe } from 'node:test'
 import { LedgerService, JournalEntryInput } from './ledger.service'
+import { AccountingPeriodService } from './accounting-period.service'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
@@ -9,11 +9,16 @@ describe('Double-Entry Ledger Engine', () => {
   let accountantUserId: string
 
   beforeAll(async () => {
+    jest.spyOn(AccountingPeriodService, 'isDateInClosedPeriod').mockResolvedValue(false)
     // Retrieve the test accountant user we seeded earlier
     const user = await prisma.user.findFirst({
       where: { username: 'accountant' }
     })
-    accountantUserId = user!.id
+    accountantUserId = user?.id || 'test-user-id'
+  })
+
+  afterAll(() => {
+    jest.restoreAllMocks()
   })
 
   test('✅ Should successfully commit a balanced journal entry', async () => {

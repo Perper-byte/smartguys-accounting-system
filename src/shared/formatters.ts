@@ -44,7 +44,7 @@ export function cleanDescription(rawDesc?: string | null): string {
   // 2. Strip all [META:...] and [ITEMS:...] tags (case-insensitive, global)
   const cleaned = text
     .replace(/\[META:[^\]]*\]\s*/gi, '')
-    .replace(/\[ITEMS:[\s\S]*?\]\s*/gi, '')
+    .replace(/\[ITEMS:[\s\S]*?\]\]?\s*/gi, '')
     .trim()
 
   // 3. If cleaning left the description blank, fallback to extracted items
