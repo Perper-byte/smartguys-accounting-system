@@ -131,3 +131,4 @@ describe('InventoryService', () => {
     expect(result.error).toContain('Cannot have negative stock balance')
   })
 })
+

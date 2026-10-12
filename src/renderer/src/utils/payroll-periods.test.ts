@@ -62,3 +62,4 @@ describe('Payroll Periods Utility', () => {
     expect(getPayrollDraft('draft-oct-1')).toBeNull()
   })
 })
+

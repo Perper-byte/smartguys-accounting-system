@@ -40,19 +40,33 @@ describe('Sprint 4 - Week 1: BIR Tax Compliance Engine', () => {
     }
   })
 
-  test('📑 Relief Annexes: Should extract transactions assigned to payees', async () => {
+  test('📑 Relief Annexes: Should extract transactions assigned to payees for both Sales and Purchases', async () => {
     const annexes = await TaxService.generateReliefAnnexes(currentYear, currentQuarter)
 
-    // We know you posted a "Meralco" disbursement earlier!
-    // It should appear in Annex B (Purchases)
-    expect(annexes.annexB_Purchases.length).toBeGreaterThanOrEqual(0)
+    expect(annexes).toHaveProperty('header')
+    expect(annexes.header).toHaveProperty('tin')
+    expect(annexes.header).toHaveProperty('registeredName')
+    expect(annexes).toHaveProperty('annexA_Sales')
+    expect(annexes).toHaveProperty('annexB_Purchases')
+    expect(annexes).toHaveProperty('salesTotals')
+    expect(annexes).toHaveProperty('purchasesTotals')
+
+    expect(Array.isArray(annexes.annexA_Sales)).toBe(true)
+    expect(Array.isArray(annexes.annexB_Purchases)).toBe(true)
+
+    if (annexes.annexA_Sales.length > 0) {
+      const sampleSale = annexes.annexA_Sales[0]
+      expect(sampleSale).toHaveProperty('tin')
+      expect(sampleSale).toHaveProperty('customerName')
+      expect(sampleSale).toHaveProperty('taxableSales')
+      expect(sampleSale).toHaveProperty('outputTax')
+    }
 
     if (annexes.annexB_Purchases.length > 0) {
       const samplePurchase = annexes.annexB_Purchases[0]
       expect(samplePurchase).toHaveProperty('tin')
+      expect(samplePurchase).toHaveProperty('supplierName')
       expect(samplePurchase).toHaveProperty('tax')
-
-      // Net + Tax must equal Gross
       expect(samplePurchase.netAmount + samplePurchase.tax).toBeCloseTo(
         samplePurchase.grossAmount,
         1

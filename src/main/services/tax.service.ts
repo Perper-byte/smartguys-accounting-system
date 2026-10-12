@@ -108,13 +108,65 @@ export class TaxService {
     }
   }
 
-  // 2. RELIEF / DAT FILE GENERATOR (Annex B)
+  // 2. RELIEF / DAT FILE GENERATOR (Annex A: Sales & Annex B: Purchases)
   static async generateReliefAnnexes(year: number, quarter: number) {
     try {
       const startMonth = (quarter - 1) * 3
       const startDate = new Date(year, startMonth, 1)
       const endDate = new Date(year, startMonth + 3, 0, 23, 59, 59, 999)
 
+      // Taxpayer / Clinic Profile Header
+      const header = {
+        tin: '000-000-000-000',
+        branchCode: '0000',
+        registeredName: 'SMARTGUYS COMMUNITY HEALTHCARE INC.',
+        tradeName: 'SMARTGUYS CLINIC',
+        address: 'Katapatan Mutual Homes, Brgy. Banay-banay, City of Cabuyao, Laguna 4025',
+        year: year,
+        quarter: quarter,
+        periodMonth: String(startMonth + 3).padStart(2, '0') // Closing month of the quarter (e.g. 03, 06, 09, 12)
+      }
+
+      // --- ANNEX A: SALES (SLSS) ---
+      const salesEntries = await prisma.journalEntry.findMany({
+        where: {
+          date: { gte: startDate, lte: endDate },
+          status: 'ACTIVE',
+          lines: { some: { account_id: { in: ['4010', '4020', '4040'] } } }
+        },
+        include: { lines: true, payee: true }
+      })
+
+      const annexA_Sales: any[] = []
+      salesEntries.forEach((entry) => {
+        const vatLine = entry.lines.find((l) => l.account_id === '2020') // Output VAT (2020)
+        const outputTax = vatLine ? Number(vatLine.credit) : 0
+        const revenueLines = entry.lines.filter((l) =>
+          ['4010', '4020', '4040'].includes(l.account_id)
+        )
+        const netAmount = revenueLines.reduce((sum, l) => sum + Number(l.credit), 0)
+
+        // If transaction has Output VAT or VAT is applicable, classify accordingly
+        const vatableSales = outputTax > 0 ? netAmount : 0
+        const exemptSales = outputTax === 0 ? netAmount : 0
+        const zeroRatedSales = 0
+        const grossAmount = netAmount + outputTax
+
+        annexA_Sales.push({
+          date: entry.date,
+          customerName: entry.payee?.name || 'Walk-in Patient',
+          tin: entry.payee?.tin || '000-000-000-000',
+          branchCode: '0000',
+          address: entry.payee?.address || 'Cabuyao, Laguna',
+          grossAmount: grossAmount,
+          exemptSales: exemptSales,
+          zeroRatedSales: zeroRatedSales,
+          taxableSales: vatableSales,
+          outputTax: outputTax
+        })
+      })
+
+      // --- ANNEX B: PURCHASES (SLSP) ---
       const purchaseEntries = await prisma.journalEntry.findMany({
         where: {
           date: { gte: startDate, lte: endDate },
@@ -138,12 +190,47 @@ export class TaxService {
           date: entry.date,
           supplierName: entry.payee?.name || 'Unknown Supplier',
           tin: entry.payee?.tin || '000-000-000-000',
+          branchCode: '0000',
+          address: entry.payee?.address || 'Metro Manila / Laguna',
+          exemptPurchases: 0,
+          zeroRatedPurchases: 0,
+          servicesPurchases: netAmount,
+          capitalPurchases: 0,
+          goodsPurchases: 0,
           netAmount: netAmount,
           tax: tax,
           grossAmount: netAmount + tax
         })
       })
-      return { annexB_Purchases }
+
+      // Control Totals for Validation
+      const salesTotals = {
+        recordsCount: annexA_Sales.length,
+        totalGross: annexA_Sales.reduce((s, r) => s + r.grossAmount, 0),
+        totalExempt: annexA_Sales.reduce((s, r) => s + r.exemptSales, 0),
+        totalZeroRated: annexA_Sales.reduce((s, r) => s + r.zeroRatedSales, 0),
+        totalTaxable: annexA_Sales.reduce((s, r) => s + r.taxableSales, 0),
+        totalOutputTax: annexA_Sales.reduce((s, r) => s + r.outputTax, 0)
+      }
+
+      const purchasesTotals = {
+        recordsCount: annexB_Purchases.length,
+        totalGross: annexB_Purchases.reduce((s, r) => s + r.grossAmount, 0),
+        totalExempt: annexB_Purchases.reduce((s, r) => s + r.exemptPurchases, 0),
+        totalZeroRated: annexB_Purchases.reduce((s, r) => s + r.zeroRatedPurchases, 0),
+        totalServices: annexB_Purchases.reduce((s, r) => s + r.servicesPurchases, 0),
+        totalCapital: annexB_Purchases.reduce((s, r) => s + r.capitalPurchases, 0),
+        totalGoods: annexB_Purchases.reduce((s, r) => s + r.goodsPurchases, 0),
+        totalInputTax: annexB_Purchases.reduce((s, r) => s + r.tax, 0)
+      }
+
+      return {
+        header,
+        annexA_Sales,
+        annexB_Purchases,
+        salesTotals,
+        purchasesTotals
+      }
     } catch (error: any) {
       return { error: error.message }
     }

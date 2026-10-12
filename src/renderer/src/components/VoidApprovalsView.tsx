@@ -424,8 +424,8 @@ export function VoidApprovalsView({ userId }: { userId: string }) {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {confirmDialog.entry.lines?.map((line: any) => (
-                        <tr key={line.id} className="hover:bg-gray-50">
+                      {confirmDialog.entry.lines?.map((line: any, idx: number) => (
+                        <tr key={line.id || `line-${idx}`} className="hover:bg-gray-50">
                           <td className="p-3 font-mono text-xs">{line.account?.code}</td>
                           <td className="p-3">{line.account?.title}</td>
                           <td className="p-3 text-right">{Number(line.debit) > 0 ? Number(line.debit).toLocaleString(undefined, {minimumFractionDigits: 2}) : '-'}</td>

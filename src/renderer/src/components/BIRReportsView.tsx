@@ -93,33 +93,143 @@ export const BIRReportsView: React.FC = () => {
     return `₱ ${val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
   }
 
+  const [reliefTab, setReliefTab] = useState<'sales' | 'purchases'>('sales')
+
   const handleExportPDF = () => {
     window.print()
   }
 
-  const handleDownloadSLSP = () => {
-    if (!reliefData || reliefData.annexB_Purchases.length === 0) return alert('No data available.')
-    const lines = reliefData.annexB_Purchases.map((p: any) => {
-      const tinClean = (p.tin || '').replace(/-/g, '').padEnd(9, '0').substring(0, 9)
-      return `P,${tinClean},0000,"${p.supplierName}","","",${(p.grossAmount || 0).toFixed(2)},${(p.tax || 0).toFixed(2)},0.00,0.00,0.00`
+  // Helper to sanitize TIN for BIR format: strictly 9 digits, no hyphens
+  const sanitizeTin = (tinStr?: string): string => {
+    const raw = (tinStr || '').replace(/\D/g, '')
+    return (raw.padEnd(9, '0')).substring(0, 9)
+  }
+
+  // Official BIR RELIEF DAT Generator for Sales (SLSS - Annex A)
+  const handleDownloadSLSS = () => {
+    if (!reliefData || !reliefData.annexA_Sales || reliefData.annexA_Sales.length === 0) {
+      return alert('No Sales data available for BIR RELIEF.')
+    }
+
+    const h = reliefData.header || {
+      tin: '000-000-000-000',
+      branchCode: '0000',
+      registeredName: 'SMARTGUYS COMMUNITY HEALTHCARE INC.',
+      tradeName: 'SMARTGUYS CLINIC',
+      address: 'Katapatan Mutual Homes, Brgy. Banay-banay, City of Cabuyao, Laguna 4025',
+      periodMonth: quarter === 0 ? '12' : String(quarter * 3).padStart(2, '0')
+    }
+
+    const clinicTin = sanitizeTin(h.tin)
+    const periodMM = h.periodMonth || (quarter === 0 ? '12' : String(quarter * 3).padStart(2, '0'))
+    const periodMMYYYY = `${periodMM}${year}`
+
+    // 1. Header Record (H,S)
+    const headerRow = `H,S,"${clinicTin}","${h.registeredName}","${h.tradeName || h.registeredName}","${h.address}","${periodMMYYYY}"`
+
+    // 2. Detail Records (D,S)
+    const detailRows = reliefData.annexA_Sales.map((s: any) => {
+      const custTin = sanitizeTin(s.tin)
+      const branch = (s.branchCode || '0000').padStart(4, '0').substring(0, 4)
+      const custName = (s.customerName || 'Walk-in Patient').replace(/"/g, '')
+      const address = (s.address || 'Cabuyao, Laguna').replace(/"/g, '')
+      const gross = (Number(s.grossAmount) || 0).toFixed(2)
+      const exempt = (Number(s.exemptSales) || 0).toFixed(2)
+      const zeroRated = (Number(s.zeroRatedSales) || 0).toFixed(2)
+      const taxable = (Number(s.taxableSales) || 0).toFixed(2)
+      const vat = (Number(s.outputTax) || 0).toFixed(2)
+
+      return `D,S,"${custTin}","${branch}","${custName}","${address}",${gross},${exempt},${zeroRated},${taxable},${vat}`
     })
 
-    const fileName =
-      quarter === 0 ? `SLSP_Annual_${year}_Purchases.dat` : `SLSP_Q${quarter}_${year}_Purchases.dat`
-    triggerDownload(lines.join('\n'), fileName)
+    // 3. Control Record (C,S)
+    const totals = reliefData.salesTotals || {
+      recordsCount: reliefData.annexA_Sales.length,
+      totalGross: reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.grossAmount) || 0), 0),
+      totalExempt: reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.exemptSales) || 0), 0),
+      totalZeroRated: reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.zeroRatedSales) || 0), 0),
+      totalTaxable: reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.taxableSales) || 0), 0),
+      totalOutputTax: reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.outputTax) || 0), 0)
+    }
+
+    const controlRow = `C,S,${totals.recordsCount},${Number(totals.totalGross || 0).toFixed(2)},${Number(totals.totalExempt || 0).toFixed(2)},${Number(totals.totalZeroRated || 0).toFixed(2)},${Number(totals.totalTaxable || 0).toFixed(2)},${Number(totals.totalOutputTax || 0).toFixed(2)}`
+
+    const fileContent = [headerRow, ...detailRows, controlRow].join('\r\n')
+    // Official BIR naming convention: <TIN>S<MM><YYYY>.DAT
+    const fileName = `${clinicTin}S${periodMM}${year}.DAT`
+    triggerDownload(fileContent, fileName)
+  }
+
+  // Official BIR RELIEF DAT Generator for Purchases (SLSP - Annex B)
+  const handleDownloadSLSP = () => {
+    if (!reliefData || !reliefData.annexB_Purchases || reliefData.annexB_Purchases.length === 0) {
+      return alert('No Purchases data available for BIR RELIEF.')
+    }
+
+    const h = reliefData.header || {
+      tin: '000-000-000-000',
+      branchCode: '0000',
+      registeredName: 'SMARTGUYS COMMUNITY HEALTHCARE INC.',
+      tradeName: 'SMARTGUYS CLINIC',
+      address: 'Katapatan Mutual Homes, Brgy. Banay-banay, City of Cabuyao, Laguna 4025',
+      periodMonth: quarter === 0 ? '12' : String(quarter * 3).padStart(2, '0')
+    }
+
+    const clinicTin = sanitizeTin(h.tin)
+    const periodMM = h.periodMonth || (quarter === 0 ? '12' : String(quarter * 3).padStart(2, '0'))
+    const periodMMYYYY = `${periodMM}${year}`
+
+    // 1. Header Record (H,P)
+    const headerRow = `H,P,"${clinicTin}","${h.registeredName}","${h.tradeName || h.registeredName}","${h.address}","${periodMMYYYY}"`
+
+    // 2. Detail Records (D,P)
+    const detailRows = reliefData.annexB_Purchases.map((p: any) => {
+      const suppTin = sanitizeTin(p.tin)
+      const branch = (p.branchCode || '0000').padStart(4, '0').substring(0, 4)
+      const suppName = (p.supplierName || 'Unknown Supplier').replace(/"/g, '')
+      const address = (p.address || 'Metro Manila / Laguna').replace(/"/g, '')
+      const exempt = (Number(p.exemptPurchases) || 0).toFixed(2)
+      const zeroRated = (Number(p.zeroRatedPurchases) || 0).toFixed(2)
+      const services = (Number(p.servicesPurchases || p.netAmount) || 0).toFixed(2)
+      const capital = (Number(p.capitalPurchases) || 0).toFixed(2)
+      const goods = (Number(p.goodsPurchases) || 0).toFixed(2)
+      const vat = (Number(p.tax) || 0).toFixed(2)
+      const gross = (Number(p.grossAmount) || (Number(services) + Number(vat))).toFixed(2)
+
+      return `D,P,"${suppTin}","${branch}","${suppName}","${address}",${exempt},${zeroRated},${services},${capital},${goods},${vat},${gross}`
+    })
+
+    // 3. Control Record (C,P)
+    const totals = reliefData.purchasesTotals || {
+      recordsCount: reliefData.annexB_Purchases.length,
+      totalExempt: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.exemptPurchases) || 0), 0),
+      totalZeroRated: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.zeroRatedPurchases) || 0), 0),
+      totalServices: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.servicesPurchases || r.netAmount) || 0), 0),
+      totalCapital: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.capitalPurchases) || 0), 0),
+      totalGoods: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.goodsPurchases) || 0), 0),
+      totalInputTax: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.tax) || 0), 0),
+      totalGross: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.grossAmount) || 0), 0)
+    }
+
+    const controlRow = `C,P,${totals.recordsCount},${Number(totals.totalExempt || 0).toFixed(2)},${Number(totals.totalZeroRated || 0).toFixed(2)},${Number(totals.totalServices || 0).toFixed(2)},${Number(totals.totalCapital || 0).toFixed(2)},${Number(totals.totalGoods || 0).toFixed(2)},${Number(totals.totalInputTax || 0).toFixed(2)},${Number(totals.totalGross || 0).toFixed(2)}`
+
+    const fileContent = [headerRow, ...detailRows, controlRow].join('\r\n')
+    // Official BIR naming convention: <TIN>P<MM><YYYY>.DAT
+    const fileName = `${clinicTin}P${periodMM}${year}.DAT`
+    triggerDownload(fileContent, fileName)
   }
 
   const handleDownloadQAP = () => {
     if (!taxData || !taxData.qapList || taxData.qapList.length === 0)
       return alert('No EWT data available.')
     const lines = taxData.qapList.map((p: any) => {
-      const tinClean = (p.tin || '').replace(/-/g, '').padEnd(9, '0').substring(0, 9)
+      const tinClean = sanitizeTin(p.tin)
       return `D1,${tinClean},0000,"${p.payeeName}","${p.atc}",${(p.grossAmount || 0).toFixed(2)},${(p.taxWithheld || 0).toFixed(2)}`
     })
 
     const fileName =
       quarter === 0 ? `QAP_1604E_Annual_${year}.dat` : `QAP_1601EQ_Q${quarter}_${year}.dat`
-    triggerDownload(lines.join('\n'), fileName)
+    triggerDownload(lines.join('\r\n'), fileName)
   }
 
   const triggerDownload = (content: string, filename: string) => {
@@ -869,99 +979,238 @@ export const BIRReportsView: React.FC = () => {
         )}
 
         {/* ============================================================ */}
-        {/* 5. RELIEF / SLSP DAT FILE GENERATOR */}
+        {/* 5. RELIEF / SLSP & SLSS DAT FILE GENERATOR */}
         {/* ============================================================ */}
         {!loading && reliefData && view === 'relief' && (
           <div className="space-y-6 animate-in fade-in duration-200">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-gray-200 p-6 rounded-2xl shadow-xs">
-              <div>
-                <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">
-                  Annex B: Summary List of Purchases (SLSP)
-                </h3>
-                <p className="text-xs text-gray-500 font-medium mt-0.5">
-                  Mandatory electronic attachment for Form 2550Q (${getPeriodLabel()}).
-                </p>
-              </div>
-              <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                <span className="text-xs font-bold text-gray-600 bg-white border border-gray-200 px-3 py-1 rounded-md">
-                  {reliefData.annexB_Purchases?.length || 0} Records
+            {/* Sub-tab Switcher: Sales (SLSS) vs Purchases (SLSP) */}
+            <div className="flex border-b border-gray-200 bg-white rounded-t-2xl p-2 gap-2 shadow-2xs">
+              <button
+                onClick={() => setReliefTab('sales')}
+                className={`flex-1 py-3 px-4 text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center gap-2 ${
+                  reliefTab === 'sales'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                }`}
+              >
+                <span>Annex A: Sales (SLSS)</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                  reliefTab === 'sales' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {reliefData.annexA_Sales?.length || 0}
                 </span>
-                <button
-                  onClick={handleDownloadSLSP}
-                  disabled={!reliefData.annexB_Purchases || reliefData.annexB_Purchases.length === 0}
-                  className="bg-[#1B9387] hover:bg-[#28958B] disabled:opacity-50 disabled:bg-gray-400 text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
-                >
-                  <Download size={14} /> <span>Download .DAT</span>
-                </button>
-              </div>
+              </button>
+              <button
+                onClick={() => setReliefTab('purchases')}
+                className={`flex-1 py-3 px-4 text-xs font-black uppercase tracking-wider rounded-xl transition cursor-pointer flex items-center justify-center gap-2 ${
+                  reliefTab === 'purchases'
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50'
+                }`}
+              >
+                <span>Annex B: Purchases (SLSP)</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                  reliefTab === 'purchases' ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-600'
+                }`}>
+                  {reliefData.annexB_Purchases?.length || 0}
+                </span>
+              </button>
             </div>
 
-            <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs flex flex-col">
-              <div className="overflow-x-auto max-h-[560px] print:max-h-none print:overflow-visible">
-                <table className="w-full text-sm min-w-[720px] border-collapse">
-                  <thead className="text-gray-500 text-[10px] font-black uppercase tracking-wider bg-gray-50/90 border-b border-gray-200 sticky top-0 z-10 shadow-2xs">
-                    <tr>
-                      <th className="py-3 px-4 pl-6 text-left w-28 whitespace-nowrap">Date</th>
-                      <th className="py-3 px-4 text-left min-w-[200px]">Payee / Supplier</th>
-                      <th className="py-3 px-4 text-left w-36 whitespace-nowrap">TIN</th>
-                      <th className="py-3 px-4 text-right w-36 whitespace-nowrap">Gross Purchases</th>
-                      <th className="py-3 px-4 pr-6 text-right w-36 whitespace-nowrap text-orange-600">Input Tax (12%)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100">
-                    {!reliefData.annexB_Purchases || reliefData.annexB_Purchases.length === 0 ? (
-                      <tr>
-                        <td colSpan={5} className="py-16 text-center text-gray-400">
-                          <span className="block text-4xl mb-2 opacity-40">📂</span>
-                          <span className="italic font-medium text-sm">
-                            No vatable purchases recorded with Payee TINs this period.
-                          </span>
-                        </td>
-                      </tr>
-                    ) : (
-                      reliefData.annexB_Purchases.map((p: any, i: number) => {
-                        const grossStr = formatCurrency(p.grossAmount)
-                        const taxStr = formatCurrency(p.tax)
-                        return (
-                          <tr key={i} className="hover:bg-gray-50/80 transition-colors">
-                            <td className="py-3 px-4 pl-6 text-gray-600 font-medium whitespace-nowrap text-xs">
-                              {new Date(p.date).toLocaleDateString()}
-                            </td>
-                            <td className="py-3 px-4 font-bold text-gray-900 max-w-[260px] truncate" title={p.supplierName}>
-                              {p.supplierName}
-                            </td>
-                            <td className="py-3 px-4 text-gray-600 font-mono font-bold text-xs whitespace-nowrap">
-                              {p.tin || '—'}
-                            </td>
-                            <td className="py-3 px-4 text-right text-gray-800 font-mono font-bold tabular-nums whitespace-nowrap">
-                              {grossStr || <span className="text-gray-300">-</span>}
-                            </td>
-                            <td className="py-3 px-4 pr-6 text-right text-orange-600 font-black font-mono tabular-nums whitespace-nowrap">
-                              {taxStr || <span className="text-orange-300">-</span>}
+            {/* ANNEX A: SALES VIEW */}
+            {reliefTab === 'sales' && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-gray-200 p-6 rounded-2xl shadow-xs">
+                  <div>
+                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">
+                      Annex A: Summary List of Sales (SLSS)
+                    </h3>
+                    <p className="text-xs text-gray-500 font-medium mt-0.5">
+                      Compliant BIR RELIEF DAT format (H,S / D,S / C,S) for Form 2550Q ({getPeriodLabel()}).
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                    <span className="text-xs font-bold text-gray-600 bg-white border border-gray-200 px-3 py-1 rounded-md">
+                      {reliefData.annexA_Sales?.length || 0} Records
+                    </span>
+                    <button
+                      onClick={handleDownloadSLSS}
+                      disabled={!reliefData.annexA_Sales || reliefData.annexA_Sales.length === 0}
+                      className="bg-[#1B9387] hover:bg-[#28958B] disabled:opacity-50 disabled:bg-gray-400 text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Download size={14} /> <span>Download Sales .DAT</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs flex flex-col">
+                  <div className="overflow-x-auto max-h-[560px] print:max-h-none print:overflow-visible">
+                    <table className="w-full text-sm min-w-[720px] border-collapse">
+                      <thead className="text-gray-500 text-[10px] font-black uppercase tracking-wider bg-gray-50/90 border-b border-gray-200 sticky top-0 z-10 shadow-2xs">
+                        <tr>
+                          <th className="py-3 px-4 pl-6 text-left w-28 whitespace-nowrap">Date</th>
+                          <th className="py-3 px-4 text-left min-w-[200px]">Buyer / Patient / HMO</th>
+                          <th className="py-3 px-4 text-left w-36 whitespace-nowrap">TIN</th>
+                          <th className="py-3 px-4 text-right w-36 whitespace-nowrap">Gross Sales</th>
+                          <th className="py-3 px-4 text-right w-36 whitespace-nowrap">Taxable Sales</th>
+                          <th className="py-3 px-4 pr-6 text-right w-36 whitespace-nowrap text-teal-600">Output Tax (12%)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {!reliefData.annexA_Sales || reliefData.annexA_Sales.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-16 text-center text-gray-400">
+                              <span className="block text-4xl mb-2 opacity-40">📂</span>
+                              <span className="italic font-medium text-sm">
+                                No sales transactions recorded for this period.
+                              </span>
                             </td>
                           </tr>
-                        )
-                      })
-                    )}
-                  </tbody>
-                  {reliefData.annexB_Purchases && reliefData.annexB_Purchases.length > 0 && (
-                    <tfoot className="bg-gray-50/90 font-black border-t-2 border-gray-200 text-xs">
-                      <tr>
-                        <td colSpan={3} className="py-3.5 px-4 pl-6 text-gray-700 uppercase tracking-wider">
-                          Total For ${getPeriodLabel()}
-                        </td>
-                        <td className="py-3.5 px-4 text-right font-mono font-black text-gray-900 tabular-nums whitespace-nowrap">
-                          {formatCurrency(reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.grossAmount) || 0), 0)) || '₱ 0.00'}
-                        </td>
-                        <td className="py-3.5 px-4 pr-6 text-right font-mono font-black text-orange-600 tabular-nums whitespace-nowrap">
-                          {formatCurrency(reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.tax) || 0), 0)) || '₱ 0.00'}
-                        </td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
+                        ) : (
+                          reliefData.annexA_Sales.map((s: any, i: number) => {
+                            return (
+                              <tr key={i} className="hover:bg-gray-50/80 transition-colors">
+                                <td className="py-3 px-4 pl-6 text-gray-600 font-medium whitespace-nowrap text-xs">
+                                  {new Date(s.date).toLocaleDateString()}
+                                </td>
+                                <td className="py-3 px-4 font-bold text-gray-900 max-w-[260px] truncate" title={s.customerName}>
+                                  {s.customerName}
+                                </td>
+                                <td className="py-3 px-4 text-gray-600 font-mono font-bold text-xs whitespace-nowrap">
+                                  {s.tin || '—'}
+                                </td>
+                                <td className="py-3 px-4 text-right text-gray-800 font-mono font-bold tabular-nums whitespace-nowrap">
+                                  {formatCurrency(s.grossAmount) || <span className="text-gray-300">-</span>}
+                                </td>
+                                <td className="py-3 px-4 text-right text-gray-800 font-mono font-bold tabular-nums whitespace-nowrap">
+                                  {formatCurrency(s.taxableSales) || <span className="text-gray-300">-</span>}
+                                </td>
+                                <td className="py-3 px-4 pr-6 text-right text-teal-600 font-black font-mono tabular-nums whitespace-nowrap">
+                                  {formatCurrency(s.outputTax) || <span className="text-gray-300">-</span>}
+                                </td>
+                              </tr>
+                            )
+                          })
+                        )}
+                      </tbody>
+                      {reliefData.annexA_Sales && reliefData.annexA_Sales.length > 0 && (
+                        <tfoot className="bg-gray-50/90 font-black border-t-2 border-gray-200 text-xs">
+                          <tr>
+                            <td colSpan={3} className="py-3.5 px-4 pl-6 text-gray-700 uppercase tracking-wider">
+                              Total For {getPeriodLabel()}
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-mono font-black text-gray-900 tabular-nums whitespace-nowrap">
+                              {formatCurrency(reliefData.salesTotals?.totalGross ?? reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.grossAmount) || 0), 0)) || '₱ 0.00'}
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-mono font-black text-gray-900 tabular-nums whitespace-nowrap">
+                              {formatCurrency(reliefData.salesTotals?.totalTaxable ?? reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.taxableSales) || 0), 0)) || '₱ 0.00'}
+                            </td>
+                            <td className="py-3.5 px-4 pr-6 text-right font-mono font-black text-teal-600 tabular-nums whitespace-nowrap">
+                              {formatCurrency(reliefData.salesTotals?.totalOutputTax ?? reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.outputTax) || 0), 0)) || '₱ 0.00'}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* ANNEX B: PURCHASES VIEW */}
+            {reliefTab === 'purchases' && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white border border-gray-200 p-6 rounded-2xl shadow-xs">
+                  <div>
+                    <h3 className="text-sm font-black text-gray-800 uppercase tracking-wide">
+                      Annex B: Summary List of Purchases (SLSP)
+                    </h3>
+                    <p className="text-xs text-gray-500 font-medium mt-0.5">
+                      Compliant BIR RELIEF DAT format (H,P / D,P / C,P) for Form 2550Q ({getPeriodLabel()}).
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                    <span className="text-xs font-bold text-gray-600 bg-white border border-gray-200 px-3 py-1 rounded-md">
+                      {reliefData.annexB_Purchases?.length || 0} Records
+                    </span>
+                    <button
+                      onClick={handleDownloadSLSP}
+                      disabled={!reliefData.annexB_Purchases || reliefData.annexB_Purchases.length === 0}
+                      className="bg-[#1B9387] hover:bg-[#28958B] disabled:opacity-50 disabled:bg-gray-400 text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                    >
+                      <Download size={14} /> <span>Download Purchases .DAT</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-xs flex flex-col">
+                  <div className="overflow-x-auto max-h-[560px] print:max-h-none print:overflow-visible">
+                    <table className="w-full text-sm min-w-[720px] border-collapse">
+                      <thead className="text-gray-500 text-[10px] font-black uppercase tracking-wider bg-gray-50/90 border-b border-gray-200 sticky top-0 z-10 shadow-2xs">
+                        <tr>
+                          <th className="py-3 px-4 pl-6 text-left w-28 whitespace-nowrap">Date</th>
+                          <th className="py-3 px-4 text-left min-w-[200px]">Payee / Supplier</th>
+                          <th className="py-3 px-4 text-left w-36 whitespace-nowrap">TIN</th>
+                          <th className="py-3 px-4 text-right w-36 whitespace-nowrap">Gross Purchases</th>
+                          <th className="py-3 px-4 pr-6 text-right w-36 whitespace-nowrap text-orange-600">Input Tax (12%)</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {!reliefData.annexB_Purchases || reliefData.annexB_Purchases.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="py-16 text-center text-gray-400">
+                              <span className="block text-4xl mb-2 opacity-40">📂</span>
+                              <span className="italic font-medium text-sm">
+                                No vatable purchases recorded with Payee TINs this period.
+                              </span>
+                            </td>
+                          </tr>
+                        ) : (
+                          reliefData.annexB_Purchases.map((p: any, i: number) => {
+                            const grossStr = formatCurrency(p.grossAmount)
+                            const taxStr = formatCurrency(p.tax)
+                            return (
+                              <tr key={i} className="hover:bg-gray-50/80 transition-colors">
+                                <td className="py-3 px-4 pl-6 text-gray-600 font-medium whitespace-nowrap text-xs">
+                                  {new Date(p.date).toLocaleDateString()}
+                                </td>
+                                <td className="py-3 px-4 font-bold text-gray-900 max-w-[260px] truncate" title={p.supplierName}>
+                                  {p.supplierName}
+                                </td>
+                                <td className="py-3 px-4 text-gray-600 font-mono font-bold text-xs whitespace-nowrap">
+                                  {p.tin || '—'}
+                                </td>
+                                <td className="py-3 px-4 text-right text-gray-800 font-mono font-bold tabular-nums whitespace-nowrap">
+                                  {grossStr || <span className="text-gray-300">-</span>}
+                                </td>
+                                <td className="py-3 px-4 pr-6 text-right text-orange-600 font-black font-mono tabular-nums whitespace-nowrap">
+                                  {taxStr || <span className="text-orange-300">-</span>}
+                                </td>
+                              </tr>
+                            )
+                          })
+                        )}
+                      </tbody>
+                      {reliefData.annexB_Purchases && reliefData.annexB_Purchases.length > 0 && (
+                        <tfoot className="bg-gray-50/90 font-black border-t-2 border-gray-200 text-xs">
+                          <tr>
+                            <td colSpan={3} className="py-3.5 px-4 pl-6 text-gray-700 uppercase tracking-wider">
+                              Total For {getPeriodLabel()}
+                            </td>
+                            <td className="py-3.5 px-4 text-right font-mono font-black text-gray-900 tabular-nums whitespace-nowrap">
+                              {formatCurrency(reliefData.purchasesTotals?.totalGross ?? reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.grossAmount) || 0), 0)) || '₱ 0.00'}
+                            </td>
+                            <td className="py-3.5 px-4 pr-6 text-right font-mono font-black text-orange-600 tabular-nums whitespace-nowrap">
+                              {formatCurrency(reliefData.purchasesTotals?.totalInputTax ?? reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.tax) || 0), 0)) || '₱ 0.00'}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      )}
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
