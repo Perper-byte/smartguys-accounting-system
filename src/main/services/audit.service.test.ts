@@ -47,10 +47,11 @@ describe('AuditService', () => {
       )
     })
 
-    test('logs SYSTEM action without looking up user in database', async () => {
-      (prisma.auditLog.create as jest.Mock).mockResolvedValue({
+    test('logs SYSTEM action by resolving SYSTEM user in database', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'sys-user-id' })
+      ;(prisma.auditLog.create as jest.Mock).mockResolvedValue({
         id: 'log-sys',
-        user_id: null,
+        user_id: 'sys-user-id',
         action: 'AUTO_BACKUP',
         details: 'Nightly backup completed',
         timestamp: new Date()
@@ -59,11 +60,14 @@ describe('AuditService', () => {
       const result = await AuditService.logAction('SYSTEM', 'AUTO_BACKUP', 'Nightly backup completed')
 
       expect(result).not.toBeNull()
-      expect(prisma.user.findFirst).not.toHaveBeenCalled()
+      expect(prisma.user.findFirst).toHaveBeenCalledWith({
+        where: { username: 'SYSTEM' },
+        select: { id: true }
+      })
       expect(prisma.auditLog.create).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            user_id: null,
+            user_id: 'sys-user-id',
             action: 'AUTO_BACKUP'
           })
         })

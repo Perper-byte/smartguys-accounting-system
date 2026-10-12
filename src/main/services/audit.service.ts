@@ -15,6 +15,7 @@ export class AuditService {
     try {
       let resolvedUserId: string | null = null
 
+      // Resolve user ID. If actor is 'SYSTEM' or not provided, find the SYSTEM user or fallback to first user
       if (actor && actor !== 'SYSTEM') {
         const strActor = String(actor)
         const user = await prisma.user.findFirst({
@@ -26,26 +27,33 @@ export class AuditService {
         if (user) resolvedUserId = user.id
       }
 
-      // Safe write: try snake_case first, fallback to camelCase if schema requires
-      try {
-        return await (prisma.auditLog as any).create({
-          data: {
-            user_id: resolvedUserId,
-            action: (action || 'LOG').toUpperCase().trim(),
-            details: details || '',
-            timestamp: new Date()
-          }
+      // If unresolved or actor was SYSTEM, locate the SYSTEM user or first available admin
+      if (!resolvedUserId) {
+        const sysUser = await prisma.user.findFirst({
+          where: { username: 'SYSTEM' },
+          select: { id: true }
         })
-      } catch {
-        return await (prisma.auditLog as any).create({
-          data: {
-            userId: resolvedUserId,
-            action: (action || 'LOG').toUpperCase().trim(),
-            details: details || '',
-            timestamp: new Date()
-          }
-        })
+        if (sysUser) {
+          resolvedUserId = sysUser.id
+        } else {
+          const fallbackUser = await prisma.user.findFirst({
+            select: { id: true }
+          })
+          if (fallbackUser) resolvedUserId = fallbackUser.id
+        }
       }
+
+      // If no users exist at all in DB, skip logging safely
+      if (!resolvedUserId) return null
+
+      return await prisma.auditLog.create({
+        data: {
+          user_id: resolvedUserId,
+          action: (action || 'LOG').toUpperCase().trim(),
+          details: details || '',
+          timestamp: new Date()
+        }
+      })
     } catch (err) {
       console.error('AuditService.logAction failed:', err)
       return null
