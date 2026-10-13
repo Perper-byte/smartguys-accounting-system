@@ -5,12 +5,14 @@ import {
   FileText,
   Printer,
   Download,
+  FileSpreadsheet,
   AlertCircle,
   RefreshCw,
   TrendingUp,
   Users,
   ShieldCheck
 } from 'lucide-react'
+import * as XLSX from 'xlsx'
 import { ReliefGeneratorEngine } from '../../../shared/relief-engine'
 
 export const BIRReportsView: React.FC = () => {
@@ -182,6 +184,252 @@ export const BIRReportsView: React.FC = () => {
     triggerDownload(compileResult.fileContent, compileResult.fileName)
   }
 
+  // Excel Export for Sales (SLSS - Annex A)
+  const handleExportExcelSLSS = () => {
+    if (!reliefData || !reliefData.annexA_Sales || reliefData.annexA_Sales.length === 0) {
+      return alert('No Sales data available for Excel export.')
+    }
+
+    const rows = reliefData.annexA_Sales.map((s: any) => ({
+      'Date': s.date ? new Date(s.date).toISOString().slice(0, 10) : '',
+      'Customer / Buyer Name': s.customerName || 'Walk-in Patient',
+      'TIN': s.tin || '',
+      'Branch Code': s.branchCode || '0000',
+      'Address': s.address || '',
+      'Gross Sales': Number((s.grossAmount || 0).toFixed(2)),
+      'Exempt Sales': Number((s.exemptSales || 0).toFixed(2)),
+      'Zero-Rated Sales': Number((s.zeroRatedSales || 0).toFixed(2)),
+      'Taxable Sales': Number((s.taxableSales || 0).toFixed(2)),
+      'Output VAT (12%)': Number((s.outputTax || 0).toFixed(2))
+    }))
+
+    const totals = reliefData.salesTotals || {}
+    rows.push({
+      'Date': 'TOTAL',
+      'Customer / Buyer Name': `${reliefData.annexA_Sales.length} Transactions`,
+      'TIN': '',
+      'Branch Code': '',
+      'Address': '',
+      'Gross Sales': Number((totals.totalGross || 0).toFixed(2)),
+      'Exempt Sales': Number((totals.totalExempt || 0).toFixed(2)),
+      'Zero-Rated Sales': Number((totals.totalZeroRated || 0).toFixed(2)),
+      'Taxable Sales': Number((totals.totalTaxable || 0).toFixed(2)),
+      'Output VAT (12%)': Number((totals.totalOutputTax || 0).toFixed(2))
+    })
+
+    const worksheet = XLSX.utils.json_to_sheet(rows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'SLS - Sales')
+    const fileName = `BIR_RELIEF_Sales_${year}_${quarter === 0 ? 'Annual' : `Q${quarter}`}.xlsx`
+    XLSX.writeFile(workbook, fileName)
+  }
+
+  // Excel Export for Purchases (SLSP - Annex B)
+  const handleExportExcelSLSP = () => {
+    if (!reliefData || !reliefData.annexB_Purchases || reliefData.annexB_Purchases.length === 0) {
+      return alert('No Purchases data available for Excel export.')
+    }
+
+    const rows = reliefData.annexB_Purchases.map((p: any) => ({
+      'Date': p.date ? new Date(p.date).toISOString().slice(0, 10) : '',
+      'Supplier / Vendor Name': p.supplierName || 'Unknown Supplier',
+      'TIN': p.tin || '',
+      'Branch Code': p.branchCode || '0000',
+      'Address': p.address || '',
+      'Exempt Purchases': Number((p.exemptPurchases || 0).toFixed(2)),
+      'Zero-Rated Purchases': Number((p.zeroRatedPurchases || 0).toFixed(2)),
+      'Services Purchases': Number((p.servicesPurchases || 0).toFixed(2)),
+      'Capital Goods': Number((p.capitalPurchases || 0).toFixed(2)),
+      'Other Goods': Number((p.goodsPurchases || 0).toFixed(2)),
+      'Input VAT': Number((p.tax || 0).toFixed(2)),
+      'Gross Purchases': Number((p.grossAmount || 0).toFixed(2))
+    }))
+
+    const totals = reliefData.purchasesTotals || {}
+    rows.push({
+      'Date': 'TOTAL',
+      'Supplier / Vendor Name': `${reliefData.annexB_Purchases.length} Transactions`,
+      'TIN': '',
+      'Branch Code': '',
+      'Address': '',
+      'Exempt Purchases': Number((totals.totalExempt || 0).toFixed(2)),
+      'Zero-Rated Purchases': Number((totals.totalZeroRated || 0).toFixed(2)),
+      'Services Purchases': Number((totals.totalServices || 0).toFixed(2)),
+      'Capital Goods': Number((totals.totalCapital || 0).toFixed(2)),
+      'Other Goods': Number((totals.totalGoods || 0).toFixed(2)),
+      'Input VAT': Number((totals.totalInputTax || 0).toFixed(2)),
+      'Gross Purchases': Number((totals.totalGross || 0).toFixed(2))
+    })
+
+    const worksheet = XLSX.utils.json_to_sheet(rows)
+    const workbook = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'SLP - Purchases')
+    const fileName = `BIR_RELIEF_Purchases_${year}_${quarter === 0 ? 'Annual' : `Q${quarter}`}.xlsx`
+    XLSX.writeFile(workbook, fileName)
+  }
+
+  // Combined Excel Export for Full RELIEF (both Sales & Purchases)
+  const handleExportExcelCombined = () => {
+    if (!reliefData) return alert('No RELIEF data available for Excel export.')
+
+    const workbook = XLSX.utils.book_new()
+    let hasSheet = false
+
+    if (reliefData.annexA_Sales && reliefData.annexA_Sales.length > 0) {
+      const salesRows = reliefData.annexA_Sales.map((s: any) => ({
+        'Date': s.date ? new Date(s.date).toISOString().slice(0, 10) : '',
+        'Customer / Buyer Name': s.customerName || 'Walk-in Patient',
+        'TIN': s.tin || '',
+        'Branch Code': s.branchCode || '0000',
+        'Address': s.address || '',
+        'Gross Sales': Number((s.grossAmount || 0).toFixed(2)),
+        'Exempt Sales': Number((s.exemptSales || 0).toFixed(2)),
+        'Zero-Rated Sales': Number((s.zeroRatedSales || 0).toFixed(2)),
+        'Taxable Sales': Number((s.taxableSales || 0).toFixed(2)),
+        'Output VAT (12%)': Number((s.outputTax || 0).toFixed(2))
+      }))
+      const sTotals = reliefData.salesTotals || {}
+      salesRows.push({
+        'Date': 'TOTAL',
+        'Customer / Buyer Name': `${reliefData.annexA_Sales.length} Transactions`,
+        'TIN': '',
+        'Branch Code': '',
+        'Address': '',
+        'Gross Sales': Number((sTotals.totalGross || 0).toFixed(2)),
+        'Exempt Sales': Number((sTotals.totalExempt || 0).toFixed(2)),
+        'Zero-Rated Sales': Number((sTotals.totalZeroRated || 0).toFixed(2)),
+        'Taxable Sales': Number((sTotals.totalTaxable || 0).toFixed(2)),
+        'Output VAT (12%)': Number((sTotals.totalOutputTax || 0).toFixed(2))
+      })
+      const wsSales = XLSX.utils.json_to_sheet(salesRows)
+      XLSX.utils.book_append_sheet(workbook, wsSales, 'Summary List of Sales')
+      hasSheet = true
+    }
+
+    if (reliefData.annexB_Purchases && reliefData.annexB_Purchases.length > 0) {
+      const purchasesRows = reliefData.annexB_Purchases.map((p: any) => ({
+        'Date': p.date ? new Date(p.date).toISOString().slice(0, 10) : '',
+        'Supplier / Vendor Name': p.supplierName || 'Unknown Supplier',
+        'TIN': p.tin || '',
+        'Branch Code': p.branchCode || '0000',
+        'Address': p.address || '',
+        'Exempt Purchases': Number((p.exemptPurchases || 0).toFixed(2)),
+        'Zero-Rated Purchases': Number((p.zeroRatedPurchases || 0).toFixed(2)),
+        'Services Purchases': Number((p.servicesPurchases || 0).toFixed(2)),
+        'Capital Goods': Number((p.capitalPurchases || 0).toFixed(2)),
+        'Other Goods': Number((p.goodsPurchases || 0).toFixed(2)),
+        'Input VAT': Number((p.tax || 0).toFixed(2)),
+        'Gross Purchases': Number((p.grossAmount || 0).toFixed(2))
+      }))
+      const pTotals = reliefData.purchasesTotals || {}
+      purchasesRows.push({
+        'Date': 'TOTAL',
+        'Supplier / Vendor Name': `${reliefData.annexB_Purchases.length} Transactions`,
+        'TIN': '',
+        'Branch Code': '',
+        'Address': '',
+        'Exempt Purchases': Number((pTotals.totalExempt || 0).toFixed(2)),
+        'Zero-Rated Purchases': Number((pTotals.totalZeroRated || 0).toFixed(2)),
+        'Services Purchases': Number((pTotals.totalServices || 0).toFixed(2)),
+        'Capital Goods': Number((pTotals.totalCapital || 0).toFixed(2)),
+        'Other Goods': Number((pTotals.totalGoods || 0).toFixed(2)),
+        'Input VAT': Number((pTotals.totalInputTax || 0).toFixed(2)),
+        'Gross Purchases': Number((pTotals.totalGross || 0).toFixed(2))
+      })
+      const wsPurchases = XLSX.utils.json_to_sheet(purchasesRows)
+      XLSX.utils.book_append_sheet(workbook, wsPurchases, 'Summary List of Purchases')
+      hasSheet = true
+    }
+
+    if (!hasSheet) return alert('No Sales or Purchases data available to export.')
+
+    const fileName = `BIR_RELIEF_Complete_${year}_${quarter === 0 ? 'Annual' : `Q${quarter}`}.xlsx`
+    XLSX.writeFile(workbook, fileName)
+  }
+
+  // Generic Excel Export for whatever view is currently active
+  const handleExportActiveViewExcel = () => {
+    if (view === 'relief') {
+      handleExportExcelCombined()
+      return
+    }
+
+    if (!taxData) return alert('No tax data available for Excel export.')
+
+    const workbook = XLSX.utils.book_new()
+
+    if (view === '2550Q') {
+      const summaryRows = [
+        { 'Line Item': 'Item 12: Vatable Sales (Net of VAT)', 'Amount (PHP)': taxData.vatableSales || 0 },
+        { 'Line Item': 'Item 13: VAT-Exempt Sales', 'Amount (PHP)': taxData.vatExemptSales || 0 },
+        { 'Line Item': 'Item 14: Total Gross Sales', 'Amount (PHP)': taxData.grossSales || 0 },
+        { 'Line Item': 'Item 15: Output VAT (12%)', 'Amount (PHP)': taxData.outputTax || 0 },
+        { 'Line Item': 'Item 16: Domestic Purchases (Capital Goods)', 'Amount (PHP)': 0 },
+        { 'Line Item': 'Item 17: Domestic Purchases (Goods other than Capital)', 'Amount (PHP)': taxData.taxablePurchases || 0 },
+        { 'Line Item': 'Item 18: Total Input VAT Claimed', 'Amount (PHP)': taxData.inputTax || 0 },
+        { 'Line Item': 'Item 19: Creditable Withholding VAT (Form 2307)', 'Amount (PHP)': taxData.creditableVatWithheld || 0 },
+        { 'Line Item': 'Item 20: Net VAT Payable / (Overpayment)', 'Amount (PHP)': taxData.netVatPayable || 0 }
+      ]
+      const ws = XLSX.utils.json_to_sheet(summaryRows)
+      XLSX.utils.book_append_sheet(workbook, ws, 'BIR Form 2550Q')
+      XLSX.writeFile(workbook, `BIR_Form_2550Q_${year}_${quarter === 0 ? 'Annual' : `Q${quarter}`}.xlsx`)
+      return
+    }
+
+    if (view === '0619E' || view === '1601EQ') {
+      const list = taxData.qapList || []
+      const rows = list.map((item: any) => ({
+        'Date': item.date ? new Date(item.date).toISOString().slice(0, 10) : '',
+        'Payee Name': item.payeeName || '',
+        'TIN': item.tin || '',
+        'ATC Code': item.atc || '',
+        'Nature of Income Payment': item.nature || '',
+        'Tax Rate': `${item.rate || 0}%`,
+        'Gross Amount': Number((item.grossAmount || 0).toFixed(2)),
+        'Tax Withheld': Number((item.taxWithheld || 0).toFixed(2))
+      }))
+      rows.push({
+        'Date': 'TOTAL',
+        'Payee Name': `${list.length} Records`,
+        'TIN': '',
+        'ATC Code': '',
+        'Nature of Income Payment': '',
+        'Tax Rate': '',
+        'Gross Amount': Number((taxData.totalGrossEwt || 0).toFixed(2)),
+        'Tax Withheld': Number((taxData.ewtWithheld || 0).toFixed(2))
+      })
+      const ws = XLSX.utils.json_to_sheet(rows)
+      const formName = view === '0619E' ? 'Form 0619-E' : quarter === 0 ? 'Form 1604-E' : 'Form 1601-EQ'
+      XLSX.utils.book_append_sheet(workbook, ws, formName)
+      XLSX.writeFile(workbook, `BIR_${formName.replace(/\s+/g, '_')}_${year}_${getPeriodLabel().replace(/\s+/g, '_')}.xlsx`)
+      return
+    }
+
+    if (view === '1601C') {
+      const emps = taxData.employees || []
+      const rows = emps.map((emp: any) => ({
+        'Employee Name': emp.employeeName || '',
+        'TIN': emp.tin || '',
+        'Gross Compensation': Number((emp.grossCompensation || 0).toFixed(2)),
+        'Non-Taxable Compensation': Number((emp.nonTaxableCompensation || 0).toFixed(2)),
+        'Taxable Compensation': Number((emp.taxableCompensation || 0).toFixed(2)),
+        'Tax Withheld': Number((emp.taxWithheld || 0).toFixed(2))
+      }))
+      rows.push({
+        'Employee Name': 'TOTAL',
+        'TIN': `${emps.length} Employees`,
+        'Gross Compensation': Number((taxData.totalGrossCompensation || 0).toFixed(2)),
+        'Non-Taxable Compensation': Number((taxData.totalNonTaxableCompensation || 0).toFixed(2)),
+        'Taxable Compensation': Number((taxData.totalTaxableCompensation || 0).toFixed(2)),
+        'Tax Withheld': Number((taxData.totalTaxRequiredWithheld || 0).toFixed(2))
+      })
+      const ws = XLSX.utils.json_to_sheet(rows)
+      XLSX.utils.book_append_sheet(workbook, ws, 'Form 1601-C')
+      XLSX.writeFile(workbook, `BIR_Form_1601C_${year}_${getMonthName(month)}.xlsx`)
+      return
+    }
+  }
+
   const handleDownloadQAP = () => {
     if (!taxData || !taxData.qapList || taxData.qapList.length === 0)
       return alert('No EWT data available.')
@@ -307,6 +555,13 @@ export const BIRReportsView: React.FC = () => {
                 </select>
               )}
             </div>
+            <button
+              onClick={handleExportActiveViewExcel}
+              className="px-4 py-2 h-[38px] bg-[#107c41] hover:bg-[#0e6b38] text-white text-xs font-bold rounded-md tracking-wider uppercase transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              title="Export current view to Excel (.xlsx)"
+            >
+              <FileSpreadsheet size={15} /> <span>Export Excel</span>
+            </button>
             <button
               onClick={handleExportPDF}
               className="px-4 py-2 h-[38px] bg-white hover:bg-gray-50 border border-gray-300 text-xs font-bold text-gray-700 rounded-md tracking-wider uppercase transition flex items-center gap-1.5 shadow-sm cursor-pointer"
@@ -997,6 +1252,14 @@ export const BIRReportsView: React.FC = () => {
                       {reliefData.annexA_Sales?.length || 0} Records
                     </span>
                     <button
+                      onClick={handleExportExcelSLSS}
+                      disabled={!reliefData.annexA_Sales || reliefData.annexA_Sales.length === 0}
+                      className="bg-[#107c41] hover:bg-[#0e6b38] disabled:opacity-50 disabled:bg-gray-400 text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                      title="Export Annex A (SLSS) to Excel"
+                    >
+                      <FileSpreadsheet size={14} /> <span>Export Excel</span>
+                    </button>
+                    <button
                       onClick={handleDownloadSLSS}
                       disabled={!reliefData.annexA_Sales || reliefData.annexA_Sales.length === 0}
                       className="bg-[#1B9387] hover:bg-[#28958B] disabled:opacity-50 disabled:bg-gray-400 text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
@@ -1096,6 +1359,14 @@ export const BIRReportsView: React.FC = () => {
                     <span className="text-xs font-bold text-gray-600 bg-white border border-gray-200 px-3 py-1 rounded-md">
                       {reliefData.annexB_Purchases?.length || 0} Records
                     </span>
+                    <button
+                      onClick={handleExportExcelSLSP}
+                      disabled={!reliefData.annexB_Purchases || reliefData.annexB_Purchases.length === 0}
+                      className="bg-[#107c41] hover:bg-[#0e6b38] disabled:opacity-50 disabled:bg-gray-400 text-white text-xs font-bold uppercase tracking-wider px-4 py-2.5 rounded-lg transition flex items-center gap-1.5 shadow-xs cursor-pointer"
+                      title="Export Annex B (SLSP) to Excel"
+                    >
+                      <FileSpreadsheet size={14} /> <span>Export Excel</span>
+                    </button>
                     <button
                       onClick={handleDownloadSLSP}
                       disabled={!reliefData.annexB_Purchases || reliefData.annexB_Purchases.length === 0}
