@@ -70,14 +70,14 @@ describe('Sprint 4 - Week 1: BIR Tax Compliance Engine', () => {
     expect(typeof annexes.salesDatFile).toBe('string')
     expect(typeof annexes.purchasesDatFile).toBe('string')
 
-    // Verify pipe-delimited format on generated files
+    // Verify comma-delimited format for BIR ReLiEf Module v2.3 compliance
     const salesHeader = annexes.salesDatFile.split('\r\n')[0]
-    expect(salesHeader.startsWith('H|S|')).toBe(true)
-    expect(salesHeader.split('|').length).toBe(13)
+    expect(salesHeader.startsWith('H,S,"748392019",')).toBe(true)
+    expect(salesHeader.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).length).toBe(17)
 
     const purchasesHeader = annexes.purchasesDatFile.split('\r\n')[0]
-    expect(purchasesHeader.startsWith('H|P|')).toBe(true)
-    expect(purchasesHeader.split('|').length).toBe(13)
+    expect(purchasesHeader.startsWith('H,P,"748392019",')).toBe(true)
+    expect(purchasesHeader.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).length).toBe(21)
   })
 
   test('👥 Form 1601-C: Should calculate monthly compensation withholding tax breakdown', async () => {

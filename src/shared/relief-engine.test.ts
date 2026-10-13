@@ -54,7 +54,7 @@ describe('BIR RELIEF (.DAT) File Generator Engine - BIR Validation Module v2.3 C
     }
   ]
 
-  test('Delimiters & Structure: Verifies exact column and pipe counts across all rows', () => {
+  test('Delimiters & Structure: Verifies comma delimiters, quoted strings, and row counts (NO C row)', () => {
     const compileOptions: ReliefCompileOptions = {
       type: 'S',
       taxableMonth: '06/2026',
@@ -65,33 +65,30 @@ describe('BIR RELIEF (.DAT) File Generator Engine - BIR Validation Module v2.3 C
     const result = ReliefGeneratorEngine.compile(compileOptions)
     const lines = result.fileContent.split('\r\n')
 
-    expect(lines.length).toBe(5) // 1 Header + 3 Details + 1 Control
+    // BIR RELIEF v2.3 has ONLY Header (H) and Details (D) - NO Control (C) row
+    expect(lines.length).toBe(4) // 1 Header + 3 Details
 
-    // 1. Header Line: Exactly 13 columns (12 pipes)
-    const headerCols = lines[0].split('|')
-    expect(headerCols.length).toBe(13)
-    expect((lines[0].match(/\|/g) || []).length).toBe(12)
-    expect(lines[0].endsWith('|')).toBe(false)
-    expect(lines[0].startsWith('H|S|')).toBe(true)
+    // 1. Header Line: Exactly 17 columns
+    const headerLine = lines[0]
+    expect(headerLine.startsWith('H,S,"748392019",')).toBe(true)
+    const headerCols = headerLine.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/) // split by comma outside quotes
+    expect(headerCols.length).toBe(17)
+    expect(headerLine.endsWith(',')).toBe(false)
 
-    // 2. Detail Lines: Exactly 16 columns (15 pipes)
+    // 2. Detail Lines: Exactly 15 columns
     for (let i = 1; i <= 3; i++) {
-      const detailCols = lines[i].split('|')
-      expect(detailCols.length).toBe(16)
-      expect((lines[i].match(/\|/g) || []).length).toBe(15)
-      expect(lines[i].endsWith('|')).toBe(false)
-      expect(lines[i].startsWith('D|S|')).toBe(true)
+      const detailLine = lines[i]
+      expect(detailLine.startsWith('D,S,')).toBe(true)
+      const detailCols = detailLine.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+      expect(detailCols.length).toBe(15)
+      expect(detailLine.endsWith(',')).toBe(false)
     }
 
-    // 3. Control Line: Exactly 8 columns (7 pipes)
-    const controlCols = lines[4].split('|')
-    expect(controlCols.length).toBe(8)
-    expect((lines[4].match(/\|/g) || []).length).toBe(7)
-    expect(lines[4].endsWith('|')).toBe(false)
-    expect(lines[4].startsWith('C|S|')).toBe(true)
+    // Must NOT contain any 'C' control record (prevents 'Invalid Header/Detail Code' error)
+    expect(lines.some((l) => l.startsWith('C,'))).toBe(false)
   })
 
-  test('TIN Rules: Owner TIN is non-zero 9 digits; unregistered consumer TIN is 000000000000', () => {
+  test('TIN Rules: Owner TIN is non-zero 9 digits; unregistered consumer TIN is 000000000', () => {
     // Test owner with 000-000-000 -> must fall back to non-zero valid corporate TIN
     const zeroOwner = { ...sampleOwner, tin: '000-000-000-000' }
     const result = ReliefGeneratorEngine.compile({
@@ -102,27 +99,25 @@ describe('BIR RELIEF (.DAT) File Generator Engine - BIR Validation Module v2.3 C
     })
 
     const lines = result.fileContent.split('\r\n')
-    const headerCols = lines[0].split('|')
-    const ownerTin = headerCols[2]
+    const headerCols = lines[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+    const ownerTin = headerCols[2].replace(/"/g, '')
 
     // Crucial: Owner TIN must never be zeros and must be 9 digits
     expect(ownerTin).not.toBe('000000000')
     expect(ownerTin.length).toBe(9)
     expect(/^\d{9}$/.test(ownerTin)).toBe(true)
 
-    // Detail Line 2: Walk-in consumer TIN must be universal 12-digit '000000000000'
-    const walkInCols = lines[2].split('|')
-    expect(walkInCols[3]).toBe('000000000000')
+    // Detail Line 2: Walk-in consumer TIN must be 9-digit '000000000'
+    const walkInCols = lines[2].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+    expect(walkInCols[2]).toBe('"000000000"')
 
     // Detail Line 1: Corporate TIN must be 9 digits
-    const corpCols = lines[1].split('|')
-    expect(corpCols[3]).toBe('123456789')
-    expect(corpCols[3].length).toBe(9)
+    const corpCols = lines[1].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+    expect(corpCols[2]).toBe('"123456789"')
 
     // Detail Line 3: Individual TIN must be 9 digits
-    const indCols = lines[3].split('|')
-    expect(indCols[3]).toBe('987654321')
-    expect(indCols[3].length).toBe(9)
+    const indCols = lines[3].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+    expect(indCols[2]).toBe('"987654321"')
   })
 
   test('Corporate vs Individual Name Formatting: First and middle left completely blank for corporate', () => {
@@ -135,27 +130,29 @@ describe('BIR RELIEF (.DAT) File Generator Engine - BIR Validation Module v2.3 C
 
     const lines = result.fileContent.split('\r\n')
 
-    // Header (Corporate Owner): First & Middle empty (columns 5, 6, 7 -> indices 4, 5, 6)
-    const headerCols = lines[0].split('|')
-    expect(headerCols[4]).toBe('SMARTGUYS COMMUNITY HEALTHCARE INC.')
-    expect(headerCols[5]).toBe('')
-    expect(headerCols[6]).toBe('')
-    expect(lines[0]).toContain('|SMARTGUYS COMMUNITY HEALTHCARE INC.|||') // Name|||Street
+    // Header (Corporate Owner): First, Middle, Last empty
+    const headerCols = lines[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+    expect(headerCols[3]).toBe('"SMARTGUYS COMMUNITY HEALTHCARE INC."')
+    expect(headerCols[4]).toBe('""')
+    expect(headerCols[5]).toBe('""')
+    expect(headerCols[6]).toBe('""')
 
-    // Detail 1 (Maxicare - Corporate): First & Middle empty
-    const corpCols = lines[1].split('|')
-    expect(corpCols[5]).toBe('Maxicare Healthcare Corp.')
-    expect(corpCols[6]).toBe('')
-    expect(corpCols[7]).toBe('')
+    // Detail 1 (Maxicare - Corporate): RegName populated, names empty
+    const corpCols = lines[1].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+    expect(corpCols[3]).toBe('"Maxicare Healthcare Corp."')
+    expect(corpCols[4]).toBe('""')
+    expect(corpCols[5]).toBe('""')
+    expect(corpCols[6]).toBe('""')
 
-    // Detail 3 (Dela Cruz, Juan M. - Individual): Registered Name = Last Name, First Name, Middle Name
-    const indCols = lines[3].split('|')
-    expect(indCols[5]).toBe('Dela Cruz')
-    expect(indCols[6]).toBe('Juan')
-    expect(indCols[7]).toBe('M.')
+    // Detail 3 (Dela Cruz, Juan M. - Individual): RegName empty, names populated
+    const indCols = lines[3].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+    expect(indCols[3]).toBe('""')
+    expect(indCols[4]).toBe('"Dela Cruz"')
+    expect(indCols[5]).toBe('"Juan"')
+    expect(indCols[6]).toBe('"M."')
   })
 
-  test('Mathematical Integrity: Field 14 + Field 12 + Field 13 + Field 15 = Field 11 (Gross)', () => {
+  test('Mathematical Integrity: Sum of Details matches Header Totals', () => {
     const result = ReliefGeneratorEngine.compile({
       type: 'S',
       taxableMonth: '06/2026',
@@ -164,28 +161,24 @@ describe('BIR RELIEF (.DAT) File Generator Engine - BIR Validation Module v2.3 C
     })
 
     const lines = result.fileContent.split('\r\n')
+    const headerCols = lines[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
 
-    for (let i = 1; i <= 3; i++) {
-      const cols = lines[i].split('|')
-      const gross = parseFloat(cols[10])
-      const exempt = parseFloat(cols[11])
-      const zeroRated = parseFloat(cols[12])
-      const taxable = parseFloat(cols[13])
-      const tax = parseFloat(cols[14])
+    const headerExempt = parseFloat(headerCols[10])
+    const headerZeroRated = parseFloat(headerCols[11])
+    const headerTaxable = parseFloat(headerCols[12])
+    const headerTax = parseFloat(headerCols[13])
 
-      expect(taxable + exempt + zeroRated + tax).toBeCloseTo(gross, 2)
-    }
+    expect(headerTaxable).toBeCloseTo(12000.0, 2) // 10000 + 2000
+    expect(headerTax).toBeCloseTo(1440.0, 2) // 1200 + 240
+    expect(headerExempt).toBeCloseTo(1500.0, 2)
+    expect(headerZeroRated).toBeCloseTo(0.0, 2)
 
-    // Control Row Totals Match Accumulated Details
-    const controlCols = lines[4].split('|')
-    expect(parseInt(controlCols[3])).toBe(3) // Record Count
-    expect(parseFloat(controlCols[4])).toBeCloseTo(12000.0, 2) // Grand Total Taxable (10000 + 2000)
-    expect(parseFloat(controlCols[5])).toBeCloseTo(1440.0, 2) // Grand Total Tax (1200 + 240)
-    expect(parseFloat(controlCols[6])).toBeCloseTo(14940.0, 2) // Grand Total Gross (11200 + 1500 + 2240)
-    expect(controlCols[7]).toBe('06/2026') // Taxable Month
+    // Month End Date properly computed as 06/30/2026
+    expect(headerCols[15]).toBe('06/30/2026')
+    expect(headerCols[16]).toBe('12') // Fiscal Year End Month
   })
 
-  test('Purchases SLSP Compilation: Correct type P and file naming <TIN>P<MM><YYYY>.DAT', () => {
+  test('Purchases SLSP Compilation: Correct type P, 21 header cols, 17 detail cols, and file naming <TIN>P<MM><YYYY>.DAT', () => {
     const samplePurchases = [
       {
         date: '2026-06-10',
@@ -210,8 +203,14 @@ describe('BIR RELIEF (.DAT) File Generator Engine - BIR Validation Module v2.3 C
     expect(result.fileName).toBe('748392019P062026.DAT')
 
     const lines = result.fileContent.split('\r\n')
-    expect(lines[0].startsWith('H|P|748392019|')).toBe(true)
-    expect(lines[1].startsWith('D|P|748392019|555444333|')).toBe(true)
-    expect(lines[2].startsWith('C|P|748392019|1|')).toBe(true)
+    expect(lines.length).toBe(2) // 1 Header + 1 Detail (NO C row)
+
+    const headerCols = lines[0].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+    expect(headerCols.length).toBe(21)
+    expect(lines[0].startsWith('H,P,"748392019",')).toBe(true)
+
+    const detailCols = lines[1].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+    expect(detailCols.length).toBe(17)
+    expect(lines[1].startsWith('D,P,"555444333",')).toBe(true)
   })
 })

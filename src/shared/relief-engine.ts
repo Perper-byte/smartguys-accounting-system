@@ -2,8 +2,8 @@
 /**
  * BIR RELIEF (.DAT) FILE GENERATOR ENGINE
  *
- * Compiles transaction payloads (Sales SLSS or Purchases SLSP) into strictly validated,
- * pipe-delimited (.DAT) text files for Philippine Bureau of Internal Revenue (BIR)
+ * Compiles transaction payloads (Sales SLS or Purchases SLP) into strictly validated,
+ * comma-delimited (.DAT) text files for Philippine Bureau of Internal Revenue (BIR)
  * RELIEF Validation Module Version 2.3.
  */
 
@@ -11,8 +11,10 @@ export interface ReliefOwnerProfile {
   tin: string
   branchCode?: string
   registeredName: string
+  tradeName?: string
   firstName?: string
   middleName?: string
+  lastName?: string
   streetAddress?: string
   districtAddress?: string
   rdoCode?: string
@@ -29,6 +31,7 @@ export interface ReliefDetailRecord {
   registeredName?: string | null
   firstName?: string | null
   middleName?: string | null
+  lastName?: string | null
   address?: string | null
   streetAddress?: string | null
   districtAddress?: string | null
@@ -55,7 +58,7 @@ export interface ReliefDetailRecord {
 
 export interface ReliefCompileOptions {
   type: 'S' | 'P' // 'S' for Sales, 'P' for Purchases
-  taxableMonth: string // Strict format MM/YYYY (e.g., '06/2026')
+  taxableMonth: string // Format MM/YYYY (e.g., '12/2026')
   owner: ReliefOwnerProfile
   records: ReliefDetailRecord[]
 }
@@ -76,13 +79,13 @@ export interface ReliefCompileResult {
 export class ReliefGeneratorEngine {
   /**
    * Sanitizes string values:
-   * - Strips leading/trailing whitespaces, tabs, commas, newlines, and delimiter pipes
+   * - Strips quotes, commas, pipes, newlines, and tabs
    * - Truncates to maxLen
    */
   static cleanText(val: any, maxLen?: number): string {
     if (val === null || val === undefined) return ''
     let cleaned = String(val)
-      .replace(/[|\r\n\t,]+/g, ' ')
+      .replace(/["'|,\r\n\t]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim()
     if (maxLen && cleaned.length > maxLen) {
@@ -99,7 +102,6 @@ export class ReliefGeneratorEngine {
   static sanitizeOwnerTin(rawTin?: string | null): string {
     const digits = String(rawTin || '').replace(/\D/g, '')
     if (!digits || /^0+$/.test(digits) || digits.length < 9) {
-      // Valid registered fallback TIN for SmartGuys Clinic (non-zero)
       return '748392019'
     }
     return digits.substring(0, 9)
@@ -107,17 +109,14 @@ export class ReliefGeneratorEngine {
 
   /**
    * Sanitizes Counterparty TIN:
-   * - If unregistered walk-in consumer: universal 12-digit consumer TIN '000000000000'
+   * - If unregistered walk-in consumer: 9-digit zeros '000000000'
    * - If corporate / registered entity: 9-digit numeric taxpayer ID
    */
   static sanitizeCounterpartyTin(rawTin?: string | null, isWalkIn?: boolean): string {
-    if (isWalkIn) return '000000000000'
+    if (isWalkIn) return '000000000'
     const digits = String(rawTin || '').replace(/\D/g, '')
     if (!digits || /^0+$/.test(digits)) {
-      return '000000000000'
-    }
-    if (digits.length === 12) {
-      return digits.substring(0, 9)
+      return '000000000'
     }
     if (digits.length >= 9) {
       return digits.substring(0, 9)
@@ -136,17 +135,18 @@ export class ReliefGeneratorEngine {
 
   /**
    * Parses corporate vs individual name:
-   * - Corporate: Registered Name (Max 40), First & Middle left completely blank.
-   * - Individual: Registered Name = Last Name (Max 40), First Name (Max 20), Middle Name (Max 20).
+   * - Corporate: Registered Name (Max 50), First, Middle, & Last Name left empty.
+   * - Individual: Registered Name left empty; Last Name (Max 30), First Name (Max 30), Middle Name (Max 30).
    */
   static parseCounterpartyName(
     rawName: string,
     isCorporate?: boolean
-  ): { registeredName: string; firstName: string; middleName: string } {
-    const cleaned = this.cleanText(rawName, 80)
+  ): { registeredName: string; firstName: string; middleName: string; lastName: string } {
+    const cleaned = this.cleanText(rawName, 50)
     if (!cleaned || cleaned.toLowerCase().includes('walk-in')) {
       return {
-        registeredName: this.cleanText(cleaned || 'Walk-in Patient', 40),
+        registeredName: '',
+        lastName: this.cleanText(cleaned || 'Walk-in Patient', 30),
         firstName: '',
         middleName: ''
       }
@@ -155,19 +155,20 @@ export class ReliefGeneratorEngine {
     const isCorp =
       isCorporate !== undefined
         ? isCorporate
-        : /\b(inc|corp|corporation|llc|ltd|co|company|hospital|clinic|center|healthcare|foundation)\b/i.test(
+        : /\b(inc|corp|corporation|llc|ltd|co|company|hospital|clinic|center|healthcare|foundation|pharmacy|laboratories|enterprises)\b/i.test(
             cleaned
           )
 
     if (isCorp) {
       return {
-        registeredName: this.cleanText(cleaned, 40),
+        registeredName: this.cleanText(cleaned, 50),
+        lastName: '',
         firstName: '',
         middleName: ''
       }
     }
 
-    // Individual
+    // Individual: Last, First Middle
     if (rawName.includes(',')) {
       const parts = rawName.split(',').map((p) => this.cleanText(p))
       const lastName = parts[0] || ''
@@ -175,16 +176,18 @@ export class ReliefGeneratorEngine {
       const firstName = rest[0] || ''
       const middleName = rest.slice(1).join(' ') || ''
       return {
-        registeredName: this.cleanText(lastName, 40),
-        firstName: this.cleanText(firstName, 20),
-        middleName: this.cleanText(middleName, 20)
+        registeredName: '',
+        lastName: this.cleanText(lastName, 30),
+        firstName: this.cleanText(firstName, 30),
+        middleName: this.cleanText(middleName, 30)
       }
     }
 
     const tokens = cleaned.split(' ')
     if (tokens.length === 1) {
       return {
-        registeredName: this.cleanText(tokens[0], 40),
+        registeredName: '',
+        lastName: this.cleanText(tokens[0], 30),
         firstName: '',
         middleName: ''
       }
@@ -194,21 +197,22 @@ export class ReliefGeneratorEngine {
     const firstName = tokens[0]
     const middleName = tokens.slice(1, -1).join(' ')
     return {
-      registeredName: this.cleanText(lastName, 40),
-      firstName: this.cleanText(firstName, 20),
-      middleName: this.cleanText(middleName, 20)
+      registeredName: '',
+      lastName: this.cleanText(lastName, 30),
+      firstName: this.cleanText(firstName, 30),
+      middleName: this.cleanText(middleName, 30)
     }
   }
 
   /**
-   * Splits address into Street Address (Max 30) and District Address (Max 30)
+   * Splits address into Street Address (Max 30) and District Address / City (Max 30)
    */
   static parseAddress(
     fullAddress?: string | null
   ): { streetAddress: string; districtAddress: string } {
     if (!fullAddress) {
       return {
-        streetAddress: 'Brgy. Banay-banay',
+        streetAddress: 'Brgy Banay-banay',
         districtAddress: 'Cabuyao Laguna 4025'
       }
     }
@@ -236,7 +240,23 @@ export class ReliefGeneratorEngine {
   }
 
   /**
+   * Returns end-of-month date string in MM/DD/YYYY format.
+   * e.g., '12/2026' -> '12/31/2026'
+   */
+  static getMonthEndDate(taxableMonth: string): string {
+    const parts = taxableMonth.split('/')
+    if (parts.length === 3) {
+      return taxableMonth
+    }
+    const mm = parseInt(parts[0], 10) || 1
+    const yyyy = parseInt(parts[1], 10) || new Date().getFullYear()
+    const lastDay = new Date(yyyy, mm, 0).getDate()
+    return `${String(mm).padStart(2, '0')}/${String(lastDay).padStart(2, '0')}/${yyyy}`
+  }
+
+  /**
    * Compiles flat-file string according to BIR RELIEF Validation Module v2.3 specs.
+   * Format: Comma-delimited with quoted text fields; NO Control 'C' record.
    */
   static compile(options: ReliefCompileOptions): ReliefCompileResult {
     const { type, owner, records } = options
@@ -251,17 +271,31 @@ export class ReliefGeneratorEngine {
       validationErrors.push(`Taxable month was reformatted to strict MM/YYYY: ${taxableMonth}`)
     }
 
-    // Owner TIN & Header preparation
+    const [monthPart, yearPart] = taxableMonth.split('/')
+    const monthEndDate = this.getMonthEndDate(taxableMonth)
+
+    // Owner Profile Preparation
     const ownerTin = this.sanitizeOwnerTin(owner.tin)
-    const ownerBranch = this.sanitizeBranchCode(owner.branchCode)
-    const ownerRegName = this.cleanText(owner.registeredName, 40)
-    const ownerFirst = this.cleanText(owner.firstName, 20)
-    const ownerMid = this.cleanText(owner.middleName, 20)
+    const isOwnerCorp =
+      !owner.lastName &&
+      !owner.firstName &&
+      (Boolean(owner.registeredName) ||
+        /\b(inc|corp|corporation|center|clinic|healthcare)\b/i.test(owner.registeredName || ''))
+
+    const ownerRegName = isOwnerCorp ? this.cleanText(owner.registeredName, 50) : ''
+    const ownerLastName = !isOwnerCorp ? this.cleanText(owner.lastName || owner.registeredName, 30) : ''
+    const ownerFirstName = !isOwnerCorp ? this.cleanText(owner.firstName, 30) : ''
+    const ownerMiddleName = !isOwnerCorp ? this.cleanText(owner.middleName, 30) : ''
+
+    const ownerTrade = this.cleanText(
+      owner.tradeName || owner.registeredName || 'SMARTGUYS CLINIC',
+      40
+    )
     const ownerAddrs = this.parseAddress(
       [owner.streetAddress, owner.districtAddress].filter(Boolean).join(', ')
     )
     const ownerStreet = this.cleanText(owner.streetAddress || ownerAddrs.streetAddress, 30)
-    const ownerDist = this.cleanText(owner.districtAddress || ownerAddrs.districtAddress, 30)
+    const ownerCity = this.cleanText(owner.districtAddress || ownerAddrs.districtAddress, 30)
     const ownerRdo = this.cleanText(owner.rdoCode || '057', 3)
     const fiscalYearEnd = this.cleanText(owner.fiscalYearEndMonth || '12', 2)
 
@@ -272,8 +306,11 @@ export class ReliefGeneratorEngine {
     let totalTax = 0
     let totalExempt = 0
     let totalZeroRated = 0
+    let totalService = 0
+    let totalCapital = 0
+    let totalGoods = 0
 
-    records.forEach((rec, idx) => {
+    records.forEach((rec) => {
       const isWalkIn =
         rec.isWalkIn !== undefined
           ? rec.isWalkIn
@@ -282,94 +319,134 @@ export class ReliefGeneratorEngine {
             (rec.customerName || rec.name || '').toLowerCase().includes('walk-in')
 
       const cpTin = this.sanitizeCounterpartyTin(rec.tin, isWalkIn)
-      const cpBranch = this.sanitizeBranchCode(rec.branchCode)
-
       const rawName =
         rec.registeredName || rec.customerName || rec.supplierName || rec.name || 'Walk-in Patient'
       const names = this.parseCounterpartyName(rawName, rec.isCorporate)
-      const cpRegName = rec.registeredName ? this.cleanText(rec.registeredName, 40) : names.registeredName
-      const cpFirst = rec.firstName ? this.cleanText(rec.firstName, 20) : names.firstName
-      const cpMid = rec.middleName ? this.cleanText(rec.middleName, 20) : names.middleName
+
+      const cpRegName = rec.registeredName
+        ? this.cleanText(rec.registeredName, 50)
+        : names.registeredName
+      const cpLastName = rec.lastName ? this.cleanText(rec.lastName, 30) : names.lastName
+      const cpFirstName = rec.firstName ? this.cleanText(rec.firstName, 30) : names.firstName
+      const cpMiddleName = rec.middleName ? this.cleanText(rec.middleName, 30) : names.middleName
 
       const cpAddrs = this.parseAddress(rec.address)
       const cpStreet = this.cleanText(rec.streetAddress || cpAddrs.streetAddress, 30)
-      const cpDist = this.cleanText(rec.districtAddress || cpAddrs.districtAddress, 30)
+      const cpCity = this.cleanText(rec.districtAddress || cpAddrs.districtAddress, 30)
 
       // Financials
-      let exempt = Number(rec.exemptAmount ?? rec.exemptSales ?? rec.exemptPurchases ?? 0)
-      let zeroRated = Number(rec.zeroRatedAmount ?? rec.zeroRatedSales ?? rec.zeroRatedPurchases ?? 0)
+      const exempt = Number(rec.exemptAmount ?? rec.exemptSales ?? rec.exemptPurchases ?? 0)
+      const zeroRated = Number(
+        rec.zeroRatedAmount ?? rec.zeroRatedSales ?? rec.zeroRatedPurchases ?? 0
+      )
+      const service = Number(rec.servicesPurchases ?? 0)
+      const capital = Number(rec.capitalPurchases ?? 0)
+      const goods = Number(rec.goodsPurchases ?? 0)
+
       let taxable = Number(
         rec.taxableAmount ??
           rec.taxableSales ??
-          rec.servicesPurchases ??
-          rec.capitalPurchases ??
-          rec.goodsPurchases ??
-          rec.netAmount ??
-          0
+          (service + capital + goods > 0 ? service + capital + goods : rec.netAmount ?? 0)
       )
-      let tax = Number(rec.taxAmount ?? rec.outputTax ?? rec.tax ?? 0)
+      const tax = Number(rec.taxAmount ?? rec.outputTax ?? rec.tax ?? 0)
       let gross = Number(rec.grossAmount ?? 0)
 
       if (gross === 0 && (taxable > 0 || tax > 0 || exempt > 0 || zeroRated > 0)) {
         gross = taxable + tax + exempt + zeroRated
       }
 
-      // Mathematical constraint: Taxable + Exempt + Zero-Rated + Tax = Gross
       const computedGross = Number((taxable + exempt + zeroRated + tax).toFixed(2))
       const declaredGross = Number(gross.toFixed(2))
       if (Math.abs(declaredGross - computedGross) > 0.001) {
         gross = computedGross
       }
 
-      const grossTaxableSales = taxable
-
       totalGross += gross
       totalTaxable += taxable
       totalTax += tax
       totalExempt += exempt
       totalZeroRated += zeroRated
+      totalService += service
+      totalCapital += capital
+      totalGoods += goods
 
-      // DETAIL ROW: Exactly 16 columns (15 pipes)
-      // 1: D
-      // 2: Tx Type ('S' or 'P')
-      // 3: Owner TIN
-      // 4: Counterparty TIN
-      // 5: Counterparty Branch Code
-      // 6: Registered Name (Max 40)
-      // 7: First Name (Max 20)
-      // 8: Middle Name (Max 20)
-      // 9: Street Address (Max 30)
-      // 10: District Address (Max 30)
-      // 11: Gross Amount
-      // 12: Exempt Amount
-      // 13: Zero-Rated Amount
-      // 14: Taxable Amount
-      // 15: Tax Amount
-      // 16: Gross Taxable Sales
-      const detailFields = [
-        'D',
-        txType,
-        ownerTin,
-        cpTin,
-        cpBranch,
-        cpRegName,
-        cpFirst,
-        cpMid,
-        cpStreet,
-        cpDist,
-        this.formatAmount(gross),
-        this.formatAmount(exempt),
-        this.formatAmount(zeroRated),
-        this.formatAmount(taxable),
-        this.formatAmount(tax),
-        this.formatAmount(grossTaxableSales)
-      ]
+      if (txType === 'S') {
+        // SALES DETAIL (D,S) - Exactly 15 columns
+        // 1: D
+        // 2: S
+        // 3: Customer TIN
+        // 4: Registered Name (Corporate)
+        // 5: Last Name (Individual)
+        // 6: First Name (Individual)
+        // 7: Middle Name (Individual)
+        // 8: Street Address
+        // 9: District / City Address
+        // 10: Exempt Sales
+        // 11: Zero-Rated Sales
+        // 12: Taxable Sales
+        // 13: Output VAT
+        // 14: Owner TIN
+        // 15: Month End Date (MM/DD/YYYY)
+        const line = [
+          'D',
+          'S',
+          `"${cpTin}"`,
+          `"${cpRegName}"`,
+          `"${cpLastName}"`,
+          `"${cpFirstName}"`,
+          `"${cpMiddleName}"`,
+          `"${cpStreet}"`,
+          `"${cpCity}"`,
+          this.formatAmount(exempt),
+          this.formatAmount(zeroRated),
+          this.formatAmount(taxable),
+          this.formatAmount(tax),
+          `"${ownerTin}"`,
+          monthEndDate
+        ].join(',')
 
-      if (detailFields.length !== 16) {
-        validationErrors.push(`Row ${idx + 1} produced ${detailFields.length} columns instead of 16`)
+        detailLines.push(line)
+      } else {
+        // PURCHASES DETAIL (D,P) - Exactly 17 columns
+        // 1: D
+        // 2: P
+        // 3: Supplier TIN
+        // 4: Registered Name (Corporate)
+        // 5: Last Name (Individual)
+        // 6: First Name (Individual)
+        // 7: Middle Name (Individual)
+        // 8: Street Address
+        // 9: District / City Address
+        // 10: Exempt Purchases
+        // 11: Zero-Rated Purchases
+        // 12: Services Purchases
+        // 13: Capital Goods Purchases
+        // 14: Other Goods Purchases
+        // 15: Input Tax
+        // 16: Owner TIN
+        // 17: Month End Date (MM/DD/YYYY)
+        const line = [
+          'D',
+          'P',
+          `"${cpTin}"`,
+          `"${cpRegName}"`,
+          `"${cpLastName}"`,
+          `"${cpFirstName}"`,
+          `"${cpMiddleName}"`,
+          `"${cpStreet}"`,
+          `"${cpCity}"`,
+          this.formatAmount(exempt),
+          this.formatAmount(zeroRated),
+          this.formatAmount(service || taxable),
+          this.formatAmount(capital),
+          this.formatAmount(goods),
+          this.formatAmount(tax),
+          `"${ownerTin}"`,
+          monthEndDate
+        ].join(',')
+
+        detailLines.push(line)
       }
-
-      detailLines.push(detailFields.join('|'))
     })
 
     // Round accumulated totals to 2 decimal places
@@ -378,74 +455,103 @@ export class ReliefGeneratorEngine {
     totalTax = Number(totalTax.toFixed(2))
     totalExempt = Number(totalExempt.toFixed(2))
     totalZeroRated = Number(totalZeroRated.toFixed(2))
+    totalService = Number(totalService.toFixed(2))
+    totalCapital = Number(totalCapital.toFixed(2))
+    totalGoods = Number(totalGoods.toFixed(2))
 
-    // HEADER ROW: Exactly 13 columns (12 pipes)
-    // 1: H
-    // 2: Tx Type ('S' or 'P')
-    // 3: Owner TIN
-    // 4: Owner Branch Code
-    // 5: Owner Registered Name
-    // 6: Owner First Name (blank for corp)
-    // 7: Owner Middle Name (blank for corp)
-    // 8: Owner Street Address
-    // 9: Owner District Address
-    // 10: Total Gross Amount
-    // 11: Taxable Month (MM/YYYY)
-    // 12: Owner RDO Code
-    // 13: Fiscal Year End Month
-    const headerFields = [
-      'H',
-      txType,
-      ownerTin,
-      ownerBranch,
-      ownerRegName,
-      ownerFirst,
-      ownerMid,
-      ownerStreet,
-      ownerDist,
-      this.formatAmount(totalGross),
-      taxableMonth,
-      ownerRdo,
-      fiscalYearEnd
-    ]
-
-    if (headerFields.length !== 13) {
-      validationErrors.push(`Header row produced ${headerFields.length} columns instead of 13`)
+    let headerLine = ''
+    if (txType === 'S') {
+      // SALES HEADER (H,S) - Exactly 17 columns
+      // 1: H
+      // 2: S
+      // 3: Owner TIN
+      // 4: Owner Registered Name (Corporate)
+      // 5: Owner Last Name (Individual)
+      // 6: Owner First Name (Individual)
+      // 7: Owner Middle Name (Individual)
+      // 8: Trade Name
+      // 9: Street Address
+      // 10: District / City Address
+      // 11: Total Exempt Sales
+      // 12: Total Zero-Rated Sales
+      // 13: Total Taxable Sales
+      // 14: Total Output VAT
+      // 15: Owner RDO Code
+      // 16: Month End Date (MM/DD/YYYY)
+      // 17: Fiscal Year End Month
+      headerLine = [
+        'H',
+        'S',
+        `"${ownerTin}"`,
+        `"${ownerRegName}"`,
+        `"${ownerLastName}"`,
+        `"${ownerFirstName}"`,
+        `"${ownerMiddleName}"`,
+        `"${ownerTrade}"`,
+        `"${ownerStreet}"`,
+        `"${ownerCity}"`,
+        this.formatAmount(totalExempt),
+        this.formatAmount(totalZeroRated),
+        this.formatAmount(totalTaxable),
+        this.formatAmount(totalTax),
+        ownerRdo,
+        monthEndDate,
+        fiscalYearEnd
+      ].join(',')
+    } else {
+      // PURCHASES HEADER (H,P) - Exactly 21 columns
+      // 1: H
+      // 2: P
+      // 3: Owner TIN
+      // 4: Owner Registered Name (Corporate)
+      // 5: Owner Last Name (Individual)
+      // 6: Owner First Name (Individual)
+      // 7: Owner Middle Name (Individual)
+      // 8: Trade Name
+      // 9: Street Address
+      // 10: District / City Address
+      // 11: Total Exempt Purchases
+      // 12: Total Zero-Rated Purchases
+      // 13: Total Services Purchases
+      // 14: Total Capital Goods Purchases
+      // 15: Total Other Goods Purchases
+      // 16: Total Input Tax
+      // 17: Total Creditable Input Tax (input tax - non-creditable)
+      // 18: Total Non-Creditable Input Tax (0.00)
+      // 19: Owner RDO Code
+      // 20: Month End Date (MM/DD/YYYY)
+      // 21: Fiscal Year End Month
+      const nonCreditable = 0
+      const creditable = totalTax - nonCreditable
+      headerLine = [
+        'H',
+        'P',
+        `"${ownerTin}"`,
+        `"${ownerRegName}"`,
+        `"${ownerLastName}"`,
+        `"${ownerFirstName}"`,
+        `"${ownerMiddleName}"`,
+        `"${ownerTrade}"`,
+        `"${ownerStreet}"`,
+        `"${ownerCity}"`,
+        this.formatAmount(totalExempt),
+        this.formatAmount(totalZeroRated),
+        this.formatAmount(totalService || totalTaxable),
+        this.formatAmount(totalCapital),
+        this.formatAmount(totalGoods),
+        this.formatAmount(totalTax),
+        this.formatAmount(creditable),
+        this.formatAmount(nonCreditable),
+        ownerRdo,
+        monthEndDate,
+        fiscalYearEnd
+      ].join(',')
     }
 
-    const headerLine = headerFields.join('|')
-
-    // CONTROL ROW: Exactly 8 columns (7 pipes)
-    // 1: C
-    // 2: Tx Type ('S' or 'P')
-    // 3: Owner TIN
-    // 4: Record Count
-    // 5: Grand Total Taxable Amount
-    // 6: Grand Total Tax Amount
-    // 7: Grand Total Gross Amount
-    // 8: Taxable Month (MM/YYYY)
-    const controlFields = [
-      'C',
-      txType,
-      ownerTin,
-      String(detailLines.length),
-      this.formatAmount(totalTaxable),
-      this.formatAmount(totalTax),
-      this.formatAmount(totalGross),
-      taxableMonth
-    ]
-
-    if (controlFields.length !== 8) {
-      validationErrors.push(`Control row produced ${controlFields.length} columns instead of 8`)
-    }
-
-    const controlLine = controlFields.join('|')
-
-    // Standard Windows CRLF line endings (\r\n) without trailing pipes
-    const fileContent = [headerLine, ...detailLines, controlLine].join('\r\n')
+    // Windows CRLF line endings (\r\n); NO Control ('C') record in BIR RELIEF v2.3
+    const fileContent = [headerLine, ...detailLines].join('\r\n')
 
     // Official BIR file name: <OwnerTIN><S|P><MM><YYYY>.DAT
-    const [monthPart, yearPart] = taxableMonth.split('/')
     const fileName = `${ownerTin}${txType}${monthPart}${yearPart}.DAT`
 
     return {
@@ -462,3 +568,5 @@ export class ReliefGeneratorEngine {
     }
   }
 }
+
+
