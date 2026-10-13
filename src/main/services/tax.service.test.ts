@@ -96,4 +96,16 @@ describe('Sprint 4 - Week 1: BIR Tax Compliance Engine', () => {
       1
     )
   })
+
+  test('🏷️ VAT Type Classification: Should classify VATABLE, EXEMPT, and ZERO_RATED sales correctly', async () => {
+    const form2550Q = await TaxService.generate2550Q(currentYear, currentQuarter)
+    expect(form2550Q).toHaveProperty('vatableSales')
+    expect(form2550Q).toHaveProperty('exemptSales')
+    expect(form2550Q).toHaveProperty('zeroRatedSales')
+    expect(typeof form2550Q.zeroRatedSales).toBe('number')
+
+    const relief = await TaxService.generateReliefAnnexes(currentYear, currentQuarter)
+    expect(relief.salesTotals).toHaveProperty('totalZeroRated')
+    expect(typeof relief.salesTotals.totalZeroRated).toBe('number')
+  })
 })

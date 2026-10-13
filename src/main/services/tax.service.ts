@@ -22,6 +22,7 @@ export class TaxService {
 
       let vatableSales = 0
       let exemptSales = 0
+      let zeroRatedSales = 0
       const salesEntries = await prisma.journalEntry.findMany({
         where: {
           date: { gte: startDate, lte: endDate },
@@ -33,16 +34,18 @@ export class TaxService {
 
       salesEntries.forEach((entry) => {
         const isVatable = entry.lines.some((l) => l.account_id === '2020')
+        const isZeroRated = entry.vat_type === 'ZERO_RATED'
         const revenueLines = entry.lines.filter((l) =>
           ['4010', '4020', '4040'].includes(l.account_id)
         )
         const revenueAmount = revenueLines.reduce((sum, l) => sum + Number(l.credit), 0)
 
         if (isVatable) vatableSales += revenueAmount
+        else if (isZeroRated) zeroRatedSales += revenueAmount
         else exemptSales += revenueAmount
       })
 
-      const netSales = vatableSales + exemptSales
+      const netSales = vatableSales + exemptSales + zeroRatedSales
       const grossSales = netSales + outputVat
 
       const inputVatLines = await prisma.journalLine.findMany({
@@ -95,6 +98,7 @@ export class TaxService {
         netSales,
         vatableSales,
         exemptSales,
+        zeroRatedSales,
         outputVat,
         grossPurchases,
         netPurchases,
@@ -148,9 +152,10 @@ export class TaxService {
         if (netAmount === 0 && outputTax === 0) return
 
         // If transaction has Output VAT or VAT is applicable, classify accordingly
+        const isZeroRated = entry.vat_type === 'ZERO_RATED'
         const vatableSales = outputTax > 0 ? netAmount : 0
-        const exemptSales = outputTax === 0 ? netAmount : 0
-        const zeroRatedSales = 0
+        const zeroRatedSales = isZeroRated && outputTax === 0 ? netAmount : 0
+        const exemptSales = !isZeroRated && outputTax === 0 ? netAmount : 0
         const grossAmount = netAmount + outputTax
 
         annexA_Sales.push({

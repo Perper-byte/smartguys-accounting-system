@@ -360,15 +360,15 @@ export const BIRReportsView: React.FC = () => {
 
     if (view === '2550Q') {
       const summaryRows = [
-        { 'Line Item': 'Item 12: Vatable Sales (Net of VAT)', 'Amount (PHP)': taxData.vatableSales || 0 },
-        { 'Line Item': 'Item 13: VAT-Exempt Sales', 'Amount (PHP)': taxData.vatExemptSales || 0 },
-        { 'Line Item': 'Item 14: Total Gross Sales', 'Amount (PHP)': taxData.grossSales || 0 },
-        { 'Line Item': 'Item 15: Output VAT (12%)', 'Amount (PHP)': taxData.outputTax || 0 },
-        { 'Line Item': 'Item 16: Domestic Purchases (Capital Goods)', 'Amount (PHP)': 0 },
-        { 'Line Item': 'Item 17: Domestic Purchases (Goods other than Capital)', 'Amount (PHP)': taxData.taxablePurchases || 0 },
-        { 'Line Item': 'Item 18: Total Input VAT Claimed', 'Amount (PHP)': taxData.inputTax || 0 },
-        { 'Line Item': 'Item 19: Creditable Withholding VAT (Form 2307)', 'Amount (PHP)': taxData.creditableVatWithheld || 0 },
-        { 'Line Item': 'Item 20: Net VAT Payable / (Overpayment)', 'Amount (PHP)': taxData.netVatPayable || 0 }
+        { 'Line Item': 'Item 31A: Vatable Sales (Net of VAT)', 'Amount (PHP)': taxData.vatableSales || 0 },
+        { 'Line Item': 'Item 31B: Output VAT (12%)', 'Amount (PHP)': taxData.outputVat || taxData.outputTax || 0 },
+        { 'Line Item': 'Item 32: Zero-Rated Sales', 'Amount (PHP)': taxData.zeroRatedSales || 0 },
+        { 'Line Item': 'Item 33: VAT-Exempt Sales', 'Amount (PHP)': taxData.exemptSales || taxData.vatExemptSales || 0 },
+        { 'Line Item': 'Total Gross Sales', 'Amount (PHP)': taxData.grossSales || 0 },
+        { 'Line Item': 'Item 44A: Domestic Taxable Purchases', 'Amount (PHP)': taxData.vatablePurchases || taxData.taxablePurchases || 0 },
+        { 'Line Item': 'Item 44B: Input VAT Claimed (12%)', 'Amount (PHP)': taxData.inputVat || taxData.inputTax || 0 },
+        { 'Line Item': 'Creditable Withholding VAT (Form 2307)', 'Amount (PHP)': taxData.creditableVatWithheld || 0 },
+        { 'Line Item': 'Net VAT Payable / (Overpayment)', 'Amount (PHP)': taxData.netVatPayable || 0 }
       ]
       const ws = XLSX.utils.json_to_sheet(summaryRows)
       XLSX.utils.book_append_sheet(workbook, ws, 'BIR Form 2550Q')
@@ -701,7 +701,14 @@ export const BIRReportsView: React.FC = () => {
                       )}
                     </span>
                   </div>
-                  <div className="pt-2"></div>
+                  <div className="flex justify-between items-center py-1">
+                    <span className="text-gray-600 font-medium">Item 32: Zero-Rated Sales</span>
+                    <span className="font-mono font-bold text-gray-900 tabular-nums whitespace-nowrap">
+                      {formatCurrency(taxData.zeroRatedSales) || (
+                        <span className="text-gray-300">-</span>
+                      )}
+                    </span>
+                  </div>
                   <div className="flex justify-between items-start py-1">
                     <span className="text-gray-600 font-medium">
                       Item 33: VAT-Exempt Sales <br />
