@@ -1,5 +1,5 @@
-// src/main/services/tax.service.ts
 import { PrismaClient } from '@prisma/client'
+import { ReliefGeneratorEngine, ReliefCompileOptions } from '../../shared/relief-engine'
 
 const prisma = new PrismaClient()
 
@@ -224,16 +224,78 @@ export class TaxService {
         totalInputTax: annexB_Purchases.reduce((s, r) => s + r.tax, 0)
       }
 
+      // Compile compliant BIR RELIEF .DAT files (v2.3)
+      const periodMM = header.periodMonth || (quarter === 0 ? '12' : String(quarter * 3).padStart(2, '0'))
+      const taxableMonth = `${periodMM}/${year}`
+      const ownerProfile = {
+        tin: header.tin,
+        branchCode: header.branchCode,
+        registeredName: header.registeredName,
+        streetAddress: 'Katapatan Mutual Homes',
+        districtAddress: 'Cabuyao Laguna 4025',
+        rdoCode: '057',
+        fiscalYearEndMonth: '12'
+      }
+
+      const salesCompile = ReliefGeneratorEngine.compile({
+        type: 'S',
+        taxableMonth,
+        owner: ownerProfile,
+        records: annexA_Sales.map((s) => ({
+          date: s.date,
+          tin: s.tin,
+          branchCode: s.branchCode,
+          customerName: s.customerName,
+          address: s.address,
+          grossAmount: s.grossAmount,
+          exemptAmount: s.exemptSales,
+          zeroRatedAmount: s.zeroRatedSales,
+          taxableAmount: s.taxableSales,
+          taxAmount: s.outputTax,
+          isWalkIn:
+            !s.tin ||
+            s.tin === '000-000-000-000' ||
+            (s.customerName || '').toLowerCase().includes('walk-in')
+        }))
+      })
+
+      const purchasesCompile = ReliefGeneratorEngine.compile({
+        type: 'P',
+        taxableMonth,
+        owner: ownerProfile,
+        records: annexB_Purchases.map((p) => ({
+          date: p.date,
+          tin: p.tin,
+          branchCode: p.branchCode,
+          supplierName: p.supplierName,
+          address: p.address,
+          grossAmount: p.grossAmount,
+          exemptAmount: p.exemptPurchases,
+          zeroRatedAmount: p.zeroRatedPurchases,
+          taxableAmount: p.servicesPurchases || p.netAmount,
+          taxAmount: p.tax
+        }))
+      })
+
       return {
         header,
         annexA_Sales,
         annexB_Purchases,
         salesTotals,
-        purchasesTotals
+        purchasesTotals,
+        salesDatFile: salesCompile.fileContent,
+        salesFileName: salesCompile.fileName,
+        purchasesDatFile: purchasesCompile.fileContent,
+        purchasesFileName: purchasesCompile.fileName
       }
     } catch (error: any) {
       return { error: error.message }
     }
+  }
+
+  // Compile BIR RELIEF DAT from raw payload
+  static compileReliefDat(options: ReliefCompileOptions) {
+    return ReliefGeneratorEngine.compile(options)
   }
 
   // Helper to resolve ATC code based on payee and entry details

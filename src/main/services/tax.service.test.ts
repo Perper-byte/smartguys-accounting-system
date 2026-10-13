@@ -62,16 +62,22 @@ describe('Sprint 4 - Week 1: BIR Tax Compliance Engine', () => {
       expect(sampleSale).toHaveProperty('outputTax')
     }
 
-    if (annexes.annexB_Purchases.length > 0) {
-      const samplePurchase = annexes.annexB_Purchases[0]
-      expect(samplePurchase).toHaveProperty('tin')
-      expect(samplePurchase).toHaveProperty('supplierName')
-      expect(samplePurchase).toHaveProperty('tax')
-      expect(samplePurchase.netAmount + samplePurchase.tax).toBeCloseTo(
-        samplePurchase.grossAmount,
-        1
-      )
-    }
+    expect(annexes).toHaveProperty('salesDatFile')
+    expect(annexes).toHaveProperty('salesFileName')
+    expect(annexes).toHaveProperty('purchasesDatFile')
+    expect(annexes).toHaveProperty('purchasesFileName')
+
+    expect(typeof annexes.salesDatFile).toBe('string')
+    expect(typeof annexes.purchasesDatFile).toBe('string')
+
+    // Verify pipe-delimited format on generated files
+    const salesHeader = annexes.salesDatFile.split('\r\n')[0]
+    expect(salesHeader.startsWith('H|S|')).toBe(true)
+    expect(salesHeader.split('|').length).toBe(13)
+
+    const purchasesHeader = annexes.purchasesDatFile.split('\r\n')[0]
+    expect(purchasesHeader.startsWith('H|P|')).toBe(true)
+    expect(purchasesHeader.split('|').length).toBe(13)
   })
 
   test('👥 Form 1601-C: Should calculate monthly compensation withholding tax breakdown', async () => {

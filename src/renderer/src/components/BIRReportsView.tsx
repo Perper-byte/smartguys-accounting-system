@@ -11,6 +11,7 @@ import {
   Users,
   ShieldCheck
 } from 'lucide-react'
+import { ReliefGeneratorEngine } from '../../../shared/relief-engine'
 
 export const BIRReportsView: React.FC = () => {
   const currentYear = new Date().getFullYear()
@@ -111,53 +112,36 @@ export const BIRReportsView: React.FC = () => {
       return alert('No Sales data available for BIR RELIEF.')
     }
 
+    if (reliefData.salesDatFile && reliefData.salesFileName) {
+      return triggerDownload(reliefData.salesDatFile, reliefData.salesFileName)
+    }
+
     const h = reliefData.header || {
-      tin: '000-000-000-000',
+      tin: '748392019',
       branchCode: '0000',
       registeredName: 'SMARTGUYS COMMUNITY HEALTHCARE INC.',
-      tradeName: 'SMARTGUYS CLINIC',
-      address: 'Katapatan Mutual Homes, Brgy. Banay-banay, City of Cabuyao, Laguna 4025',
+      streetAddress: 'Katapatan Mutual Homes',
+      districtAddress: 'Cabuyao Laguna 4025',
       periodMonth: quarter === 0 ? '12' : String(quarter * 3).padStart(2, '0')
     }
 
-    const clinicTin = sanitizeTin(h.tin)
     const periodMM = h.periodMonth || (quarter === 0 ? '12' : String(quarter * 3).padStart(2, '0'))
-    const periodMMYYYY = `${periodMM}${year}`
-
-    // 1. Header Record (H,S)
-    const headerRow = `H,S,"${clinicTin}","${h.registeredName}","${h.tradeName || h.registeredName}","${h.address}","${periodMMYYYY}"`
-
-    // 2. Detail Records (D,S)
-    const detailRows = reliefData.annexA_Sales.map((s: any) => {
-      const custTin = sanitizeTin(s.tin)
-      const branch = (s.branchCode || '0000').padStart(4, '0').substring(0, 4)
-      const custName = (s.customerName || 'Walk-in Patient').replace(/"/g, '')
-      const address = (s.address || 'Cabuyao, Laguna').replace(/"/g, '')
-      const gross = (Number(s.grossAmount) || 0).toFixed(2)
-      const exempt = (Number(s.exemptSales) || 0).toFixed(2)
-      const zeroRated = (Number(s.zeroRatedSales) || 0).toFixed(2)
-      const taxable = (Number(s.taxableSales) || 0).toFixed(2)
-      const vat = (Number(s.outputTax) || 0).toFixed(2)
-
-      return `D,S,"${custTin}","${branch}","${custName}","${address}",${gross},${exempt},${zeroRated},${taxable},${vat}`
+    const compileResult = ReliefGeneratorEngine.compile({
+      type: 'S',
+      taxableMonth: `${periodMM}/${year}`,
+      owner: {
+        tin: h.tin,
+        branchCode: h.branchCode,
+        registeredName: h.registeredName,
+        streetAddress: 'Katapatan Mutual Homes',
+        districtAddress: 'Cabuyao Laguna 4025',
+        rdoCode: '057',
+        fiscalYearEndMonth: '12'
+      },
+      records: reliefData.annexA_Sales
     })
 
-    // 3. Control Record (C,S)
-    const totals = reliefData.salesTotals || {
-      recordsCount: reliefData.annexA_Sales.length,
-      totalGross: reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.grossAmount) || 0), 0),
-      totalExempt: reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.exemptSales) || 0), 0),
-      totalZeroRated: reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.zeroRatedSales) || 0), 0),
-      totalTaxable: reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.taxableSales) || 0), 0),
-      totalOutputTax: reliefData.annexA_Sales.reduce((sum: number, r: any) => sum + (Number(r.outputTax) || 0), 0)
-    }
-
-    const controlRow = `C,S,${totals.recordsCount},${Number(totals.totalGross || 0).toFixed(2)},${Number(totals.totalExempt || 0).toFixed(2)},${Number(totals.totalZeroRated || 0).toFixed(2)},${Number(totals.totalTaxable || 0).toFixed(2)},${Number(totals.totalOutputTax || 0).toFixed(2)}`
-
-    const fileContent = [headerRow, ...detailRows, controlRow].join('\r\n')
-    // Official BIR naming convention: <TIN>S<MM><YYYY>.DAT
-    const fileName = `${clinicTin}S${periodMM}${year}.DAT`
-    triggerDownload(fileContent, fileName)
+    triggerDownload(compileResult.fileContent, compileResult.fileName)
   }
 
   // Official BIR RELIEF DAT Generator for Purchases (SLSP - Annex B)
@@ -166,57 +150,36 @@ export const BIRReportsView: React.FC = () => {
       return alert('No Purchases data available for BIR RELIEF.')
     }
 
+    if (reliefData.purchasesDatFile && reliefData.purchasesFileName) {
+      return triggerDownload(reliefData.purchasesDatFile, reliefData.purchasesFileName)
+    }
+
     const h = reliefData.header || {
-      tin: '000-000-000-000',
+      tin: '748392019',
       branchCode: '0000',
       registeredName: 'SMARTGUYS COMMUNITY HEALTHCARE INC.',
-      tradeName: 'SMARTGUYS CLINIC',
-      address: 'Katapatan Mutual Homes, Brgy. Banay-banay, City of Cabuyao, Laguna 4025',
+      streetAddress: 'Katapatan Mutual Homes',
+      districtAddress: 'Cabuyao Laguna 4025',
       periodMonth: quarter === 0 ? '12' : String(quarter * 3).padStart(2, '0')
     }
 
-    const clinicTin = sanitizeTin(h.tin)
     const periodMM = h.periodMonth || (quarter === 0 ? '12' : String(quarter * 3).padStart(2, '0'))
-    const periodMMYYYY = `${periodMM}${year}`
-
-    // 1. Header Record (H,P)
-    const headerRow = `H,P,"${clinicTin}","${h.registeredName}","${h.tradeName || h.registeredName}","${h.address}","${periodMMYYYY}"`
-
-    // 2. Detail Records (D,P)
-    const detailRows = reliefData.annexB_Purchases.map((p: any) => {
-      const suppTin = sanitizeTin(p.tin)
-      const branch = (p.branchCode || '0000').padStart(4, '0').substring(0, 4)
-      const suppName = (p.supplierName || 'Unknown Supplier').replace(/"/g, '')
-      const address = (p.address || 'Metro Manila / Laguna').replace(/"/g, '')
-      const exempt = (Number(p.exemptPurchases) || 0).toFixed(2)
-      const zeroRated = (Number(p.zeroRatedPurchases) || 0).toFixed(2)
-      const services = (Number(p.servicesPurchases || p.netAmount) || 0).toFixed(2)
-      const capital = (Number(p.capitalPurchases) || 0).toFixed(2)
-      const goods = (Number(p.goodsPurchases) || 0).toFixed(2)
-      const vat = (Number(p.tax) || 0).toFixed(2)
-      const gross = (Number(p.grossAmount) || (Number(services) + Number(vat))).toFixed(2)
-
-      return `D,P,"${suppTin}","${branch}","${suppName}","${address}",${exempt},${zeroRated},${services},${capital},${goods},${vat},${gross}`
+    const compileResult = ReliefGeneratorEngine.compile({
+      type: 'P',
+      taxableMonth: `${periodMM}/${year}`,
+      owner: {
+        tin: h.tin,
+        branchCode: h.branchCode,
+        registeredName: h.registeredName,
+        streetAddress: 'Katapatan Mutual Homes',
+        districtAddress: 'Cabuyao Laguna 4025',
+        rdoCode: '057',
+        fiscalYearEndMonth: '12'
+      },
+      records: reliefData.annexB_Purchases
     })
 
-    // 3. Control Record (C,P)
-    const totals = reliefData.purchasesTotals || {
-      recordsCount: reliefData.annexB_Purchases.length,
-      totalExempt: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.exemptPurchases) || 0), 0),
-      totalZeroRated: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.zeroRatedPurchases) || 0), 0),
-      totalServices: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.servicesPurchases || r.netAmount) || 0), 0),
-      totalCapital: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.capitalPurchases) || 0), 0),
-      totalGoods: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.goodsPurchases) || 0), 0),
-      totalInputTax: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.tax) || 0), 0),
-      totalGross: reliefData.annexB_Purchases.reduce((s: number, r: any) => s + (Number(r.grossAmount) || 0), 0)
-    }
-
-    const controlRow = `C,P,${totals.recordsCount},${Number(totals.totalExempt || 0).toFixed(2)},${Number(totals.totalZeroRated || 0).toFixed(2)},${Number(totals.totalServices || 0).toFixed(2)},${Number(totals.totalCapital || 0).toFixed(2)},${Number(totals.totalGoods || 0).toFixed(2)},${Number(totals.totalInputTax || 0).toFixed(2)},${Number(totals.totalGross || 0).toFixed(2)}`
-
-    const fileContent = [headerRow, ...detailRows, controlRow].join('\r\n')
-    // Official BIR naming convention: <TIN>P<MM><YYYY>.DAT
-    const fileName = `${clinicTin}P${periodMM}${year}.DAT`
-    triggerDownload(fileContent, fileName)
+    triggerDownload(compileResult.fileContent, compileResult.fileName)
   }
 
   const handleDownloadQAP = () => {
