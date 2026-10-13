@@ -220,19 +220,55 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
     const nonVatLines = updated.filter((_, idx) => idx !== vatLineIndex)
     const maxDebit = Math.max(0, ...nonVatLines.map((l) => Number(l.debit) || 0))
     const maxCredit = Math.max(0, ...nonVatLines.map((l) => Number(l.credit) || 0))
-    const grossAmount = Math.max(maxDebit, maxCredit)
+    const existingVatCredit = direction === 'OUTPUT' ? Number(updated[vatLineIndex]?.credit) || 0 : 0
+    const existingVatDebit = direction === 'INPUT' ? Number(updated[vatLineIndex]?.debit) || 0 : 0
+
+    let grossAmount = 0
+    if (direction === 'OUTPUT') {
+      if (
+        maxCredit > 0 &&
+        existingVatCredit > 0 &&
+        Math.abs(maxCredit + existingVatCredit - maxDebit) > 0.01
+      ) {
+        grossAmount = Number((maxCredit + existingVatCredit).toFixed(2))
+      } else {
+        grossAmount = Math.max(maxDebit, maxCredit)
+      }
+    } else {
+      if (
+        maxDebit > 0 &&
+        existingVatDebit > 0 &&
+        Math.abs(maxDebit + existingVatDebit - maxCredit) > 0.01
+      ) {
+        grossAmount = Number((maxDebit + existingVatDebit).toFixed(2))
+      } else {
+        grossAmount = Math.max(maxDebit, maxCredit)
+      }
+    }
 
     if (grossAmount > 0) {
       const netAmount = Number((grossAmount / 1.12).toFixed(2))
       const vatAmount = Number((grossAmount - netAmount).toFixed(2))
 
       if (direction === 'OUTPUT') {
-        const revenueIdx = updated.findIndex(
-          (l, idx) => idx !== vatLineIndex && Number(l.credit) > 0
+        const debitIdx = updated.findIndex(
+          (l, idx) => idx !== vatLineIndex && (Number(l.debit) > 0 || l.accountId.startsWith('10'))
         )
-        if (revenueIdx !== -1) {
-          updated[revenueIdx] = { ...updated[revenueIdx], credit: netAmount }
+        const revenueIdx = updated.findIndex((l, idx) => idx !== vatLineIndex && idx !== debitIdx)
+
+        if (debitIdx !== -1) {
+          updated[debitIdx] = { ...updated[debitIdx], debit: grossAmount, credit: 0 }
+        } else {
+          const firstNonVat = updated.findIndex((_, idx) => idx !== vatLineIndex)
+          if (firstNonVat !== -1) {
+            updated[firstNonVat] = { ...updated[firstNonVat], debit: grossAmount, credit: 0 }
+          }
         }
+
+        if (revenueIdx !== -1) {
+          updated[revenueIdx] = { ...updated[revenueIdx], debit: 0, credit: netAmount }
+        }
+
         updated[vatLineIndex] = {
           ...updated[vatLineIndex],
           accountId: vatAccountCode,
@@ -240,12 +276,26 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
           credit: vatAmount
         }
       } else {
-        const expenseIdx = updated.findIndex(
-          (l, idx) => idx !== vatLineIndex && Number(l.debit) > 0
+        const creditIdx = updated.findIndex(
+          (l, idx) =>
+            idx !== vatLineIndex &&
+            (Number(l.credit) > 0 || l.accountId.startsWith('10') || l.accountId.startsWith('20'))
         )
-        if (expenseIdx !== -1) {
-          updated[expenseIdx] = { ...updated[expenseIdx], debit: netAmount }
+        const expenseIdx = updated.findIndex((l, idx) => idx !== vatLineIndex && idx !== creditIdx)
+
+        if (creditIdx !== -1) {
+          updated[creditIdx] = { ...updated[creditIdx], debit: 0, credit: grossAmount }
+        } else {
+          const firstNonVat = updated.findIndex((_, idx) => idx !== vatLineIndex)
+          if (firstNonVat !== -1) {
+            updated[firstNonVat] = { ...updated[firstNonVat], debit: 0, credit: grossAmount }
+          }
         }
+
+        if (expenseIdx !== -1) {
+          updated[expenseIdx] = { ...updated[expenseIdx], debit: netAmount, credit: 0 }
+        }
+
         updated[vatLineIndex] = {
           ...updated[vatLineIndex],
           accountId: vatAccountCode,
