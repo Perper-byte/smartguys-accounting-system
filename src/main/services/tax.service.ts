@@ -23,6 +23,7 @@ export class TaxService {
       let vatableSales = 0
       let exemptSales = 0
       let zeroRatedSales = 0
+      let implicitOutputVat = 0
       const salesEntries = await prisma.journalEntry.findMany({
         where: {
           date: { gte: startDate, lte: endDate },
@@ -33,20 +34,31 @@ export class TaxService {
       })
 
       salesEntries.forEach((entry) => {
-        const isVatable = entry.lines.some((l) => l.account_id === '2020')
-        const isZeroRated = entry.vat_type === 'ZERO_RATED'
+        const vatLine = entry.lines.find((l) => l.account_id === '2020')
+        const lineOutputVat = vatLine ? Number(vatLine.credit) : 0
+        const isVatable = lineOutputVat > 0 || entry.vat_type === 'VATABLE'
+        const isZeroRated = !isVatable && entry.vat_type === 'ZERO_RATED'
         const revenueLines = entry.lines.filter((l) =>
           ['4010', '4020', '4040'].includes(l.account_id)
         )
         const revenueAmount = revenueLines.reduce((sum, l) => sum + Number(l.credit), 0)
 
-        if (isVatable) vatableSales += revenueAmount
-        else if (isZeroRated) zeroRatedSales += revenueAmount
-        else exemptSales += revenueAmount
+        if (lineOutputVat > 0) {
+          vatableSales += revenueAmount
+        } else if (entry.vat_type === 'VATABLE') {
+          const taxable = Number((revenueAmount / 1.12).toFixed(2))
+          vatableSales += taxable
+          implicitOutputVat += Number((revenueAmount - taxable).toFixed(2))
+        } else if (isZeroRated) {
+          zeroRatedSales += revenueAmount
+        } else {
+          exemptSales += revenueAmount
+        }
       })
 
+      const totalOutputVat = outputVat + implicitOutputVat
       const netSales = vatableSales + exemptSales + zeroRatedSales
-      const grossSales = netSales + outputVat
+      const grossSales = netSales + totalOutputVat
 
       const inputVatLines = await prisma.journalLine.findMany({
         where: {
@@ -91,7 +103,7 @@ export class TaxService {
         }
       })
       const creditableVatWithheld = cwtLines.reduce((sum, line) => sum + Number(line.debit), 0)
-      const netVatPayable = outputVat - inputVat - creditableVatWithheld
+      const netVatPayable = totalOutputVat - inputVat - creditableVatWithheld
 
       return {
         grossSales,
@@ -99,7 +111,7 @@ export class TaxService {
         vatableSales,
         exemptSales,
         zeroRatedSales,
-        outputVat,
+        outputVat: totalOutputVat,
         grossPurchases,
         netPurchases,
         vatablePurchases,
@@ -152,11 +164,30 @@ export class TaxService {
         if (netAmount === 0 && outputTax === 0) return
 
         // If transaction has Output VAT or VAT is applicable, classify accordingly
-        const isZeroRated = entry.vat_type === 'ZERO_RATED'
-        const vatableSales = outputTax > 0 ? netAmount : 0
-        const zeroRatedSales = isZeroRated && outputTax === 0 ? netAmount : 0
-        const exemptSales = !isZeroRated && outputTax === 0 ? netAmount : 0
-        const grossAmount = netAmount + outputTax
+        const isVatable = outputTax > 0 || entry.vat_type === 'VATABLE'
+        const isZeroRated = !isVatable && entry.vat_type === 'ZERO_RATED'
+
+        let vatableSales = 0
+        let zeroRatedSales = 0
+        let exemptSales = 0
+        let calculatedOutputTax = outputTax
+        let grossAmount = 0
+
+        if (outputTax > 0) {
+          vatableSales = netAmount
+          grossAmount = netAmount + outputTax
+        } else if (entry.vat_type === 'VATABLE') {
+          // Entry tagged as VATABLE without explicit 2020 line: extract 12% VAT
+          vatableSales = Number((netAmount / 1.12).toFixed(2))
+          calculatedOutputTax = Number((netAmount - vatableSales).toFixed(2))
+          grossAmount = netAmount
+        } else if (isZeroRated) {
+          zeroRatedSales = netAmount
+          grossAmount = netAmount
+        } else {
+          exemptSales = netAmount
+          grossAmount = netAmount
+        }
 
         annexA_Sales.push({
           date: entry.date,
@@ -168,7 +199,7 @@ export class TaxService {
           exemptSales: exemptSales,
           zeroRatedSales: zeroRatedSales,
           taxableSales: vatableSales,
-          outputTax: outputTax
+          outputTax: calculatedOutputTax
         })
       })
 
