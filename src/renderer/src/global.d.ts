@@ -7,7 +7,7 @@ interface Window {
     getAccountLedger: (accountId: string) => Promise<any>
     triggerBackup: () => Promise<any>
     generate2550Q: (year: number, quarter: number) => Promise<any>
-    generateRelief: (year: number, quarter: number) => Promise<any>
+    generateRelief: (year: number, quarter: number, month?: number) => Promise<any>
     getAnalyticsMetrics: (timeframe: string) => Promise<any>
     getTrialBalance: (year?: number, month?: number, quarter?: string) => Promise<any>
     getIncomeStatement: (year?: number, month?: number, quarter?: string) => Promise<any>

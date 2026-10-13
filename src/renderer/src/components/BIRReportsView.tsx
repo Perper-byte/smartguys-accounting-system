@@ -61,7 +61,17 @@ export const BIRReportsView: React.FC = () => {
         setTaxData(data)
         setReliefData(null)
       }
-      // 4. Quarterly VAT & RELIEF (2550Q)
+      // 4. Monthly RELIEF / SLSP Generator
+      else if (view === 'relief') {
+        if (!api?.generateRelief) {
+          throw new Error('Tax service is unavailable.')
+        }
+        const dataRelief = await api.generateRelief(year, quarter, month)
+        if (dataRelief?.error) throw new Error(dataRelief.error)
+        setTaxData(null)
+        setReliefData(dataRelief)
+      }
+      // 5. Quarterly VAT (2550Q)
       else {
         if (!api?.generate2550Q || !api?.generateRelief) {
           throw new Error('Tax service is unavailable.')
@@ -458,7 +468,7 @@ export const BIRReportsView: React.FC = () => {
     new Date(0, m - 1).toLocaleString('default', { month: 'long' })
 
   const getPeriodLabel = () => {
-    if (view === '0619E' || view === '1601C') {
+    if (view === '0619E' || view === '1601C' || view === 'relief') {
       return `${getMonthName(month)} ${year}`
     }
     if (quarter === 0) return `Annual ${year} (Full Year)`
@@ -529,15 +539,19 @@ export const BIRReportsView: React.FC = () => {
               <label className="block text-[10px] font-extrabold text-gray-500 uppercase tracking-wider mb-1.5">
                 Period
               </label>
-              {view === '0619E' || view === '1601C' ? (
+              {view === '0619E' || view === '1601C' || view === 'relief' ? (
                 <select
                   value={month}
-                  onChange={(e) => setMonth(Number(e.target.value))}
-                  className="w-40 bg-white border border-gray-300 rounded-md p-2 text-sm text-gray-800 font-bold focus:border-[#1B9387] outline-none cursor-pointer shadow-sm transition"
+                  onChange={(e) => {
+                    const newMonth = Number(e.target.value)
+                    setMonth(newMonth)
+                    setQuarter(Math.ceil(newMonth / 3))
+                  }}
+                  className="w-44 bg-white border border-gray-300 rounded-md p-2 text-sm text-gray-800 font-bold focus:border-[#1B9387] outline-none cursor-pointer shadow-sm transition"
                 >
                   {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
                     <option key={m} value={m}>
-                      {getMonthName(m)}
+                      {getMonthName(m)} (Q{Math.ceil(m / 3)})
                     </option>
                   ))}
                 </select>
@@ -1241,6 +1255,21 @@ export const BIRReportsView: React.FC = () => {
                 </span>
               </button>
             </div>
+
+            {/* BIR RELIEF Validation Warnings Banner */}
+            {reliefData.validationErrors && reliefData.validationErrors.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl text-xs flex items-start gap-2.5">
+                <AlertCircle className="shrink-0 text-amber-600 mt-0.5" size={16} />
+                <div>
+                  <p className="font-bold uppercase tracking-wider">BIR RELIEF Notice</p>
+                  <ul className="list-disc pl-4 mt-1 space-y-0.5 font-medium">
+                    {reliefData.validationErrors.map((err: string, idx: number) => (
+                      <li key={idx}>{err}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
 
             {/* ANNEX A: SALES VIEW */}
             {reliefTab === 'sales' && (

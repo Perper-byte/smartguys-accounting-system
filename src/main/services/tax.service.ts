@@ -125,22 +125,41 @@ export class TaxService {
   }
 
   // 2. RELIEF / DAT FILE GENERATOR (Annex A: Sales & Annex B: Purchases)
-  static async generateReliefAnnexes(year: number, quarter: number) {
+  static async generateReliefAnnexes(year: number, quarter: number = 1, month?: number) {
     try {
-      const startMonth = (quarter - 1) * 3
-      const startDate = new Date(year, startMonth, 1)
-      const endDate = new Date(year, startMonth + 3, 0, 23, 59, 59, 999)
+      let startDate: Date
+      let endDate: Date
+      let periodMM: string
+
+      if (month && month >= 1 && month <= 12) {
+        startDate = new Date(year, month - 1, 1)
+        endDate = new Date(year, month, 0, 23, 59, 59, 999)
+        periodMM = String(month).padStart(2, '0')
+      } else {
+        const q = quarter || 1
+        if (q === 0) {
+          startDate = new Date(year, 0, 1)
+          endDate = new Date(year, 11, 31, 23, 59, 59, 999)
+          periodMM = '12'
+        } else {
+          const startMonth = (q - 1) * 3
+          startDate = new Date(year, startMonth, 1)
+          endDate = new Date(year, startMonth + 3, 0, 23, 59, 59, 999)
+          periodMM = String(startMonth + 3).padStart(2, '0')
+        }
+      }
 
       // Taxpayer / Clinic Profile Header
       const header = {
-        tin: '000-000-000-000',
+        tin: '748392019',
         branchCode: '0000',
         registeredName: 'SMARTGUYS COMMUNITY HEALTHCARE INC.',
         tradeName: 'SMARTGUYS CLINIC',
         address: 'Katapatan Mutual Homes, Brgy. Banay-banay, City of Cabuyao, Laguna 4025',
         year: year,
         quarter: quarter,
-        periodMonth: String(startMonth + 3).padStart(2, '0') // Closing month of the quarter (e.g. 03, 06, 09, 12)
+        month: month,
+        periodMonth: periodMM
       }
 
       // --- ANNEX A: SALES (SLSS) ---
@@ -263,7 +282,6 @@ export class TaxService {
       }
 
       // Compile compliant BIR RELIEF .DAT files (v2.3)
-      const periodMM = header.periodMonth || (quarter === 0 ? '12' : String(quarter * 3).padStart(2, '0'))
       const taxableMonth = `${periodMM}/${year}`
       const ownerProfile = {
         tin: header.tin,
@@ -324,7 +342,11 @@ export class TaxService {
         salesDatFile: salesCompile.fileContent,
         salesFileName: salesCompile.fileName,
         purchasesDatFile: purchasesCompile.fileContent,
-        purchasesFileName: purchasesCompile.fileName
+        purchasesFileName: purchasesCompile.fileName,
+        validationErrors: [
+          ...salesCompile.validationErrors,
+          ...purchasesCompile.validationErrors
+        ]
       }
     } catch (error: any) {
       return { error: error.message }

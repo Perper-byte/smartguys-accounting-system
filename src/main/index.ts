@@ -1251,11 +1251,11 @@ app.whenReady().then(() => {
     }
   })
 
-  ipcMain.handle('tax:generateRelief', async (e, year, quarter) => {
+  ipcMain.handle('tax:generateRelief', async (e, year, quarter, month) => {
     try {
       const result =
         typeof TaxService.generateReliefAnnexes === 'function'
-          ? await TaxService.generateReliefAnnexes(year, quarter)
+          ? await TaxService.generateReliefAnnexes(year, quarter, month)
           : { error: 'Backend function missing' }
       await AuditService.logAction('SYSTEM', 'TAX COMPLIANCE', `Generated BIR RELIEF`)
       return result

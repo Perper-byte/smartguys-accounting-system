@@ -365,6 +365,14 @@ export class ReliefGeneratorEngine {
         return
       }
 
+      // In Purchases (Annex B / SLP), Supplier TIN cannot be empty per BIR Validation Module rules
+      if (txType === 'P' && !cpTin) {
+        validationErrors.push(
+          `Record "${rawName}" skipped: Supplier TIN is empty. BIR requires a valid supplier TIN to claim Input VAT.`
+        )
+        return
+      }
+
       totalGross += gross
       totalTaxable += taxable
       totalTax += tax

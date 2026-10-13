@@ -191,8 +191,8 @@ export const api = {
   restoreBackup: () => ipcRenderer.invoke('backup:restore'),
   generate2550Q: (year: number, quarter: number) =>
     ipcRenderer.invoke('tax:generate2550Q', year, quarter),
-  generateRelief: (year: number, quarter: number) =>
-    ipcRenderer.invoke('tax:generateRelief', year, quarter),
+  generateRelief: (year: number, quarter: number, month?: number) =>
+    ipcRenderer.invoke('tax:generateRelief', year, quarter, month),
   generate0619E: (year: number, month: number) =>
     ipcRenderer.invoke('tax:generate0619E', year, month),
   generate1601EQ: (year: number, quarter: number) =>

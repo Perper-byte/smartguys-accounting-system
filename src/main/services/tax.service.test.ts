@@ -80,6 +80,25 @@ describe('Sprint 4 - Week 1: BIR Tax Compliance Engine', () => {
     expect(purchasesHeader.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).length).toBe(21)
   })
 
+  test('📑 Monthly Relief Annexes: Should generate monthly DAT file matching BIR taxable month', async () => {
+    const monthlyAnnexes = await TaxService.generateReliefAnnexes(2026, 4, 10)
+    expect(monthlyAnnexes.purchasesFileName).toBe('748392019P102026.DAT')
+    expect(monthlyAnnexes.salesFileName).toBe('748392019S102026.DAT')
+
+    const purchasesHeader = monthlyAnnexes.purchasesDatFile.split('\r\n')[0]
+    expect(purchasesHeader).toContain('10/31/2026')
+
+    const detailLines = monthlyAnnexes.purchasesDatFile.split('\r\n').slice(1)
+    for (const line of detailLines) {
+      if (!line) continue
+      expect(line).toContain('10/31/2026')
+      // Supplier TIN must not be empty
+      const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
+      const supplierTin = parts[2].replace(/"/g, '')
+      expect(supplierTin.length).toBeGreaterThanOrEqual(9)
+    }
+  })
+
   test('👥 Form 1601-C: Should calculate monthly compensation withholding tax breakdown', async () => {
     const form1601C = await TaxService.generate1601C(currentYear, currentMonth)
 

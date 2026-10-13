@@ -450,6 +450,12 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
       if (!refSequence.trim()) throw new Error('Please enter a Sequence Number for the Reference.')
 
       const validLines = lines.filter((l) => l.accountId !== '' && (l.debit > 0 || l.credit > 0))
+      const hasInputVat = validLines.some((l) => l.accountId === '1300' && Number(l.debit) > 0)
+      if (hasInputVat && !payeeId) {
+        throw new Error(
+          'Please tag a Supplier / Contact. A valid supplier TIN is required to claim Input VAT (Account 1300) for BIR Annex B compliance.'
+        )
+      }
       const api = (window as any).electronAPI || (window as any).api
 
       const paddedSequence = refSequence.padStart(3, '0')
@@ -664,6 +670,11 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                     <span>📥 Input VAT (Purchases - 1300)</span>
                   </button>
                 </div>
+                {vatDirection === 'INPUT' && (
+                  <p className="mt-2 text-[11px] text-amber-700 font-medium bg-amber-50 p-2 rounded border border-amber-200">
+                    💡 <strong>BIR Annex B Requirement:</strong> Tag a Supplier Contact below with a valid TIN to claim Input VAT in BIR RELIEF.
+                  </p>
+                )}
               </div>
             )}
           </div>

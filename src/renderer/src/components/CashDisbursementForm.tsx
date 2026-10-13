@@ -3,6 +3,7 @@ import * as React from 'react'
 import { useState, useEffect, useMemo } from 'react'
 import { NewContactModal } from './NewContactModal'
 import { AttachmentPreviewModal } from './AttachmentPreviewModal'
+import { JournalEntryModal } from './JournalEntryModal'
 import {
   Plus,
   Trash2,
@@ -48,6 +49,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
   const [cashAccounts, setCashAccounts] = useState<any[]>([])
   const [payees, setPayees] = useState<any[]>([])
   const [recentVouchers, setRecentVouchers] = useState<any[]>([])
+  const [selectedEntryKey, setSelectedEntryKey] = useState<string | null>(null)
 
   // Cashier Petty Cash Audit State
   const [cashierVouchers, setCashierVouchers] = useState<any[]>([])
@@ -1276,11 +1278,14 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                 recentVouchers.map((v: any, i: number) => (
                   <div
                     key={i}
-                    className="bg-[#FBF8F8] border border-[#B0DCDA]/60 rounded-lg p-4 shadow-sm hover:border-[#1B9387] transition cursor-pointer group"
+                    onClick={() => setSelectedEntryKey(v.referenceNo || v.id)}
+                    className="bg-[#FBF8F8] border border-[#B0DCDA]/60 rounded-lg p-4 shadow-sm hover:border-[#1B9387] hover:shadow-md transition cursor-pointer group"
+                    title="Click to view journal voucher details"
                   >
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs font-mono font-extrabold text-[#1B9387] group-hover:underline">
+                      <span className="text-xs font-mono font-extrabold text-[#1B9387] group-hover:underline flex items-center gap-1">
                         {v.referenceNo}
+                        <span className="text-[10px] opacity-0 group-hover:opacity-100 transition-opacity">↗</span>
                       </span>
                       <span className="text-[10px] font-bold text-gray-400 uppercase">
                         {new Date(v.date).toLocaleDateString()}
@@ -1544,7 +1549,11 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                           }`}
                         >
                           <td className="py-3.5 px-4 whitespace-nowrap">
-                            <div className="font-mono font-black text-gray-800 flex items-center gap-1.5">
+                            <div
+                              onClick={() => setSelectedEntryKey(v.referenceNo || v.id)}
+                              className="font-mono font-black text-[#1B9387] hover:underline cursor-pointer flex items-center gap-1.5"
+                              title="Click to view journal voucher details"
+                            >
                               {v.referenceNo}
                               {isHighValue && !v.isAcknowledged && (
                                 <span
@@ -1941,7 +1950,9 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
 
                           <td className="py-3.5 px-4 whitespace-nowrap">
                             <span
-                              className={`inline-block font-mono font-black text-xs px-2.5 py-1 rounded-md border ${badgeStyle}`}
+                              onClick={() => setSelectedEntryKey(v.referenceNo || v.id)}
+                              className={`inline-block font-mono font-black text-xs px-2.5 py-1 rounded-md border ${badgeStyle} hover:underline cursor-pointer`}
+                              title="Click to view journal voucher details"
                             >
                               {v.referenceNo}
                             </span>
@@ -2136,6 +2147,18 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
             setPreviewAttachments(null)
           }}
           onAttachmentUpdated={() => {
+            loadCashierVouchers()
+            loadHistoricalVouchers()
+            loadData()
+          }}
+        />
+      )}
+
+      {selectedEntryKey && (
+        <JournalEntryModal
+          referenceNo={selectedEntryKey}
+          onClose={() => setSelectedEntryKey(null)}
+          onVoidSuccess={() => {
             loadCashierVouchers()
             loadHistoricalVouchers()
             loadData()
