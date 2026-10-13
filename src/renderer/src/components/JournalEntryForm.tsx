@@ -120,6 +120,8 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
   const [description, setDescription] = useState('')
 
   const [vatType, setVatType] = useState('VATABLE')
+  const [isVatToggleOn, setIsVatToggleOn] = useState(false)
+  const [vatDirection, setVatDirection] = useState<'OUTPUT' | 'INPUT'>('OUTPUT')
   const [payeeId, setPayeeId] = useState('')
 
   // 📖 Guide toggle state (collapsed by default)
@@ -206,6 +208,100 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
 
   const addLine = () => setLines([...lines, { accountId: '', debit: 0, credit: 0 }])
 
+  const autoSplitVatAmounts = (
+    currentLines: Array<{ accountId: string; debit: number; credit: number }>,
+    direction: 'OUTPUT' | 'INPUT'
+  ) => {
+    const updated = currentLines.map((l) => ({ ...l }))
+    const vatAccountCode = direction === 'OUTPUT' ? '2020' : '1300'
+    const vatLineIndex = updated.findIndex((l) => l.accountId === '2020' || l.accountId === '1300')
+    if (vatLineIndex === -1) return updated
+
+    const nonVatLines = updated.filter((_, idx) => idx !== vatLineIndex)
+    const maxDebit = Math.max(0, ...nonVatLines.map((l) => Number(l.debit) || 0))
+    const maxCredit = Math.max(0, ...nonVatLines.map((l) => Number(l.credit) || 0))
+    const grossAmount = Math.max(maxDebit, maxCredit)
+
+    if (grossAmount > 0) {
+      const netAmount = Number((grossAmount / 1.12).toFixed(2))
+      const vatAmount = Number((grossAmount - netAmount).toFixed(2))
+
+      if (direction === 'OUTPUT') {
+        const revenueIdx = updated.findIndex(
+          (l, idx) => idx !== vatLineIndex && Number(l.credit) > 0
+        )
+        if (revenueIdx !== -1) {
+          updated[revenueIdx] = { ...updated[revenueIdx], credit: netAmount }
+        }
+        updated[vatLineIndex] = {
+          ...updated[vatLineIndex],
+          accountId: vatAccountCode,
+          debit: 0,
+          credit: vatAmount
+        }
+      } else {
+        const expenseIdx = updated.findIndex(
+          (l, idx) => idx !== vatLineIndex && Number(l.debit) > 0
+        )
+        if (expenseIdx !== -1) {
+          updated[expenseIdx] = { ...updated[expenseIdx], debit: netAmount }
+        }
+        updated[vatLineIndex] = {
+          ...updated[vatLineIndex],
+          accountId: vatAccountCode,
+          debit: vatAmount,
+          credit: 0
+        }
+      }
+    } else {
+      updated[vatLineIndex] = {
+        ...updated[vatLineIndex],
+        accountId: vatAccountCode
+      }
+    }
+    return updated
+  }
+
+  const handleToggleVat = (forceState?: boolean) => {
+    const nextState = forceState !== undefined ? forceState : !isVatToggleOn
+    if (nextState) {
+      setIsVatToggleOn(true)
+      setVatType('VATABLE')
+      const vatAccount = vatDirection === 'OUTPUT' ? '2020' : '1300'
+      const existingIdx = lines.findIndex((l) => l.accountId === '2020' || l.accountId === '1300')
+      let newLines = [...lines]
+      if (existingIdx === -1) {
+        newLines.push({ accountId: vatAccount, debit: 0, credit: 0 })
+      } else {
+        newLines[existingIdx] = { ...newLines[existingIdx], accountId: vatAccount }
+      }
+      newLines = autoSplitVatAmounts(newLines, vatDirection)
+      setLines(newLines)
+    } else {
+      setIsVatToggleOn(false)
+      setVatType('EXEMPT')
+      const filtered = lines.filter((l) => l.accountId !== '2020' && l.accountId !== '1300')
+      while (filtered.length < 2) {
+        filtered.push({ accountId: '', debit: 0, credit: 0 })
+      }
+      setLines(filtered)
+    }
+  }
+
+  const handleSelectVatDirection = (direction: 'OUTPUT' | 'INPUT') => {
+    setVatDirection(direction)
+    const vatAccount = direction === 'OUTPUT' ? '2020' : '1300'
+    const vatIdx = lines.findIndex((l) => l.accountId === '2020' || l.accountId === '1300')
+    let newLines = [...lines]
+    if (vatIdx !== -1) {
+      newLines[vatIdx] = { ...newLines[vatIdx], accountId: vatAccount }
+    } else {
+      newLines.push({ accountId: vatAccount, debit: 0, credit: 0 })
+    }
+    newLines = autoSplitVatAmounts(newLines, direction)
+    setLines(newLines)
+  }
+
   const updateLine = (index: number, field: string, value: any) => {
     const newLines = [...lines]
     newLines[index][field as keyof (typeof newLines)[0]] = value
@@ -216,6 +312,10 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
 
   const removeLine = (index: number) => {
     if (lines.length <= 2) return
+    const target = lines[index]
+    if (target.accountId === '2020' || target.accountId === '1300') {
+      setIsVatToggleOn(false)
+    }
     const newLines = lines.filter((_, i) => i !== index)
     setLines(newLines)
   }
@@ -322,6 +422,8 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
         setStatus({ type: 'success', msg: `Entry ${result.referenceNo} posted successfully!` })
         setDescription('')
         setVatType('VATABLE')
+        setIsVatToggleOn(false)
+        setVatDirection('OUTPUT')
         setPayeeId('')
         setPayeeSearchQuery('')
         setLines([
@@ -426,13 +528,41 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
-              VAT Type
-            </label>
+            <div className="flex justify-between items-center mb-2">
+              <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider">
+                VAT Type
+              </label>
+              {/* Toggle to add/remove VAT line */}
+              <button
+                type="button"
+                onClick={() => handleToggleVat()}
+                className={`text-[11px] font-black px-2.5 py-1 rounded-full transition flex items-center gap-1.5 cursor-pointer ${
+                  isVatToggleOn
+                    ? 'bg-[#1B9387] text-white shadow-xs'
+                    : 'bg-gray-200 text-gray-600 hover:bg-gray-300'
+                }`}
+                title="Toggle to automatically add a 12% VAT line"
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${isVatToggleOn ? 'bg-white' : 'bg-gray-400'}`}
+                />
+                <span>{isVatToggleOn ? '12% VAT Line: ON' : '12% VAT Line: OFF'}</span>
+              </button>
+            </div>
+
             <div className="relative">
               <select
                 value={vatType}
-                onChange={(e) => setVatType(e.target.value)}
+                onChange={(e) => {
+                  const val = e.target.value
+                  setVatType(val)
+                  if (val === 'VATABLE') {
+                    handleToggleVat(true)
+                  } else {
+                    handleToggleVat(false)
+                    setVatType(val)
+                  }
+                }}
                 className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 pr-10 text-sm text-gray-800 font-medium focus:border-[#1B9387] focus:ring-2 focus:ring-[#E9FAFA] outline-none transition appearance-none cursor-pointer"
               >
                 <option value="VATABLE">Vatable (12%)</option>
@@ -453,6 +583,39 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                 </svg>
               </div>
             </div>
+
+            {/* When toggled ON: Prompts whether it is Input or Output VAT */}
+            {isVatToggleOn && (
+              <div className="mt-2.5 p-3 bg-[#E9FAFA] border border-[#B0DCDA] rounded-lg animate-in fade-in duration-200">
+                <span className="text-[11px] font-black text-gray-700 uppercase tracking-wider block mb-2">
+                  Is this an Input VAT or Output VAT?
+                </span>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectVatDirection('OUTPUT')}
+                    className={`flex-1 py-2 px-2.5 rounded-md text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      vatDirection === 'OUTPUT'
+                        ? 'bg-[#1B9387] text-white shadow-xs'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>📤 Output VAT (Sales - 2020)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectVatDirection('INPUT')}
+                    className={`flex-1 py-2 px-2.5 rounded-md text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      vatDirection === 'INPUT'
+                        ? 'bg-[#1B9387] text-white shadow-xs'
+                        : 'bg-white text-gray-700 border border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span>📥 Input VAT (Purchases - 1300)</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
 
@@ -762,6 +925,16 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
                                 <span className="font-medium text-gray-800">
                                   {selectedAcc?.name}
                                 </span>
+                                {line.accountId === '2020' && (
+                                  <span className="ml-2 text-[10px] font-black bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full border border-teal-300">
+                                    Output VAT (12%)
+                                  </span>
+                                )}
+                                {line.accountId === '1300' && (
+                                  <span className="ml-2 text-[10px] font-black bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full border border-blue-300">
+                                    Input VAT (12%)
+                                  </span>
+                                )}
                               </div>
                               {/* 🏷️ Selected Account Visual Cue */}
                               {accMeta && (
@@ -974,13 +1147,25 @@ export const JournalEntryForm: React.FC<{ userId: string }> = ({ userId }) => {
 
         {/* TOTALS & SUBMISSION */}
         <div className="flex justify-between items-end mt-6">
-          <button
-            type="button"
-            onClick={addLine}
-            className="text-[#1B9387] text-sm font-bold hover:bg-[#E9FAFA] px-5 py-2.5 rounded-md transition border border-transparent hover:border-[#B0DCDA] shadow-sm cursor-pointer"
-          >
-            + Add Line
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={addLine}
+              className="text-[#1B9387] text-sm font-bold hover:bg-[#E9FAFA] px-5 py-2.5 rounded-md transition border border-transparent hover:border-[#B0DCDA] shadow-sm cursor-pointer"
+            >
+              + Add Line
+            </button>
+            {isVatToggleOn && (
+              <button
+                type="button"
+                onClick={() => setLines(autoSplitVatAmounts(lines, vatDirection))}
+                className="bg-[#1B9387] hover:bg-[#28958B] text-white text-xs font-bold px-4 py-2.5 rounded-md transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                title="Automatically calculate and split 12% VAT from entered amounts"
+              >
+                <span>⚡ Auto-Split 12% VAT</span>
+              </button>
+            )}
+          </div>
 
           <div className="text-right bg-[#E9FAFA] p-5 rounded-md border border-[#B0DCDA] min-w-[300px] shadow-sm">
             <div className="flex justify-between text-sm mb-2">
