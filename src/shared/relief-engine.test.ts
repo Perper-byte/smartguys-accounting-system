@@ -88,7 +88,7 @@ describe('BIR RELIEF (.DAT) File Generator Engine - BIR Validation Module v2.3 C
     expect(lines.some((l) => l.startsWith('C,'))).toBe(false)
   })
 
-  test('TIN Rules: Owner TIN is non-zero 9 digits; unregistered consumer TIN is 000000000', () => {
+  test('TIN Rules: Owner TIN is non-zero 9 digits; unregistered consumer TIN is empty string', () => {
     // Test owner with 000-000-000 -> must fall back to non-zero valid corporate TIN
     const zeroOwner = { ...sampleOwner, tin: '000-000-000-000' }
     const result = ReliefGeneratorEngine.compile({
@@ -107,9 +107,9 @@ describe('BIR RELIEF (.DAT) File Generator Engine - BIR Validation Module v2.3 C
     expect(ownerTin.length).toBe(9)
     expect(/^\d{9}$/.test(ownerTin)).toBe(true)
 
-    // Detail Line 2: Walk-in consumer TIN must be 9-digit '000000000'
+    // Detail Line 2: Walk-in consumer TIN must be empty string '""' (never dummy zeros '000000000')
     const walkInCols = lines[2].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)
-    expect(walkInCols[2]).toBe('"000000000"')
+    expect(walkInCols[2]).toBe('""')
 
     // Detail Line 1: Corporate TIN must be 9 digits
     const corpCols = lines[1].split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/)

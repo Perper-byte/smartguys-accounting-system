@@ -145,6 +145,7 @@ export class TaxService {
           ['4010', '4020', '4040'].includes(l.account_id)
         )
         const netAmount = revenueLines.reduce((sum, l) => sum + Number(l.credit), 0)
+        if (netAmount === 0 && outputTax === 0) return
 
         // If transaction has Output VAT or VAT is applicable, classify accordingly
         const vatableSales = outputTax > 0 ? netAmount : 0
@@ -185,6 +186,7 @@ export class TaxService {
           (l) => l.account_id !== '1300' && Number(l.debit) > 0
         )
         const netAmount = expenseLines.reduce((sum, l) => sum + Number(l.debit), 0)
+        if (netAmount === 0 && tax === 0) return
 
         annexB_Purchases.push({
           date: entry.date,

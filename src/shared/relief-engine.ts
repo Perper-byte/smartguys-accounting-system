@@ -109,14 +109,14 @@ export class ReliefGeneratorEngine {
 
   /**
    * Sanitizes Counterparty TIN:
-   * - If unregistered walk-in consumer: 9-digit zeros '000000000'
+   * - If unregistered walk-in consumer or invalid/all-zero: returns empty string ''
    * - If corporate / registered entity: 9-digit numeric taxpayer ID
    */
   static sanitizeCounterpartyTin(rawTin?: string | null, isWalkIn?: boolean): string {
-    if (isWalkIn) return '000000000'
+    if (isWalkIn) return ''
     const digits = String(rawTin || '').replace(/\D/g, '')
     if (!digits || /^0+$/.test(digits)) {
-      return '000000000'
+      return ''
     }
     if (digits.length >= 9) {
       return digits.substring(0, 9)
@@ -359,6 +359,10 @@ export class ReliefGeneratorEngine {
       const declaredGross = Number(gross.toFixed(2))
       if (Math.abs(declaredGross - computedGross) > 0.001) {
         gross = computedGross
+      }
+
+      if (gross === 0 && taxable === 0 && tax === 0 && exempt === 0 && zeroRated === 0) {
+        return
       }
 
       totalGross += gross
