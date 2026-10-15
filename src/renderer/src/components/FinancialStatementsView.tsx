@@ -8,9 +8,9 @@ export const FinancialStatementsView: React.FC = () => {
   const currentYear = new Date().getFullYear()
   const currentMonth = new Date().getMonth() + 1
 
-  const [statementType, setStatementType] = useState<'trial' | 'income' | 'balance' | 'cash-flow'>(
-    'trial'
-  )
+  const [statementType, setStatementType] = useState<
+    'trial' | 'post-closing' | 'income' | 'balance' | 'cash-flow'
+  >('trial')
   const [selectedYear, setSelectedYear] = useState<number>(currentYear)
   const [selectedMonth, setSelectedMonth] = useState<number>(currentMonth)
   const [selectedPeriod, setSelectedPeriod] = useState<StatementPeriodType>('MONTHLY')
@@ -27,6 +27,8 @@ export const FinancialStatementsView: React.FC = () => {
         let result
         if (statementType === 'trial')
           result = await api.getTrialBalance(selectedYear, selectedMonth, quarterParam)
+        else if (statementType === 'post-closing')
+          result = await api.getPostClosingTrialBalance(selectedYear, selectedMonth, quarterParam)
         else if (statementType === 'income')
           result = await api.getIncomeStatement(selectedYear, selectedMonth, quarterParam)
         else if (statementType === 'balance')
@@ -343,7 +345,7 @@ export const FinancialStatementsView: React.FC = () => {
         id="fs-tabs"
         className="flex flex-wrap gap-2 mb-6 bg-[#FBF8F8] p-1.5 rounded-lg border border-[#B0DCDA] shadow-inner w-fit"
       >
-        {(['trial', 'income', 'balance', 'cash-flow'] as const).map((type) => (
+        {(['trial', 'post-closing', 'income', 'balance', 'cash-flow'] as const).map((type) => (
           <button
             key={type}
             onClick={() => setStatementType(type)}
@@ -355,11 +357,13 @@ export const FinancialStatementsView: React.FC = () => {
           >
             {type === 'trial'
               ? 'Trial Balance'
-              : type === 'income'
-                ? 'Income Statement'
-                : type === 'balance'
-                  ? 'Balance Sheet'
-                  : 'Cash Flow'}
+              : type === 'post-closing'
+                ? 'Post-Closing TB'
+                : type === 'income'
+                  ? 'Income Statement'
+                  : type === 'balance'
+                    ? 'Balance Sheet'
+                    : 'Cash Flow'}
           </button>
         ))}
       </div>
@@ -373,18 +377,33 @@ export const FinancialStatementsView: React.FC = () => {
       {!loading && data && (
         <div className="animate-in fade-in duration-300">
           {/* =========================================
-                        A. TRIAL BALANCE
+                        A. TRIAL BALANCE & POST-CLOSING TB
                     ========================================= */}
-          {statementType === 'trial' && (
+          {(statementType === 'trial' || statementType === 'post-closing') && (
             <div className="space-y-6 bg-white max-w-4xl mx-auto">
               <div className="text-center pb-4 border-b-2 border-gray-800">
                 <h2 className="text-2xl font-extrabold text-gray-800">
                   SmartGuys Community Healthcare Inc.
                 </h2>
-                <h3 className="text-lg font-bold text-gray-600 mt-1">Trial Balance</h3>
+                <h3 className="text-lg font-bold text-gray-600 mt-1">
+                  {statementType === 'post-closing' ? 'Post-Closing Trial Balance' : 'Trial Balance'}
+                </h3>
                 <p className="text-sm text-gray-500 mt-1 italic">
                   {getPeriodSubtitle('asOf')}
                 </p>
+                {statementType === 'post-closing' && (
+                  <div className="mt-3">
+                    {data.closedPeriodValid ? (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 text-emerald-800 border border-emerald-300 rounded-full text-xs font-bold">
+                        <span>✓</span> Balanced Post-Close: All Revenue & Expense Accounts Reset to ₱0.00
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 text-amber-800 border border-amber-300 rounded-full text-xs font-bold">
+                        <span>⚠</span> Post-Close Status: Temporary accounts active or out of balance
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="border border-[#B0DCDA] rounded-xl bg-white overflow-hidden shadow-sm">

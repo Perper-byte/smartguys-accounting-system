@@ -10,9 +10,12 @@ interface Window {
     generateRelief: (year: number, quarter: number, month?: number) => Promise<any>
     getAnalyticsMetrics: (timeframe: string) => Promise<any>
     getTrialBalance: (year?: number, month?: number, quarter?: string) => Promise<any>
+    getPostClosingTrialBalance: (year?: number, month?: number, quarter?: string) => Promise<any>
     getIncomeStatement: (year?: number, month?: number, quarter?: string) => Promise<any>
     getBalanceSheet: (year?: number, month?: number, quarter?: string) => Promise<any>
     getCashFlowStatement: (year?: number, month?: number, quarter?: string) => Promise<any>
+    validatePreClose?: (year: number, period: number) => Promise<any>
+    closePeriod?: (year: number, period: number, userId: string, options?: any) => Promise<any>
     exportFinancialStatementExcel: (statementType: string, year?: number, month?: number, quarter?: string) => Promise<any>
     exportTrialBalanceExcel: (year?: number, month?: number, quarter?: string) => Promise<any>
     exportEmployeesExcel: (employees?: any[]) => Promise<any>
@@ -23,6 +26,9 @@ interface Window {
     getAllJournalEntries: () => Promise<any[]>
     getJournalEntryById: (idOrRef: string) => Promise<any>
     pingDatabase: () => Promise<boolean>
+    getRolePermissions?: () => Promise<Record<string, string[]>>
+    updateRolePermissions?: (matrix: Record<string, string[]>, adminUser?: string) => Promise<any>
+    forceApplyRolePermissions?: (matrix: Record<string, string[]>, adminUser?: string) => Promise<any>
   }
 }
 

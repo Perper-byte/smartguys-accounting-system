@@ -584,13 +584,14 @@ ${itemsListFormatted || '  - None'}
     const newItems = tests.map((t, idx) => {
       const price = Number(t.price) || 0
       const isHmo = Boolean(t.isHmoCovered)
+      const isVat = t.isVatable !== undefined ? Boolean(t.isVatable) : Boolean(t.is_vatable)
       return {
         id: Date.now() + idx,
         accountCode: '4020', // Assuming 4020 is Laboratory / Diagnostic Income
         description: t.name,
         quantity: 1,
         price: price,
-        isVatable: Boolean(t.is_vatable),
+        isVatable: isVat,
         isHmoCovered: isHmo,
         hmoCoverage: isHmo ? price : ('' as number | '')
       }
@@ -644,8 +645,19 @@ ${itemsListFormatted || '  - None'}
             updatedItem.price = value === '4010' ? 500 : 0
             updatedItem.isHmoCovered = false
             updatedItem.hmoCoverage = ''
+            updatedItem.isVatable = false
             setActiveLabRow(null)
             setLabDropdownPosition(null)
+          } else if (field === 'description') {
+            const matchedTest = labTests.find(
+              (t) => String(t.name || '').trim().toLowerCase() === String(value || '').trim().toLowerCase()
+            )
+            if (matchedTest) {
+              updatedItem.isVatable = Boolean(matchedTest.is_vatable)
+              if (Number(matchedTest.price) > 0) {
+                updatedItem.price = Number(matchedTest.price)
+              }
+            }
           }
           return updatedItem
         }
@@ -1881,7 +1893,8 @@ ${itemsSummary}
                                               price:
                                                 Number(test.price) > 0
                                                   ? Number(test.price)
-                                                  : newItems[targetIndex].price
+                                                  : newItems[targetIndex].price,
+                                              isVatable: Boolean(test.is_vatable)
                                             }
                                             setItems(newItems)
                                             setActiveLabRow(null)
@@ -1890,9 +1903,16 @@ ${itemsSummary}
                                           className="px-4 py-3 text-sm text-gray-800 hover:bg-[#E9FAFA] cursor-pointer transition border-b border-gray-100 last:border-b-0 flex justify-between items-center gap-4 group"
                                         >
                                           <div className="min-w-0">
-                                            <span className="font-bold text-sm block truncate group-hover:text-[#1B9387]">
-                                              {test.name}
-                                            </span>
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="font-bold text-sm block truncate group-hover:text-[#1B9387]">
+                                                {test.name}
+                                              </span>
+                                              {Boolean(test.is_vatable) && (
+                                                <span className="text-[9px] font-black uppercase tracking-wider bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded border border-purple-200">
+                                                  12% VAT
+                                                </span>
+                                              )}
+                                            </div>
                                             <span className="block text-[10px] text-gray-400 uppercase font-bold mt-0.5 truncate">
                                               {test.category}
                                             </span>

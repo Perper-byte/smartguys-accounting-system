@@ -36,6 +36,22 @@ export function setupMockElectronAPI(options: MockElectronAPIOptions = {}) {
     toggleUserStatus: jest.fn().mockResolvedValue({ success: true }),
     resetUserPassword: jest.fn().mockResolvedValue({ success: true }),
     updateUserPermissions: jest.fn().mockResolvedValue({ success: true }),
+    getRolePermissions: jest.fn().mockResolvedValue(options.rolePermissions || {
+      CASHIER: ['billing', 'collections', 'directory', 'history'],
+      ACCOUNTANT: [
+        'billing', 'collections', 'directory', 'disbursement', 'payouts', 'aging', 'aged-payables',
+        'tracker', 'history', 'journal', 'adjusting', 'ledger', 'reconciliation', 'books',
+        'statements', 'bir', 'coa', 'inventory', 'services'
+      ],
+      MANAGER: [
+        'billing', 'collections', 'directory', 'disbursement', 'payouts', 'aging', 'aged-payables',
+        'tracker', 'history', 'payroll', 'journal', 'adjusting', 'ledger', 'reconciliation',
+        'books', 'analytics', 'statements', 'bir', 'voids', 'coa', 'inventory', 'services'
+      ],
+      IT_PERSONNEL: ['directory', 'audit', 'users', 'backup', 'services', 'inventory']
+    }),
+    updateRolePermissions: jest.fn().mockResolvedValue({ success: true }),
+    forceApplyRolePermissions: jest.fn().mockResolvedValue({ success: true, count: 2 }),
     getPettyCashBalance: jest.fn().mockResolvedValue({ current_balance: 5000 }),
     getAccounts: jest.fn().mockResolvedValue(options.accounts || defaultAccounts),
     getAccountTypes: jest.fn().mockResolvedValue([
@@ -71,6 +87,15 @@ export function setupMockElectronAPI(options: MockElectronAPIOptions = {}) {
     getLockDate: jest.fn().mockResolvedValue({ lockDate: null, autoLockDay: null, fiscalYearStartMonth: 1 }),
     setLockDate: jest.fn().mockResolvedValue({ success: true }),
     getCalendar: jest.fn().mockResolvedValue(options.calendar || []),
+    validatePreClose: jest.fn().mockResolvedValue({
+      canClose: true,
+      unmatchedBankCount: 0,
+      pendingVoidCount: 0,
+      isLedgerBalanced: true,
+      unbalancedDifference: 0,
+      warnings: [],
+      errors: []
+    }),
     updatePeriodStatus: jest.fn().mockResolvedValue({ success: true }),
     closePeriod: jest.fn().mockResolvedValue({ success: true }),
     reopenPeriod: jest.fn().mockResolvedValue({ success: true }),
@@ -83,6 +108,7 @@ export function setupMockElectronAPI(options: MockElectronAPIOptions = {}) {
       trendData: { labels: ['Jan', 'Feb', 'Mar'], revenue: [10000, 20000, 20000], expenses: [5000, 7000, 8000] }
     }),
     getTrialBalance: jest.fn().mockResolvedValue({ lines: [], totalDebit: 0, totalCredit: 0 }),
+    getPostClosingTrialBalance: jest.fn().mockResolvedValue({ lines: [], totalDebits: 0, totalCredits: 0, isBalanced: true, closedPeriodValid: true, unclosedTemporaryAccounts: [] }),
     getIncomeStatement: jest.fn().mockResolvedValue({ revenues: [], expenses: [], netIncome: 0 }),
     getBalanceSheet: jest.fn().mockResolvedValue({ assets: [], liabilities: [], equity: [] }),
     getCashFlowStatement: jest.fn().mockResolvedValue({ operating: [], investing: [], financing: [] }),

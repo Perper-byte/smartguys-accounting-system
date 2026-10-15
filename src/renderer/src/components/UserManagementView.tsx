@@ -95,6 +95,11 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
     hasCustom: boolean
   } | null>(null)
 
+  const [rolePermissions, setRolePermissions] = useState<Record<string, string[]>>(ROLE_DEFAULT_PERMISSIONS)
+  const [savingRoles, setSavingRoles] = useState(false)
+  const [forcingRoles, setForcingRoles] = useState(false)
+  const [showForceConfirm, setShowForceConfirm] = useState(false)
+
   // Default to the current logged in user, fallback to 'SYSTEM' just in case
   const adminUser = currentUser?.username || 'SYSTEM'
 
@@ -111,8 +116,23 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
     }
   }
 
+  const fetchRolePermissions = async () => {
+    try {
+      const api = (window as any).api || (window as any).electronAPI
+      if (api?.getRolePermissions) {
+        const data = await api.getRolePermissions()
+        if (data && typeof data === 'object') {
+          setRolePermissions((prev) => ({ ...prev, ...data }))
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch role permissions', error)
+    }
+  }
+
   useEffect(() => {
     fetchUsers()
+    fetchRolePermissions()
   }, [])
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -123,8 +143,13 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
     setLoading(true)
     try {
       const api = (window as any).api || (window as any).electronAPI
+      const roleDefaults = rolePermissions[newUser.role] || ROLE_DEFAULT_PERMISSIONS[newUser.role] || []
+      const payload = {
+        ...newUser,
+        permissions: roleDefaults
+      }
       // 🔥 Passed adminUser to the backend for the audit log
-      const result = await api.createUser(newUser, adminUser)
+      const result = await api.createUser(payload, adminUser)
 
       if (result.success) {
         setCreatedUserCredentials({ username: newUser.username, role: newUser.role, password: newUser.password });
@@ -234,8 +259,77 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
     if (!userToEditPerms) return
     setUserToEditPerms({
       ...userToEditPerms,
-      perms: [...(ROLE_DEFAULT_PERMISSIONS[userToEditPerms.role] || [])]
+      perms: [...(rolePermissions[userToEditPerms.role] || ROLE_DEFAULT_PERMISSIONS[userToEditPerms.role] || [])]
     })
+  }
+
+  const toggleRolePermission = (role: string, moduleId: string) => {
+    setRolePermissions((prev) => {
+      const current = prev[role] || []
+      const updated = current.includes(moduleId)
+        ? current.filter((id) => id !== moduleId)
+        : [...current, moduleId]
+      return {
+        ...prev,
+        [role]: updated
+      }
+    })
+  }
+
+  const handleSaveRolePermissions = async () => {
+    setSavingRoles(true)
+    setStatusMessage(null)
+    try {
+      const api = (window as any).api || (window as any).electronAPI
+      const res = await api.updateRolePermissions(rolePermissions, adminUser)
+      if (res && (res.success || !res.error)) {
+        setStatusMessage({
+          type: 'success',
+          msg: 'Role permissions matrix saved! New users will receive these defaults.'
+        })
+        setTimeout(() => setStatusMessage(null), 4000)
+      } else {
+        setStatusMessage({
+          type: 'error',
+          msg: res?.error || 'Failed to save role permissions matrix.'
+        })
+      }
+    } catch (error) {
+      setStatusMessage({ type: 'error', msg: 'System Error.' })
+    } finally {
+      setSavingRoles(false)
+    }
+  }
+
+  const handleResetRoleMatrix = () => {
+    setRolePermissions({ ...ROLE_DEFAULT_PERMISSIONS })
+  }
+
+  const confirmForceRoleChanges = async () => {
+    setForcingRoles(true)
+    setStatusMessage(null)
+    try {
+      const api = (window as any).api || (window as any).electronAPI
+      const res = await api.forceApplyRolePermissions(rolePermissions, adminUser)
+      if (res && (res.success || !res.error)) {
+        setStatusMessage({
+          type: 'success',
+          msg: `Role permissions forced across all existing users (${res.count ?? 0} updated)!`
+        })
+        fetchUsers()
+        setTimeout(() => setStatusMessage(null), 4000)
+      } else {
+        setStatusMessage({
+          type: 'error',
+          msg: res?.error || 'Failed to force role changes.'
+        })
+      }
+    } catch (error) {
+      setStatusMessage({ type: 'error', msg: 'System Error.' })
+    } finally {
+      setForcingRoles(false)
+      setShowForceConfirm(false)
+    }
   }
 
   const filteredUsers = users.filter((u) =>
@@ -458,7 +552,7 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
                             onClick={() => {
                               const existingPerms = u.permissions && u.permissions.length > 0
                                 ? u.permissions
-                                : [...(ROLE_DEFAULT_PERMISSIONS[u.role] || [])]
+                                : [...(rolePermissions[u.role] || ROLE_DEFAULT_PERMISSIONS[u.role] || [])]
                                 
                               setUserToEditPerms({
                                 id: u.id,
@@ -499,11 +593,45 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
 
       {activeTab === 'roles' && (
         <div className="col-span-2 bg-white border border-[#B0DCDA] rounded-xl shadow-sm overflow-hidden flex flex-col p-6">
-          <h3 className="text-lg font-extrabold text-gray-800 mb-4">Role Permissions Matrix</h3>
-          <p className="text-sm text-gray-600 mb-6 font-medium max-w-4xl">
-            This matrix defines the standard responsibilities and module access for each role as per SOP 3.3. 
-            Default permissions are applied upon user creation. You can customize permissions for individual users in the Users List.
-          </p>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-lg font-extrabold text-gray-800">Role Permissions Matrix</h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-0.5 rounded-full">
+                  Applies to New Users
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 font-medium max-w-2xl mt-1">
+                Configure default module access for roles. Checkboxes set the template used when creating new user accounts. Existing accounts are not modified.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={handleResetRoleMatrix}
+                className="text-xs font-bold uppercase tracking-wider px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-gray-700 transition border border-gray-300 cursor-pointer"
+              >
+                Reset Defaults
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveRolePermissions}
+                disabled={savingRoles || forcingRoles}
+                className="text-xs font-bold uppercase tracking-wider px-4 py-2 rounded-lg bg-[#1B9387] hover:bg-[#157a70] text-white transition shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+              >
+                {savingRoles ? 'Saving...' : 'Save Role Defaults'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowForceConfirm(true)}
+                disabled={forcingRoles || savingRoles}
+                className="text-xs font-bold uppercase tracking-wider px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white transition shadow-sm cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                title="Force apply these role permissions to all existing user accounts"
+              >
+                {forcingRoles ? 'Forcing Changes...' : 'Force Role Changes'}
+              </button>
+            </div>
+          </div>
 
           <div className="overflow-auto border border-gray-200 rounded-lg custom-scrollbar">
             <table className="w-full text-left text-sm min-w-max">
@@ -530,16 +658,40 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
                   <tr key={mod.id} className="hover:bg-gray-50 transition-colors">
                     <td className="p-3 border-r border-gray-200 font-bold text-gray-700">{mod.label}</td>
                     <td className="p-3 border-r border-gray-200 text-center">
-                      {ROLE_DEFAULT_PERMISSIONS['CASHIER'].includes(mod.id) ? '✅' : <span className="text-gray-300">-</span>}
+                      <input
+                        type="checkbox"
+                        checked={(rolePermissions['CASHIER'] || []).includes(mod.id)}
+                        onChange={() => toggleRolePermission('CASHIER', mod.id)}
+                        aria-label={`CASHIER ${mod.label}`}
+                        className="w-4 h-4 text-[#1B9387] accent-[#1B9387] rounded border-gray-300 cursor-pointer focus:ring-[#1B9387]"
+                      />
                     </td>
                     <td className="p-3 border-r border-gray-200 text-center">
-                      {ROLE_DEFAULT_PERMISSIONS['ACCOUNTANT'].includes(mod.id) ? '✅' : <span className="text-gray-300">-</span>}
+                      <input
+                        type="checkbox"
+                        checked={(rolePermissions['ACCOUNTANT'] || []).includes(mod.id)}
+                        onChange={() => toggleRolePermission('ACCOUNTANT', mod.id)}
+                        aria-label={`ACCOUNTANT ${mod.label}`}
+                        className="w-4 h-4 text-[#1B9387] accent-[#1B9387] rounded border-gray-300 cursor-pointer focus:ring-[#1B9387]"
+                      />
                     </td>
                     <td className="p-3 border-r border-gray-200 text-center">
-                      {ROLE_DEFAULT_PERMISSIONS['MANAGER'].includes(mod.id) ? '✅' : <span className="text-gray-300">-</span>}
+                      <input
+                        type="checkbox"
+                        checked={(rolePermissions['MANAGER'] || []).includes(mod.id)}
+                        onChange={() => toggleRolePermission('MANAGER', mod.id)}
+                        aria-label={`MANAGER ${mod.label}`}
+                        className="w-4 h-4 text-[#1B9387] accent-[#1B9387] rounded border-gray-300 cursor-pointer focus:ring-[#1B9387]"
+                      />
                     </td>
                     <td className="p-3 text-center">
-                      {ROLE_DEFAULT_PERMISSIONS['IT_PERSONNEL'].includes(mod.id) ? '✅' : <span className="text-gray-300">-</span>}
+                      <input
+                        type="checkbox"
+                        checked={(rolePermissions['IT_PERSONNEL'] || []).includes(mod.id)}
+                        onChange={() => toggleRolePermission('IT_PERSONNEL', mod.id)}
+                        aria-label={`IT_PERSONNEL ${mod.label}`}
+                        className="w-4 h-4 text-[#1B9387] accent-[#1B9387] rounded border-gray-300 cursor-pointer focus:ring-[#1B9387]"
+                      />
                     </td>
                   </tr>
                 ))}
@@ -722,6 +874,36 @@ export default function UserManagementView({ currentUser }: { currentUser?: any 
             >
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {showForceConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="bg-white border border-[#B0DCDA] rounded-xl shadow-2xl p-8 w-[450px] animate-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-extrabold text-gray-800 mb-2 uppercase tracking-wide">
+              Force Role Changes?
+            </h3>
+            <p className="text-sm text-gray-600 mb-6 font-medium leading-relaxed">
+              This will overwrite the permissions of <strong className="text-amber-700">all existing user accounts</strong> to match the current role permissions matrix.
+            </p>
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={() => setShowForceConfirm(false)}
+                className="px-5 py-2.5 bg-[#FBF8F8] border border-[#B0DCDA] hover:bg-gray-100 text-gray-600 rounded-md text-sm font-bold transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmForceRoleChanges}
+                disabled={forcingRoles}
+                className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-md text-sm font-bold transition cursor-pointer shadow-sm disabled:opacity-50"
+              >
+                {forcingRoles ? 'Applying...' : 'Yes, Force Changes'}
+              </button>
+            </div>
           </div>
         </div>
       )}

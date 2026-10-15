@@ -182,6 +182,106 @@ export class ReportsService {
     }
   }
 
+  static async getPostClosingTrialBalance(year?: number, month?: number, quarter?: string, asOfDate?: Date) {
+    let effectiveEndDate: Date
+    if (asOfDate) {
+      effectiveEndDate = asOfDate
+    } else if (quarter || (year && month)) {
+      const dates = resolvePeriodDateRange(year, month, quarter)
+      effectiveEndDate = dates.endDate || new Date()
+    } else {
+      effectiveEndDate = new Date()
+    }
+
+    const accounts = await prisma.account.findMany({
+      include: { account_type: true }
+    })
+
+    // Include all active entries up to effectiveEndDate (including CLOSE- closing entries)
+    const lines = await prisma.journalLine.findMany({
+      where: {
+        entry: {
+          date: { lte: effectiveEndDate },
+          status: 'ACTIVE'
+        }
+      },
+      include: { entry: true }
+    })
+
+    const tbMap: any = {}
+    for (const acc of accounts) {
+      tbMap[acc.code] = { ...acc, sumDebits: 0, sumCredits: 0 }
+    }
+
+    for (const line of lines) {
+      const acc = tbMap[line.account_id]
+      if (!acc) continue
+      acc.sumDebits += Number(line.debit)
+      acc.sumCredits += Number(line.credit)
+    }
+
+    const trialBalanceLines: any[] = []
+    let totalDebits = 0
+    let totalCredits = 0
+    const unclosedTemporaryAccounts: string[] = []
+
+    for (const code in tbMap) {
+      const acc = tbMap[code]
+      const normalBalance = acc.account_type.normal_balance
+      const typeName = (acc.account_type.name || '').toLowerCase()
+      let netDebit = 0
+      let netCredit = 0
+
+      if (normalBalance === 'DEBIT') {
+        const net = acc.sumDebits - acc.sumCredits
+        if (net > 0) netDebit = net
+        else if (net < 0) netCredit = Math.abs(net)
+      } else {
+        const net = acc.sumCredits - acc.sumDebits
+        if (net > 0) netCredit = net
+        else if (net < 0) netDebit = Math.abs(net)
+      }
+
+      const isTemporary =
+        typeName === 'revenue' ||
+        typeName === 'expense' ||
+        typeName === 'expenses' ||
+        code === '3999'
+
+      if (isTemporary && (netDebit > 0.005 || netCredit > 0.005)) {
+        unclosedTemporaryAccounts.push(
+          `${acc.code} ${acc.name} (Dr: ${netDebit.toFixed(2)}, Cr: ${netCredit.toFixed(2)})`
+        )
+      }
+
+      if (netDebit > 0.005 || netCredit > 0.005) {
+        trialBalanceLines.push({
+          accountCode: acc.code,
+          accountName: acc.name,
+          accountType: acc.account_type.name,
+          debit: netDebit,
+          credit: netCredit
+        })
+        totalDebits += netDebit
+        totalCredits += netCredit
+      }
+    }
+
+    trialBalanceLines.sort((a, b) => a.accountCode.localeCompare(b.accountCode))
+
+    const isBalanced = totalDebits.toFixed(2) === totalCredits.toFixed(2)
+    const closedPeriodValid = unclosedTemporaryAccounts.length === 0 && isBalanced
+
+    return {
+      lines: trialBalanceLines,
+      totalDebits: Number(totalDebits.toFixed(2)),
+      totalCredits: Number(totalCredits.toFixed(2)),
+      isBalanced,
+      closedPeriodValid,
+      unclosedTemporaryAccounts
+    }
+  }
+
   static async getIncomeStatement(year?: number, month?: number, quarter?: string) {
     let startDate, endDate
     if (quarter || (year && month)) {

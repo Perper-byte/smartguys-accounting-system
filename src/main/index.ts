@@ -252,6 +252,40 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('get-role-permissions', async () => {
+    try {
+      return await UserService.getRolePermissions()
+    } catch (err: any) {
+      return UserService.DEFAULT_ROLE_PERMISSIONS || {}
+    }
+  })
+
+  ipcMain.handle('update-role-permissions', async (e, matrix, adminUser = 'SYSTEM') => {
+    try {
+      const actorId = await resolveActorId(adminUser)
+      const data = await UserService.updateRolePermissions(matrix)
+      await AuditService.logAction(actorId, 'SECURITY', 'Updated Role Permissions Matrix defaults')
+      return { success: true, data }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
+  ipcMain.handle('force-apply-role-permissions', async (e, matrix, adminUser = 'SYSTEM') => {
+    try {
+      const actorId = await resolveActorId(adminUser)
+      const result = await UserService.forceApplyRolePermissions(matrix)
+      await AuditService.logAction(
+        actorId,
+        'SECURITY',
+        `Force applied role permissions to all user accounts (${result.count} accounts updated)`
+      )
+      return { success: true, count: result.count }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+
   ipcMain.handle('get-petty-cash-balance', async () => {
     try {
       return typeof UserService.getPettyCashBalance === 'function'
@@ -959,6 +993,14 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('reports:getPostClosingTrialBalance', async (event, year, month, quarter) => {
+    try {
+      return await ReportsService.getPostClosingTrialBalance(year, month, quarter)
+    } catch (error: any) {
+      return { error: error.message }
+    }
+  })
+
   ipcMain.handle('reports:getIncomeStatement', async (event, year, month, quarter) => {
     try {
       return await ReportsService.getIncomeStatement(year, month, quarter)
@@ -1631,9 +1673,17 @@ app.whenReady().then(() => {
     await AccountingPeriodService.updatePeriodStatus(year, period, status, userId)
     return { success: true }
   })
-  ipcMain.handle('calendar:close-period', async (e, year, period, userId) => {
+  ipcMain.handle('calendar:validate-pre-close', async (e, year, period) => {
     try {
-      await AccountingPeriodService.closePeriod(year, period, userId)
+      const validation = await AccountingPeriodService.validatePreClose(year, period)
+      return { success: true, validation }
+    } catch (err: any) {
+      return { success: false, error: err.message }
+    }
+  })
+  ipcMain.handle('calendar:close-period', async (e, year, period, userId, options) => {
+    try {
+      await AccountingPeriodService.closePeriod(year, period, userId, options)
       return { success: true }
     } catch (err: any) {
       return { success: false, error: err.message }

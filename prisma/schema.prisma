@@ -288,8 +288,12 @@ model SystemSetting {
   lock_date     DateTime? @db.Date
   auto_lock_day Int?
   accounting_calendar String? @db.Text
-  override_pin  String?   @db.VarChar(50) // ðŸ”¥ NEW: Admin Override PIN
+  override_pin  String?   @db.VarChar(255) // Admin Override PIN (bcrypt hash)
   fiscal_year_start_month Int @default(1)
+  year_type               String?   @default("CALENDAR") @db.VarChar(20)
+  auto_close_enabled      Boolean   @default(false)
+  auto_close_frequency    String?   @default("MONTHLY") @db.VarChar(20)
+  role_permissions        Json?
 
   services_vatable Boolean @default(false)
   medicines_vatable Boolean @default(false)

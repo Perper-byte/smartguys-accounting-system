@@ -48,6 +48,10 @@ export function LabTestsModal({
       newHmo.delete(id)
     } else {
       newSelected.add(id)
+      const targetTest = availableTests.find((t) => t.id === id)
+      if (targetTest?.is_vatable) {
+        newVatable.add(id)
+      }
       if (defaultHmoCovered) {
         newHmo.add(id)
       }

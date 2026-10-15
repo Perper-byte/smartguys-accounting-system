@@ -17,6 +17,11 @@ export const api = {
     ipcRenderer.invoke('reset-user-password', userId, newPassword, adminUser),
   updateUserPermissions: (id: string, perms: string[], adminUser?: string) =>
     ipcRenderer.invoke('update-user-permissions', id, perms, adminUser),
+  getRolePermissions: () => ipcRenderer.invoke('get-role-permissions'),
+  updateRolePermissions: (matrix: any, adminUser?: string) =>
+    ipcRenderer.invoke('update-role-permissions', matrix, adminUser),
+  forceApplyRolePermissions: (matrix: any, adminUser?: string) =>
+    ipcRenderer.invoke('force-apply-role-permissions', matrix, adminUser),
   getPettyCashBalance: () => ipcRenderer.invoke('get-petty-cash-balance'),
 
   // Ledger & Accounts
@@ -137,6 +142,8 @@ export const api = {
   // Financial Reports
   getTrialBalance: (year?: number, month?: number, quarter?: string) =>
     ipcRenderer.invoke('reports:getTrialBalance', year, month, quarter),
+  getPostClosingTrialBalance: (year?: number, month?: number, quarter?: string) =>
+    ipcRenderer.invoke('reports:getPostClosingTrialBalance', year, month, quarter),
   getIncomeStatement: (year?: number, month?: number, quarter?: string) =>
     ipcRenderer.invoke('reports:getIncomeStatement', year, month, quarter),
   getBalanceSheet: (year?: number, month?: number, quarter?: string) =>
@@ -179,10 +186,12 @@ export const api = {
   getLockDate: () => ipcRenderer.invoke('get-lock-date'),
   setLockDate: (date: string | null) => ipcRenderer.invoke('set-lock-date', date),
   getCalendar: (year?: number) => ipcRenderer.invoke('calendar:get', year),
+  validatePreClose: (year: number, period: number) =>
+    ipcRenderer.invoke('calendar:validate-pre-close', year, period),
   updatePeriodStatus: (year: number, period: number, status: string, userId: string) =>
     ipcRenderer.invoke('calendar:update-status', year, period, status, userId),
-  closePeriod: (year: number, period: number, userId: string) =>
-    ipcRenderer.invoke('calendar:close-period', year, period, userId),
+  closePeriod: (year: number, period: number, userId: string, options?: any) =>
+    ipcRenderer.invoke('calendar:close-period', year, period, userId, options),
   reopenPeriod: (year: number, period: number, userId: string, managerPin: string) =>
     ipcRenderer.invoke('calendar:reopen-period', year, period, userId, managerPin),
 

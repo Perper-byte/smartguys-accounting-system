@@ -96,7 +96,7 @@ const ALL_TABS = [
   },
   {
     id: 'settings',
-    label: 'Security Settings',
+    label: 'Accounting Calendar & Security',
     icon: Lock,
     group: 'System Admin',
     allowedRoles: ROLES.MANAGER_ONLY
@@ -278,6 +278,29 @@ const ALL_TABS = [
   }
 ]
 
+function SidebarClock() {
+  const [now, setNow] = useState(new Date())
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  return (
+    <div className="mt-2.5 px-3 py-2 rounded-xl bg-white border border-[#B0DCDA] shadow-xs flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <Clock className="w-3.5 h-3.5 text-[#1B9387] shrink-0" />
+        <span className="text-xs font-mono font-bold text-gray-800 tracking-wider">
+          {now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+        </span>
+      </div>
+      <span className="text-[10px] font-bold text-gray-500 uppercase tracking-tight">
+        {now.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+      </span>
+    </div>
+  )
+}
+
 export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [activeTab, setActiveTab] = useState('home')
@@ -422,6 +445,7 @@ export default function App() {
               <LogOut className="w-4 h-4" />
             </button>
           </div>
+          <SidebarClock />
         </div>
       </aside>
 

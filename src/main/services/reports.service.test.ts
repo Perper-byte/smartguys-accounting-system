@@ -102,4 +102,16 @@ describe('Phase 5.2: Sales Report & BIR Metadata', () => {
     expect(header.startDate).toBeTruthy()
     expect(header.endDate).toBeTruthy()
   })
+
+  test('getPostClosingTrialBalance produces balanced trial balance and evaluates temporary account closure', async () => {
+    const report = await ReportsService.getPostClosingTrialBalance(2026, 10)
+    expect(report).toHaveProperty('lines')
+    expect(report).toHaveProperty('totalDebits')
+    expect(report).toHaveProperty('totalCredits')
+    expect(report).toHaveProperty('isBalanced')
+    expect(report.totalDebits).toBe(report.totalCredits)
+    expect(report.isBalanced).toBe(true)
+    expect(typeof report.closedPeriodValid).toBe('boolean')
+    expect(Array.isArray(report.unclosedTemporaryAccounts)).toBe(true)
+  })
 })

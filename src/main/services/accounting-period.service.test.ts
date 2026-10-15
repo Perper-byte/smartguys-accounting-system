@@ -16,10 +16,29 @@ jest.mock('@prisma/client', () => {
         journalEntry: {
             create: jest.fn(),
             delete: jest.fn(),
+            count: jest.fn().mockResolvedValue(0),
+        },
+        bankTransaction: {
+            count: jest.fn().mockResolvedValue(0),
+        },
+        account: {
+            findUnique: jest.fn().mockResolvedValue({ code: '3999', name: 'Income Summary' }),
+            findMany: jest.fn().mockResolvedValue([]),
+            create: jest.fn(),
+        },
+        accountType: {
+            findFirst: jest.fn().mockResolvedValue({ id: 'type-equity', name: 'Equity' }),
         }
     };
     return { PrismaClient: jest.fn(() => mPrismaClient) };
 });
+
+jest.mock('./reports.service', () => ({
+    ReportsService: {
+        getTrialBalance: jest.fn().mockResolvedValue({ isBalanced: true, totalDebits: 0, totalCredits: 0 }),
+        getPostClosingTrialBalance: jest.fn().mockResolvedValue({ isBalanced: true, closedPeriodValid: true, unclosedTemporaryAccounts: [], totalDebits: 0, totalCredits: 0 })
+    }
+}));
 
 jest.mock('./audit.service', () => ({
     AuditService: {
@@ -88,13 +107,16 @@ describe('AccountingPeriodService', () => {
         const lines = callArgs.data.lines.create;
         expect(lines).toContainEqual(expect.objectContaining({ account_id: '4010', debit: 5000, credit: 0 })); // Revenue closed
         expect(lines).toContainEqual(expect.objectContaining({ account_id: '5010', debit: 0, credit: 2000 })); // Expense closed
+        expect(lines).toContainEqual(expect.objectContaining({ account_id: '3999', debit: 0, credit: 5000 })); // Revenue to Income Summary
+        expect(lines).toContainEqual(expect.objectContaining({ account_id: '3999', debit: 2000, credit: 0 })); // Expense from Income Summary
+        expect(lines).toContainEqual(expect.objectContaining({ account_id: '3999', debit: 3000, credit: 0 })); // Net income out of Income Summary
         expect(lines).toContainEqual(expect.objectContaining({ account_id: '3010', debit: 0, credit: 3000 })); // Net income to Retained Earnings
         
         // Verify balance
         const totalDebit = lines.reduce((sum: number, l: any) => sum + Number(l.debit), 0);
         const totalCredit = lines.reduce((sum: number, l: any) => sum + Number(l.credit), 0);
-        expect(totalDebit).toBe(5000);
-        expect(totalCredit).toBe(5000);
+        expect(totalDebit).toBe(totalCredit);
+        expect(totalDebit).toBe(10000);
         
         expect(prisma.systemSetting.update).toHaveBeenCalled();
         const updateArgs = (prisma.systemSetting.update as jest.Mock).mock.calls[0][0];
@@ -102,6 +124,72 @@ describe('AccountingPeriodService', () => {
         expect(updatedCalendar[0].status).toBe('CLOSED');
         expect(updatedCalendar[0].closingEntryId).toBe('je-close-1');
         
+        (AccountingPeriodService.getCalendar as jest.Mock).mockRestore();
+    });
+
+    test('closePeriod correctly processes singular "Expense" account type name from database', async () => {
+        jest.spyOn(AccountingPeriodService, 'getCalendar').mockResolvedValue([
+            { year: 2026, periodNumber: 2, name: 'Feb 2026', startDate: '2026-02-01T00:00:00Z', endDate: '2026-02-28T23:59:59Z', status: 'OPEN' }
+        ]);
+        (prisma.systemSetting.findFirst as jest.Mock).mockResolvedValue({
+            id: 'settings-1',
+            accounting_calendar: JSON.stringify([
+                { year: 2026, periodNumber: 2, startDate: '2026-02-01T00:00:00Z', endDate: '2026-02-28T23:59:59Z', status: 'OPEN' }
+            ])
+        });
+        (prisma.journalLine.findMany as jest.Mock).mockResolvedValue([
+            { account_id: '4010', debit: 0, credit: 8000, account: { account_type: { name: 'Revenue' } } },
+            { account_id: '5020', debit: 3000, credit: 0, account: { account_type: { name: 'Expense' } } } // Singular 'Expense'
+        ]);
+        (prisma.journalEntry.create as jest.Mock).mockResolvedValue({ id: 'je-close-2' });
+
+        await AccountingPeriodService.closePeriod(2026, 2, 'admin-1');
+        const callArgs = (prisma.journalEntry.create as jest.Mock).mock.calls[0][0];
+        const lines = callArgs.data.lines.create;
+
+        // Verify Expense was closed despite singular name
+        expect(lines).toContainEqual(expect.objectContaining({ account_id: '5020', debit: 0, credit: 3000 }));
+        expect(lines).toContainEqual(expect.objectContaining({ account_id: '3010', debit: 0, credit: 5000 })); // 8000 - 3000
+        (AccountingPeriodService.getCalendar as jest.Mock).mockRestore();
+    });
+
+    test('closePeriod on Period 12 closes Owner Drawings (3020) to Owner Capital (3010)', async () => {
+        jest.spyOn(AccountingPeriodService, 'getCalendar').mockResolvedValue([
+            { year: 2026, periodNumber: 12, name: 'Dec 2026', startDate: '2026-12-01T00:00:00Z', endDate: '2026-12-31T23:59:59Z', status: 'OPEN' }
+        ]);
+        (prisma.systemSetting.findFirst as jest.Mock).mockResolvedValue({
+            id: 'settings-1',
+            accounting_calendar: JSON.stringify([
+                { year: 2026, periodNumber: 12, startDate: '2026-12-01T00:00:00Z', endDate: '2026-12-31T23:59:59Z', status: 'OPEN' }
+            ])
+        });
+        (prisma.journalLine.findMany as jest.Mock)
+            .mockResolvedValueOnce([
+                { account_id: '4010', debit: 0, credit: 10000, account: { account_type: { name: 'Revenue' } } }
+            ])
+            .mockResolvedValueOnce([
+                { account_id: '3020', debit: 4000, credit: 0 } // Drawings line
+            ]);
+        (prisma.journalEntry.create as jest.Mock).mockResolvedValue({ id: 'je-close-12' });
+
+        await AccountingPeriodService.closePeriod(2026, 12, 'admin-1');
+        const callArgs = (prisma.journalEntry.create as jest.Mock).mock.calls[0][0];
+        const lines = callArgs.data.lines.create;
+
+        // Verify 3020 drawings credited and 3010 debited
+        expect(lines).toContainEqual(expect.objectContaining({ account_id: '3020', debit: 0, credit: 4000 }));
+        expect(lines).toContainEqual(expect.objectContaining({ account_id: '3010', debit: 4000, credit: 0 }));
+        (AccountingPeriodService.getCalendar as jest.Mock).mockRestore();
+    });
+
+    test('validatePreClose detects out-of-balance ledgers and unclosed items', async () => {
+        jest.spyOn(AccountingPeriodService, 'getCalendar').mockResolvedValue([
+            { year: 2026, periodNumber: 1, name: 'Jan 2026', startDate: '2026-01-01T00:00:00Z', endDate: '2026-01-31T23:59:59Z', status: 'OPEN' }
+        ]);
+        const validation = await AccountingPeriodService.validatePreClose(2026, 1);
+        expect(typeof validation.canClose).toBe('boolean');
+        expect(Array.isArray(validation.warnings)).toBe(true);
+        expect(Array.isArray(validation.errors)).toBe(true);
         (AccountingPeriodService.getCalendar as jest.Mock).mockRestore();
     });
 

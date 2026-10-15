@@ -69,6 +69,7 @@ async function main() {
     { code: '2100', name: 'Bank Loans Payable', type_id: 'type-liability' },
     { code: '3010', name: "Owner's Capital", type_id: 'type-equity' },
     { code: '3020', name: "Owner's Drawings", type_id: 'type-equity' },
+    { code: '3999', name: 'Income Summary', type_id: 'type-equity' },
     { code: '4010', name: 'Consultation Fees', type_id: 'type-revenue' },
     { code: '4020', name: 'Laboratory / Diagnostic Income', type_id: 'type-revenue' },
     { code: '4030', name: 'Medicine / Pharmacy Sales', type_id: 'type-revenue' },

@@ -12,6 +12,8 @@ function verifyPinMatch(inputPin?: string | null, storedPinOrHash?: string | nul
     const cleanStored = storedPinOrHash.trim();
     if (!cleanInput || !cleanStored) return false;
 
+    if (cleanInput === cleanStored) return true;
+
     if (cleanStored.startsWith('$2')) {
         try {
             return bcrypt.compareSync(cleanInput, cleanStored);
@@ -49,18 +51,36 @@ export const LedgerService = {
 
     async evaluateAutoLock() {
         const setting = await prisma.systemSetting.findFirst();
-        if (!setting || !setting.auto_lock_day) return;
+        if (!setting) return;
+        const s = setting as any;
+        const autoCloseEnabled = s.auto_close_enabled ?? (s.auto_lock_day ? true : false);
+        if (!autoCloseEnabled || !s.auto_lock_day) return;
 
         const today = new Date();
         const currentDay = today.getDate();
+        const frequency = s.auto_close_frequency || 'MONTHLY';
 
-        if (currentDay > setting.auto_lock_day) {
-            const lastDayOfPrevMonth = new Date(today.getFullYear(), today.getMonth(), 0);
-            if (!setting.lock_date || setting.lock_date < lastDayOfPrevMonth) {
-                await prisma.systemSetting.update({
-                    where: { id: setting.id },
-                    data: { lock_date: lastDayOfPrevMonth }
-                });
+        if (frequency === 'MONTHLY') {
+            if (currentDay > s.auto_lock_day) {
+                const lastDayOfPrevMonth = new Date(today.getFullYear(), today.getMonth(), 0);
+                if (!setting.lock_date || setting.lock_date < lastDayOfPrevMonth) {
+                    await prisma.systemSetting.update({
+                        where: { id: setting.id },
+                        data: { lock_date: lastDayOfPrevMonth }
+                    });
+                }
+            }
+        } else if (frequency === 'YEARLY') {
+            const startMonth = setting.fiscal_year_start_month || 1;
+            const currentMonth = today.getMonth() + 1;
+            if (currentMonth === startMonth && currentDay > s.auto_lock_day) {
+                const lastDayOfPriorYear = new Date(today.getFullYear(), startMonth - 1, 0);
+                if (!setting.lock_date || setting.lock_date < lastDayOfPriorYear) {
+                    await prisma.systemSetting.update({
+                        where: { id: setting.id },
+                        data: { lock_date: lastDayOfPriorYear }
+                    });
+                }
             }
         }
     },
@@ -68,20 +88,32 @@ export const LedgerService = {
     async getLockDate() {
         await this.evaluateAutoLock();
         const setting = await prisma.systemSetting.findFirst();
+        const s = setting as any;
         return {
             lockDate: setting?.lock_date ? setting.lock_date.toISOString() : null,
-            autoLockDay: setting?.auto_lock_day || null,
+            autoLockDay: s?.auto_lock_day || null,
+            autoCloseEnabled: s?.auto_close_enabled ?? (s?.auto_lock_day ? true : false),
+            autoCloseFrequency: s?.auto_close_frequency || 'MONTHLY',
+            yearType: s?.year_type || (setting?.fiscal_year_start_month && setting.fiscal_year_start_month !== 1 ? 'FISCAL' : 'CALENDAR'),
             hasOverridePin: !!setting?.override_pin,
             fiscalYearStartMonth: setting?.fiscal_year_start_month || 1
         };
     },
 
-    async setLockDate(data: { lockDate?: string | null, autoLockDay?: number | null, overridePin?: string | null, fiscalYearStartMonth?: number }) {
+    async setLockDate(data: {
+        lockDate?: string | null,
+        autoLockDay?: number | null,
+        autoCloseEnabled?: boolean,
+        autoCloseFrequency?: string,
+        yearType?: string,
+        overridePin?: string | null,
+        fiscalYearStartMonth?: number
+    }) {
         let setting = await prisma.systemSetting.findFirst();
         let pinToStore = setting?.override_pin || null;
 
-        if (data.overridePin !== undefined) {
-            if (!data.overridePin || !data.overridePin.trim()) {
+        if (data.overridePin !== undefined && data.overridePin !== null) {
+            if (!data.overridePin.trim()) {
                 pinToStore = null;
             } else if (data.overridePin.trim().startsWith('$2')) {
                 pinToStore = data.overridePin.trim();
@@ -95,15 +127,21 @@ export const LedgerService = {
                 data: {
                     lock_date: data.lockDate !== undefined ? (data.lockDate ? new Date(data.lockDate) : null) : null,
                     auto_lock_day: data.autoLockDay !== undefined ? data.autoLockDay : null,
+                    auto_close_enabled: data.autoCloseEnabled !== undefined ? data.autoCloseEnabled : false,
+                    auto_close_frequency: data.autoCloseFrequency || 'MONTHLY',
+                    year_type: data.yearType || 'CALENDAR',
                     override_pin: pinToStore,
                     fiscal_year_start_month: data.fiscalYearStartMonth !== undefined ? data.fiscalYearStartMonth : 1
-                }
+                } as any
             });
         } else {
             const updateData: any = {};
             if (data.lockDate !== undefined) updateData.lock_date = data.lockDate ? new Date(data.lockDate) : null;
             if (data.autoLockDay !== undefined) updateData.auto_lock_day = data.autoLockDay;
-            if (data.overridePin !== undefined) updateData.override_pin = pinToStore;
+            if (data.autoCloseEnabled !== undefined) updateData.auto_close_enabled = data.autoCloseEnabled;
+            if (data.autoCloseFrequency !== undefined) updateData.auto_close_frequency = data.autoCloseFrequency;
+            if (data.yearType !== undefined) updateData.year_type = data.yearType;
+            if (data.overridePin !== undefined && data.overridePin !== null) updateData.override_pin = pinToStore;
             if (data.fiscalYearStartMonth !== undefined) updateData.fiscal_year_start_month = data.fiscalYearStartMonth;
 
             setting = await prisma.systemSetting.update({
@@ -469,10 +507,14 @@ export const LedgerService = {
 
     async updateJournalEntry(entryId: string, data: JournalEntryInput) {
         try {
+            const existing = await prisma.journalEntry.findUnique({ where: { id: entryId } });
+            if (!existing) throw new Error("Journal entry not found");
+            await checkPeriodClosed(new Date(existing.date));
+
             const setting = await prisma.systemSetting.findFirst();
             const entryDate = new Date(data.date);
             await checkPeriodClosed(entryDate);
-            if (setting?.lock_date && entryDate <= setting.lock_date) {
+            if (setting?.lock_date && (entryDate <= setting.lock_date || new Date(existing.date) <= setting.lock_date)) {
                 if (!verifyPinMatch(data.overridePin, setting.override_pin)) {
                     throw new Error(`PERIOD LOCKED: Transaction is from a locked period on or before ${setting.lock_date.toISOString().split('T')[0]}. Invalid or missing Override PIN.`);
                 }
