@@ -1,7 +1,15 @@
 // src/renderer/src/components/ChartOfAccountsView.tsx
 import * as React from 'react'
 import { useState, useEffect, useMemo, useRef } from 'react'
-import { Pencil, X, Search } from 'lucide-react'
+import {
+  Pencil,
+  X,
+  Search,
+  ChevronDown,
+  ChevronRight,
+  ChevronsDownUp,
+  ChevronsUpDown
+} from 'lucide-react'
 
 export function ChartOfAccountsView() {
   const [accounts, setAccounts] = useState<any[]>([])
@@ -14,6 +22,7 @@ export function ChartOfAccountsView() {
     msg: string
   } | null>(null)
   const [highlightCode, setHighlightCode] = useState<string | null>(null)
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   // New Account Form State
   const [newAccount, setNewAccount] = useState({ code: '', name: '', type_id: '' })
@@ -96,9 +105,18 @@ export function ChartOfAccountsView() {
 
       if (result.success) {
         setStatusMessage({ type: 'success', msg: `Account ${newAccount.code} added to COA!` })
+        const createdTypeId = newAccount.type_id
         setHighlightCode(newAccount.code)
         setNewAccount({ code: '', name: '', type_id: '' })
         setTouched({ code: false, name: false, type_id: false })
+        const targetType = accountTypes.find((t) => String(t.id) === String(createdTypeId))
+        if (targetType) {
+          setCollapsed((prev) => {
+            const next = new Set(prev)
+            next.delete(targetType.name)
+            return next
+          })
+        }
         await fetchData()
         codeInputRef.current?.focus()
         setTimeout(() => setStatusMessage(null), 3000)
@@ -173,21 +191,105 @@ export function ChartOfAccountsView() {
     setTypeFilter('')
   }
 
-  const getTypeColor = (typeName: string) => {
+  const getTypeColor = (typeName?: string) => {
     switch (typeName) {
       case 'Asset':
+      case 'Assets':
         return 'text-blue-600 bg-blue-50 border-blue-200'
       case 'Liability':
+      case 'Liabilities':
         return 'text-orange-600 bg-orange-50 border-orange-200'
       case 'Equity':
         return 'text-purple-600 bg-purple-50 border-purple-200'
       case 'Revenue':
+      case 'Revenues':
         return 'text-emerald-600 bg-emerald-50 border-emerald-200'
       case 'Expense':
+      case 'Expenses':
         return 'text-rose-600 bg-rose-50 border-rose-200'
       default:
         return 'text-gray-600 bg-gray-50 border-gray-200'
     }
+  }
+
+  // Auto-expand the selected type filter and collapse the rest; clearing expands all
+  useEffect(() => {
+    if (typeFilter) {
+      const allTypes = accountTypes.map((t) => t.name)
+      setCollapsed(new Set(allTypes.filter((t) => t !== typeFilter)))
+    } else {
+      setCollapsed(new Set())
+    }
+  }, [typeFilter, accountTypes])
+
+  // When search query is entered, auto-expand all groups so matches are immediately visible
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      setCollapsed(new Set())
+    }
+  }, [searchQuery])
+
+  // Group filtered accounts by classification type in standard accounting order
+  const groupedAccounts = useMemo(() => {
+    const standardOrder = [
+      'Asset',
+      'Assets',
+      'Liability',
+      'Liabilities',
+      'Equity',
+      'Revenue',
+      'Revenues',
+      'Expense',
+      'Expenses'
+    ]
+    const typeNamesInTypes = accountTypes.map((t) => t.name)
+    const typeNamesInAccounts = accounts.map((a) => a.account_type?.name).filter(Boolean)
+
+    const allTypes = Array.from(
+      new Set([...standardOrder, ...typeNamesInTypes, ...typeNamesInAccounts])
+    ).filter((name) => filteredAccounts.some((a) => (a.account_type?.name || 'Other') === name))
+
+    const hasOther = filteredAccounts.some(
+      (a) => !a.account_type?.name || !allTypes.includes(a.account_type.name)
+    )
+    if (hasOther && !allTypes.includes('Other')) {
+      allTypes.push('Other')
+    }
+
+    return allTypes
+      .map((typeName) => ({
+        typeName,
+        items: filteredAccounts
+          .filter((a) => (a.account_type?.name || 'Other') === typeName)
+          .sort((a, b) =>
+            String(a.code).localeCompare(String(b.code), undefined, { numeric: true })
+          )
+      }))
+      .filter((g) => g.items.length > 0)
+  }, [filteredAccounts, accountTypes, accounts])
+
+  const allCollapsed =
+    groupedAccounts.length > 0 &&
+    groupedAccounts.every(({ typeName }) => collapsed.has(typeName))
+
+  const toggleAllGroups = () => {
+    if (allCollapsed) {
+      setCollapsed(new Set())
+    } else {
+      setCollapsed(new Set(groupedAccounts.map((g) => g.typeName)))
+    }
+  }
+
+  const toggleGroup = (typeName: string) => {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(typeName)) {
+        next.delete(typeName)
+      } else {
+        next.add(typeName)
+      }
+      return next
+    })
   }
 
   // Lightweight guidance based on common COA numbering conventions.
@@ -356,6 +458,17 @@ export function ChartOfAccountsView() {
                   ? `${filteredAccounts.length} of ${accounts.length}`
                   : `${accounts.length} account${accounts.length === 1 ? '' : 's'}`}
               </span>
+              <button
+                onClick={toggleAllGroups}
+                className="flex items-center gap-1 text-[11px] font-bold text-gray-500 hover:text-[#1B9387] cursor-pointer"
+              >
+                {allCollapsed ? (
+                  <ChevronsUpDown className="w-3.5 h-3.5" />
+                ) : (
+                  <ChevronsDownUp className="w-3.5 h-3.5" />
+                )}
+                {allCollapsed ? 'Expand all' : 'Collapse all'}
+              </button>
             </div>
             <div className="flex items-center gap-2">
               <select
@@ -377,15 +490,24 @@ export function ChartOfAccountsView() {
                   placeholder="Search code or name..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-56 bg-white border border-[#B0DCDA] rounded-md pl-8 pr-3 py-1.5 text-sm focus:outline-none focus:border-[#1B9387] text-gray-800 shadow-sm"
+                  className="w-56 bg-white border border-[#B0DCDA] rounded-md pl-8 pr-7 py-1.5 text-sm focus:outline-none focus:border-[#1B9387] text-gray-800 shadow-sm"
                 />
+                {searchQuery && (
+                  <button
+                    onClick={() => setSearchQuery('')}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 cursor-pointer"
+                    title="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
           <div className="flex-1 overflow-auto">
             <table className="w-full text-left text-sm">
-              <thead className="bg-[#FBF8F8] border-b border-[#B0DCDA] sticky top-0 z-10">
+              <thead className="bg-[#FBF8F8] border-b border-[#B0DCDA] sticky top-0 z-20">
                 <tr className="text-gray-500 uppercase tracking-wider text-[10px] font-extrabold">
                   <th className="p-4 border-r border-gray-100 w-24 text-center">Code</th>
                   <th className="p-4 border-r border-gray-100">Account Name</th>
@@ -425,41 +547,67 @@ export function ChartOfAccountsView() {
                     </td>
                   </tr>
                 ) : (
-                  filteredAccounts.map((a) => (
-                    <tr
-                      key={a.code}
-                      onClick={() => openEditModal(a)}
-                      className={`hover:bg-gray-50 transition-colors even:bg-gray-50/50 odd:bg-white group cursor-pointer ${highlightCode === a.code ? 'bg-[#E9FAFA]' : ''}`}
-                    >
-                      <td className="p-4 border-r border-gray-100 text-center font-mono font-extrabold text-[#1B9387]">
-                        {a.code}
-                      </td>
-                      <td className="p-4 border-r border-gray-100 font-extrabold text-gray-800">
-                        {a.name}
-                      </td>
-                      <td className="p-4 border-r border-gray-100 text-center">
-                        <span
-                          className={`px-2.5 py-1 text-[10px] font-extrabold rounded-md uppercase tracking-wider border shadow-sm ${getTypeColor(a.account_type?.name)}`}
-                        >
-                          {a.account_type?.name}
-                        </span>
-                      </td>
-                      <td className="p-4 border-r border-gray-100 text-center text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
-                        {a.account_type?.normal_balance}
-                      </td>
-                      <td className="p-4 text-center">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            openEditModal(a)
-                          }}
-                          className="p-1.5 rounded-md text-gray-400 hover:text-[#1B9387] hover:bg-[#E9FAFA] transition-colors cursor-pointer"
-                          title="Edit account"
-                        >
-                          <Pencil className="w-4 h-4" />
-                        </button>
-                      </td>
-                    </tr>
+                  groupedAccounts.map(({ typeName, items }) => (
+                    <React.Fragment key={typeName}>
+                      <tr
+                        onClick={() => toggleGroup(typeName)}
+                        className={`sticky top-[49px] z-10 cursor-pointer select-none border-y border-gray-200 border-l-4 ${getTypeColor(typeName).split(' ')[0]} ${getTypeColor(typeName).split(' ')[1]}`}
+                        style={{ borderLeftColor: 'currentColor' }}
+                      >
+                        <td colSpan={5} className="px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            {collapsed.has(typeName) ? (
+                              <ChevronRight className="w-3.5 h-3.5" />
+                            ) : (
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            )}
+                            <span className="text-xs font-extrabold uppercase tracking-wider">
+                              {typeName}
+                            </span>
+                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                              {items.length} item{items.length === 1 ? '' : 's'}
+                            </span>
+                          </div>
+                        </td>
+                      </tr>
+                      {!collapsed.has(typeName) &&
+                        items.map((a) => (
+                          <tr
+                            key={a.code}
+                            onClick={() => openEditModal(a)}
+                            className={`hover:bg-gray-50 transition-colors even:bg-gray-50/50 odd:bg-white group cursor-pointer ${highlightCode === a.code ? 'bg-[#E9FAFA]' : ''}`}
+                          >
+                            <td className="p-4 border-r border-gray-100 text-center font-mono font-extrabold text-[#1B9387]">
+                              {a.code}
+                            </td>
+                            <td className="p-4 border-r border-gray-100 font-extrabold text-gray-800">
+                              {a.name}
+                            </td>
+                            <td className="p-4 border-r border-gray-100 text-center">
+                              <span
+                                className={`px-2.5 py-1 text-[10px] font-extrabold rounded-md uppercase tracking-wider border shadow-sm ${getTypeColor(a.account_type?.name)}`}
+                              >
+                                {a.account_type?.name}
+                              </span>
+                            </td>
+                            <td className="p-4 border-r border-gray-100 text-center text-[10px] font-extrabold text-gray-500 uppercase tracking-wider">
+                              {a.account_type?.normal_balance}
+                            </td>
+                            <td className="p-4 text-center">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  openEditModal(a)
+                                }}
+                                className="p-1.5 rounded-md text-gray-400 hover:text-[#1B9387] hover:bg-[#E9FAFA] transition-colors cursor-pointer"
+                                title="Edit account"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                    </React.Fragment>
                   ))
                 )}
               </tbody>

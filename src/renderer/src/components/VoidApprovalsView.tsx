@@ -106,6 +106,7 @@ export function VoidApprovalsView({ userId }: { userId: string }) {
       }
 
       fetchVoids() // Refresh pending list automatically
+      fetchHistory() // Refresh history list automatically
       setStatus({
         type: 'success',
         msg: `Void request ${confirmDialog.action.toLowerCase()}d successfully.`
@@ -358,7 +359,7 @@ export function VoidApprovalsView({ userId }: { userId: string }) {
                     )}
                   </td>
                   <td className="p-4 text-center">
-                    {v.status === 'APPROVED' ? (
+                    {v.status === 'APPROVED' || v.status === 'VOIDED' ? (
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded border text-[10px] font-extrabold tracking-widest uppercase bg-teal-50 text-teal-700 border-teal-200">
                         <CheckCircle2 className="w-3 h-3" /> Approved
                       </span>

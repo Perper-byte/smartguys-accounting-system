@@ -46,7 +46,7 @@ export function setupMockElectronAPI(options: MockElectronAPIOptions = {}) {
       MANAGER: [
         'billing', 'collections', 'directory', 'disbursement', 'payouts', 'aging', 'aged-payables',
         'tracker', 'history', 'payroll', 'journal', 'adjusting', 'ledger', 'reconciliation',
-        'books', 'analytics', 'statements', 'bir', 'voids', 'coa', 'inventory', 'services'
+        'books', 'analytics', 'statements', 'bir', 'voids', 'coa', 'inventory', 'services', 'settings'
       ],
       IT_PERSONNEL: ['directory', 'audit', 'users', 'backup', 'services', 'inventory']
     }),
@@ -54,12 +54,12 @@ export function setupMockElectronAPI(options: MockElectronAPIOptions = {}) {
     forceApplyRolePermissions: jest.fn().mockResolvedValue({ success: true, count: 2 }),
     getPettyCashBalance: jest.fn().mockResolvedValue({ current_balance: 5000 }),
     getAccounts: jest.fn().mockResolvedValue(options.accounts || defaultAccounts),
-    getAccountTypes: jest.fn().mockResolvedValue([
-      { id: 'type-asset', name: 'Assets' },
-      { id: 'type-liability', name: 'Liabilities' },
-      { id: 'type-equity', name: 'Equity' },
-      { id: 'type-revenue', name: 'Revenue' },
-      { id: 'type-expense', name: 'Expenses' }
+    getAccountTypes: jest.fn().mockResolvedValue(options.accountTypes || [
+      { id: 'type-asset', name: 'Assets', normal_balance: 'DEBIT' },
+      { id: 'type-liability', name: 'Liabilities', normal_balance: 'CREDIT' },
+      { id: 'type-equity', name: 'Equity', normal_balance: 'CREDIT' },
+      { id: 'type-revenue', name: 'Revenue', normal_balance: 'CREDIT' },
+      { id: 'type-expense', name: 'Expenses', normal_balance: 'DEBIT' }
     ]),
     createAccount: jest.fn().mockResolvedValue({ success: true }),
     submitJournalEntry: jest.fn().mockResolvedValue({ success: true, id: 'je-1', referenceNo: 'OR-001' }),

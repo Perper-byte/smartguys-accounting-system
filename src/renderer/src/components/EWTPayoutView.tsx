@@ -87,10 +87,25 @@ export function RentPayoutView({ userId }: { userId: string }) {
       setPayees(landlordsAndSuppliers)
 
       const accData = await api.getAccounts()
-      const assets = accData.filter((acc: any) => acc.account_type?.name === 'Asset')
-      setCashAccounts(assets)
-      if (assets.length > 0 && !sourceAccount) {
-        setSourceAccount(assets.find((a: any) => a.code === '1010')?.code || assets[0].code)
+      const isCashOrBank = (acc: any) => {
+        const code = String(acc.code || '')
+        if (['1010', '1020', '1030'].includes(code)) return true
+        if (code.startsWith('101') || code.startsWith('102') || code.startsWith('103')) return true
+        const typeName = (acc.account_type?.name || '').toLowerCase()
+        const isAsset = typeName === 'asset' || typeName === 'assets' || code.startsWith('1')
+        if (!isAsset) return false
+        const name = (acc.name || '').toLowerCase()
+        return (
+          name.includes('bank') ||
+          name.includes('petty cash') ||
+          name.includes('cash in hand') ||
+          name.includes('cash on hand')
+        )
+      }
+      const cashOrBankAssets = accData.filter(isCashOrBank)
+      setCashAccounts(cashOrBankAssets)
+      if (cashOrBankAssets.length > 0 && !sourceAccount) {
+        setSourceAccount(cashOrBankAssets.find((a: any) => a.code === '1010')?.code || cashOrBankAssets[0].code)
       }
 
       const hist = await api.getPayoutHistory()

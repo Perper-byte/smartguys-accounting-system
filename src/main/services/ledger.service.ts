@@ -986,6 +986,106 @@ export const LedgerService = {
         return { success: true };
     },
 
+    async getVoidHistory() {
+        // 1. Fetch approved/voided entries (exclude auto-generated RVS- reversals)
+        const voidedEntries = await prisma.journalEntry.findMany({
+            where: {
+                status: 'VOIDED',
+                NOT: { reference_no: { startsWith: 'RVS-' } }
+            },
+            include: { user: true, payee: true, lines: { include: { account: true } } },
+            orderBy: { date: 'desc' }
+        });
+
+        // 2. Fetch reversals to resolve approver and approval timestamp
+        const reversalEntries = await prisma.journalEntry.findMany({
+            where: { reference_no: { startsWith: 'RVS-' } },
+            include: { user: true }
+        });
+
+        const reversalMap = new Map<string, any>();
+        for (const rev of reversalEntries) {
+            const origRef = rev.reference_no.replace(/^RVS-/, '');
+            reversalMap.set(origRef, rev);
+        }
+
+        // 3. Fetch rejected voids
+        const rejectedEntries = await prisma.journalEntry.findMany({
+            where: {
+                status: { notIn: ['VOIDED', 'PENDING_VOID'] },
+                void_reason: { startsWith: 'Rejected:' }
+            },
+            include: { user: true, payee: true, lines: { include: { account: true } } },
+            orderBy: { date: 'desc' }
+        });
+
+        // 4. Fetch audit logs for void decisions
+        const auditLogs = await prisma.auditLog.findMany({
+            where: { action: { in: ['VOID APPROVED', 'VOID REJECTED'] } },
+            include: { user: true },
+            orderBy: { timestamp: 'desc' }
+        });
+
+        const approvedHistory = voidedEntries.map(entry => {
+            const reversal = reversalMap.get(entry.reference_no);
+            const audit = auditLogs.find(a =>
+                a.action === 'VOID APPROVED' &&
+                (a.details.includes(entry.id) || a.details.includes(entry.reference_no))
+            );
+            const approverUser = reversal?.user || audit?.user;
+            const decidedDate = reversal?.created_at || reversal?.date || audit?.timestamp || entry.created_at;
+
+            return {
+                id: entry.id,
+                date: entry.date,
+                reference_no: entry.reference_no,
+                void_reason: entry.void_reason || 'Void approved',
+                status: 'APPROVED',
+                user: entry.user ? { username: entry.user.username } : { username: 'Unknown User' },
+                approver: approverUser ? { username: approverUser.username } : { username: 'Manager' },
+                approved_by: approverUser?.username || 'Manager',
+                decided_at: decidedDate,
+                lines: (entry.lines || []).map(line => ({
+                    ...line,
+                    debit: Number(line.debit),
+                    credit: Number(line.credit)
+                }))
+            };
+        });
+
+        const rejectedHistory = rejectedEntries.map(entry => {
+            const matchingAudit = auditLogs.find(a =>
+                a.action === 'VOID REJECTED' &&
+                (a.details.includes(entry.id) || a.details.includes(entry.reference_no) || (entry.void_reason && a.details.includes(entry.void_reason)))
+            );
+            const deciderUser = matchingAudit?.user;
+            const decidedDate = matchingAudit?.timestamp || entry.created_at;
+
+            return {
+                id: entry.id,
+                date: entry.date,
+                reference_no: entry.reference_no,
+                void_reason: entry.void_reason || 'Void rejected',
+                status: 'REJECTED',
+                user: entry.user ? { username: entry.user.username } : { username: 'Unknown User' },
+                approver: deciderUser ? { username: deciderUser.username } : { username: 'Manager' },
+                approved_by: deciderUser?.username || 'Manager',
+                decided_at: decidedDate,
+                lines: (entry.lines || []).map(line => ({
+                    ...line,
+                    debit: Number(line.debit),
+                    credit: Number(line.credit)
+                }))
+            };
+        });
+
+        return [...approvedHistory, ...rejectedHistory].sort((a, b) => {
+            const timeA = a.decided_at ? new Date(a.decided_at).getTime() : 0;
+            const timeB = b.decided_at ? new Date(b.decided_at).getTime() : 0;
+            return timeB - timeA;
+        });
+    },
+
     async getServiceItems() {
         const items = await prisma.serviceItem.findMany({
             where: { is_active: true },

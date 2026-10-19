@@ -959,6 +959,15 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('get-void-history', async () => {
+    try {
+      return await LedgerService.getVoidHistory()
+    } catch (err: any) {
+      console.error('get-void-history error:', err)
+      return []
+    }
+  })
+
   ipcMain.handle('reject-void', async (e, id, reason, userId) => {
     try {
       await LedgerService.rejectVoid(id, reason)

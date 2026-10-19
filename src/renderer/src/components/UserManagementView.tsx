@@ -26,7 +26,8 @@ const MODULES = [
   { id: 'backup', label: 'Database Backup' },
   { id: 'coa', label: 'Chart of Accounts' },
   { id: 'inventory', label: 'Stock & Inventory' },
-  { id: 'services', label: 'Services & Pricing' }
+  { id: 'services', label: 'Services & Pricing' },
+  { id: 'settings', label: 'Accounting Calendar & Security (Account Lock)' }
 ]
 
 // Default access mapping based on roles
@@ -42,7 +43,7 @@ const ROLE_DEFAULT_PERMISSIONS: Record<string, string[]> = {
   MANAGER: [
     'billing', 'collections', 'directory', 'disbursement', 'payouts', 'aging', 'aged-payables', 
     'tracker', 'history', 'payroll', 'journal', 'adjusting', 'ledger', 'reconciliation', 
-    'books', 'analytics', 'statements', 'bir', 'voids', 'coa', 'inventory', 'services'
+    'books', 'analytics', 'statements', 'bir', 'voids', 'coa', 'inventory', 'services', 'settings'
   ],
   IT_PERSONNEL: [
     'directory', 'audit', 'users', 'backup', 'services', 'inventory'

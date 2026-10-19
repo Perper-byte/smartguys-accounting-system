@@ -96,7 +96,7 @@ const ALL_TABS = [
   },
   {
     id: 'settings',
-    label: 'Accounting Calendar & Security',
+    label: 'Accounting Calendar & Security (Account Lock)',
     icon: Lock,
     group: 'System Admin',
     allowedRoles: ROLES.MANAGER_ONLY

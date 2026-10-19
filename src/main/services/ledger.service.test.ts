@@ -57,4 +57,17 @@ describe('Double-Entry Ledger Engine', () => {
       'Validation Error: Debit and Credit values cannot be negative'
     )
   })
+
+  test('✅ Should retrieve void history with approved void records', async () => {
+    const history = await LedgerService.getVoidHistory()
+    expect(Array.isArray(history)).toBe(true)
+    if (history.length > 0) {
+      const record = history[0]
+      expect(record).toHaveProperty('id')
+      expect(record).toHaveProperty('reference_no')
+      expect(record).toHaveProperty('status')
+      expect(record).toHaveProperty('approver')
+      expect(record).toHaveProperty('decided_at')
+    }
+  })
 })

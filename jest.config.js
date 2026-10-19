@@ -5,6 +5,7 @@ module.exports = {
   testEnvironment: 'jsdom', // Mock browser environment for React
   setupFiles: ['dotenv/config'],
   setupFilesAfterEnv: ['<rootDir>/src/renderer/src/setupTests.ts'],
+  reporters: ['<rootDir>/test-reporter.js'],
   transform: {
     '^.+\\.tsx?$': [
       'ts-jest',

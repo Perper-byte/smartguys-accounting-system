@@ -110,6 +110,12 @@ describe('UserManagementView Component', () => {
     // Check it back
     fireEvent.click(cashierBillingCheckbox)
     expect(cashierBillingCheckbox.checked).toBe(true)
+
+    // Verify Account Lock / Accounting Calendar & Security row exists and is checked for MANAGER
+    expect(screen.getByText(/Accounting Calendar & Security \(Account Lock\)/i)).toBeInTheDocument()
+    const managerLockCheckbox = screen.getByLabelText(/MANAGER Accounting Calendar & Security \(Account Lock\)/i) as HTMLInputElement
+    expect(managerLockCheckbox).toBeInTheDocument()
+    expect(managerLockCheckbox.checked).toBe(true)
   })
 
   test('saves role defaults without touching existing user accounts or prompting to touch them', async () => {

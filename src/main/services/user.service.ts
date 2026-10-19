@@ -14,7 +14,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, string[]> = {
   MANAGER: [
     'billing', 'collections', 'directory', 'disbursement', 'payouts', 'aging', 'aged-payables',
     'tracker', 'history', 'payroll', 'journal', 'adjusting', 'ledger', 'reconciliation',
-    'books', 'analytics', 'statements', 'bir', 'voids', 'coa', 'inventory', 'services'
+    'books', 'analytics', 'statements', 'bir', 'voids', 'coa', 'inventory', 'services', 'settings'
   ],
   IT_PERSONNEL: ['directory', 'audit', 'users', 'backup', 'services', 'inventory']
 }

@@ -142,11 +142,26 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
             a.account_type?.name === 'Asset'
         )
       )
-      const assets = accData.filter((a: any) => a.account_type?.name === 'Asset')
-      setCashAccounts(assets)
+      const isCashOrBank = (a: any) => {
+        const code = String(a.code || '')
+        if (['1010', '1020', '1030'].includes(code)) return true
+        if (code.startsWith('101') || code.startsWith('102') || code.startsWith('103')) return true
+        const typeName = (a.account_type?.name || '').toLowerCase()
+        const isAsset = typeName === 'asset' || typeName === 'assets' || code.startsWith('1')
+        if (!isAsset) return false
+        const name = (a.name || '').toLowerCase()
+        return (
+          name.includes('bank') ||
+          name.includes('petty cash') ||
+          name.includes('cash in hand') ||
+          name.includes('cash on hand')
+        )
+      }
+      const cashOrBankAssets = accData.filter(isCashOrBank)
+      setCashAccounts(cashOrBankAssets)
 
-      if (assets.length > 0 && !sourceAccount) {
-        setSourceAccount(assets.find((a: any) => a.code === '1010')?.code || assets[0].code)
+      if (cashOrBankAssets.length > 0 && !sourceAccount) {
+        setSourceAccount(cashOrBankAssets.find((a: any) => a.code === '1010')?.code || cashOrBankAssets[0].code)
       }
       if (api.getPayees) setPayees(await api.getPayees())
       if (api.getRecentDisbursements) setRecentVouchers((await api.getRecentDisbursements(5)) || [])
@@ -893,6 +908,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                 </label>
                 <select
                   required
+                  aria-label="Source of Funds (Credit Asset)"
                   value={sourceAccount}
                   onChange={(e) => setSourceAccount(e.target.value)}
                   className="w-full bg-[#FBF8F8] border border-[#B0DCDA] rounded-md p-3 text-sm text-gray-800 font-bold focus:border-[#1B9387] outline-none transition cursor-pointer shadow-sm"

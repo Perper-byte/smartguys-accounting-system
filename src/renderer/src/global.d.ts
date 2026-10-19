@@ -29,6 +29,7 @@ interface Window {
     getRolePermissions?: () => Promise<Record<string, string[]>>
     updateRolePermissions?: (matrix: Record<string, string[]>, adminUser?: string) => Promise<any>
     forceApplyRolePermissions?: (matrix: Record<string, string[]>, adminUser?: string) => Promise<any>
+    getVoidHistory?: () => Promise<any[]>
   }
 }
 
