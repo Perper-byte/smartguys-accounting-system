@@ -890,6 +890,7 @@ export const LedgerService = {
                 ]
             },
             include: {
+                user: true,
                 payee: true,
                 lines: {
                     include: { account: true },

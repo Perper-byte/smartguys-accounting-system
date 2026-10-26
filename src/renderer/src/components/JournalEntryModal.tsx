@@ -2,22 +2,26 @@
 import * as React from 'react'
 import { useState, useEffect } from 'react'
 import {
-  Download,
   X,
   Paperclip,
   Image as ImageIcon,
   File as FileIcon,
   AlertTriangle,
   RefreshCw,
-  Printer
+  Printer,
+  Receipt,
+  FileText
 } from 'lucide-react'
 import { AttachmentPreviewModal } from './AttachmentPreviewModal'
+import { CashDisbursementReceipt } from './CashDisbursementReceipt'
 import { cleanDescription } from '../utils/formatters'
 
 interface JournalEntryModalProps {
   entry?: any | null
   entryId?: string | null
   referenceNo?: string | null
+  isCashDisbursement?: boolean
+  autoPrint?: boolean
   onClose: () => void
   onVoidSuccess?: () => void
 }
@@ -26,12 +30,15 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
   entry: initialEntry,
   entryId,
   referenceNo,
+  isCashDisbursement = false,
+  autoPrint = false,
   onClose,
   onVoidSuccess
 }) => {
   const [entry, setEntry] = useState<any | null>(initialEntry || null)
   const [loading, setLoading] = useState<boolean>(!initialEntry && !!(entryId || referenceNo))
   const [previewAttachment, setPreviewAttachment] = useState<any | null>(null)
+  const [activeTab, setActiveTab] = useState<'details' | 'slip'>('details')
 
   // Void request state
   const [showVoidInput, setShowVoidInput] = useState(false)
@@ -74,6 +81,24 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
       isMounted = false
     }
   }, [initialEntry, entryId, referenceNo])
+
+  // Determine whether this transaction is strictly a cash disbursement
+  const refStr = String(entry?.reference_no || referenceNo || '').toUpperCase()
+  const isDisbursement = Boolean(
+    isCashDisbursement ||
+    /^(CV|DV|PCV|CDV|REF)-/i.test(refStr)
+  )
+
+  // Auto-print triggered by external one-click action
+  useEffect(() => {
+    if (autoPrint && entry && !loading) {
+      const timer = setTimeout(() => {
+        window.print()
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+    return undefined
+  }, [autoPrint, entry, loading])
 
   const formatCurrency = (amount: number) => {
     return Number(amount || 0).toLocaleString('en-US', {
@@ -143,28 +168,131 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
   const totalCredit =
     entry?.lines?.reduce((sum: number, l: any) => sum + Number(l.credit || 0), 0) || 0
 
+  const debitLines = entry?.lines?.filter((l: any) => Number(l.debit) > 0) || []
+  const creditLines = entry?.lines?.filter((l: any) => Number(l.credit) > 0) || []
+  const creditLine = creditLines[0]?.account || null
+
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+      {/* PRINT-SPECIFIC CSS ISOLATION */}
+      <style>{`
+        @page {
+          size: portrait;
+          margin: 8mm 10mm;
+        }
+        @media print {
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body * {
+            visibility: hidden !important;
+          }
+          ${
+            isDisbursement
+              ? `
+          #printable-voucher-receipt,
+          #printable-voucher-receipt * {
+            visibility: visible !important;
+          }
+          #printable-voucher-receipt {
+            position: fixed !important;
+            left: 0 !important;
+            top: 0 !important;
+            right: 0 !important;
+            bottom: 0 !important;
+            width: 100% !important;
+            height: 100% !important;
+            display: block !important;
+            padding-top: 15mm !important;
+            background: #ffffff !important;
+            z-index: 999999 !important;
+          }
+          .voucher-slip-card {
+            display: block !important;
+            width: 450px !important;
+            max-width: 450px !important;
+            margin: 0 auto !important;
+            border: 2px dashed #9ca3af !important;
+            border-radius: 8px !important;
+            padding: 24px !important;
+            background-color: #ffffff !important;
+            box-sizing: border-box !important;
+          }
+          `
+              : `
+          #printable-journal-sheet,
+          #printable-journal-sheet * {
+            visibility: visible !important;
+          }
+          #printable-journal-sheet {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            display: block !important;
+            padding-top: 5mm !important;
+            background: #ffffff !important;
+            z-index: 999999 !important;
+          }
+          `
+          }
+        }
+      `}</style>
+
+      {/* SCREEN MODAL */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 print:hidden">
         <div className="bg-[#f4f7f6] rounded-xl shadow-2xl w-full max-w-4xl flex flex-col relative animate-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh]">
           {/* MODAL HEADER */}
-          <div className="bg-white p-5 border-b border-gray-200 flex justify-between items-start shrink-0">
+          <div className="bg-white p-5 border-b border-gray-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
             <div>
-              <h2 className="text-2xl font-black text-gray-900 tracking-tight flex items-center gap-3">
-                Journal: {entry?.reference_no || referenceNo || 'Loading...'}
-              </h2>
-              <div className="mt-2">
+              <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-black text-gray-900 tracking-tight">
+                  Journal: {entry?.reference_no || referenceNo || 'Loading...'}
+                </h2>
                 {entry ? renderStatusBadge(entry.status) : null}
               </div>
+
+              {/* View Switcher for Cash Disbursements */}
+              {isDisbursement && entry && (
+                <div className="flex bg-gray-100 p-0.5 rounded-lg border border-gray-200 text-xs mt-2.5 self-start">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('details')}
+                    className={`px-3 py-1 rounded-md font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      activeTab === 'details'
+                        ? 'bg-white text-gray-900 shadow-xs'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    <FileText size={13} />
+                    <span>Journal Details</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('slip')}
+                    className={`px-3 py-1 rounded-md font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                      activeTab === 'slip'
+                        ? 'bg-white text-[#1B9387] shadow-xs'
+                        : 'text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    <Receipt size={13} />
+                    <span>Voucher Slip</span>
+                  </button>
+                </div>
+              )}
             </div>
-            <div className="flex items-center gap-2">
+
+            <div className="flex items-center gap-2 self-end sm:self-center">
               <button
                 type="button"
                 onClick={handlePrint}
-                className="p-2 border border-gray-200 rounded text-gray-500 hover:bg-gray-50 transition cursor-pointer"
-                title="Print Journal Voucher"
+                className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 hover:border-[#1B9387] bg-white hover:bg-gray-50 rounded-lg text-xs font-bold text-gray-700 hover:text-[#1B9387] transition cursor-pointer shadow-xs"
+                title={isDisbursement ? 'Print Cash Disbursement Voucher Slip' : 'Print Journal Voucher'}
               >
-                <Printer size={16} />
+                <Printer size={15} className="text-[#1B9387]" />
+                <span>Print {isDisbursement ? 'Voucher Slip' : 'Journal'}</span>
               </button>
               <button
                 type="button"
@@ -202,7 +330,37 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
               <div className="py-20 text-center text-sm font-bold text-gray-400">
                 Journal entry details could not be found.
               </div>
+            ) : isDisbursement && activeTab === 'slip' ? (
+              /* TAB 2: VOUCHER SLIP PREVIEW (EXACT LAYOUT AS IMAGE 2) */
+              <div className="py-2 flex flex-col items-center justify-center space-y-4">
+                <div className="flex items-center justify-between w-full max-w-[450px] bg-[#E9FAFA] border border-[#B0DCDA] p-3 rounded-lg text-xs">
+                  <span className="text-[#1B9387] font-bold">
+                    Print Preview — Receipt / Voucher Slip
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handlePrint}
+                    className="px-3 py-1.5 bg-[#1B9387] hover:bg-[#167a70] text-white rounded-md font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer text-xs"
+                  >
+                    <Printer size={13} />
+                    <span>Print Voucher</span>
+                  </button>
+                </div>
+
+                <CashDisbursementReceipt
+                  referenceNo={entry.reference_no || referenceNo || ''}
+                  date={entry.date}
+                  payeeName={entry.payee?.name}
+                  amount={totalDebit}
+                  description={entry.description}
+                  debitLines={debitLines}
+                  creditAccount={creditLine}
+                  preparedBy={entry.user?.username}
+                  id="preview-voucher-receipt"
+                />
+              </div>
             ) : (
+              /* TAB 1: JOURNAL DETAILS TABLE (PRESERVED FROM IMAGE 1) */
               <>
                 {/* CARD 1: TOP SUMMARY */}
                 <div className="flex flex-col sm:flex-row gap-6">
@@ -214,7 +372,9 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
                       <p className="font-bold text-sm text-gray-800">
                         {entry.reference_no?.startsWith('JV') || entry.reference_no?.startsWith('ADJ')
                           ? 'Manual Journal'
-                          : 'System Journal'}
+                          : isDisbursement
+                            ? 'Cash Disbursement'
+                            : 'System Journal'}
                       </p>
                     </div>
                     <div>
@@ -431,6 +591,139 @@ export const JournalEntryModal: React.FC<JournalEntryModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* ------------------------------------------------------------- */}
+      {/* PRINT-ONLY SECTIONS (ACTIVATED ONLY DURING WINDOW.PRINT())     */}
+      {/* ------------------------------------------------------------- */}
+
+      {/* 1. CASH DISBURSEMENTS PRINTABLE RECEIPT SLIP (MATCHES IMAGE 2) */}
+      {isDisbursement && entry && (
+        <div
+          id="printable-voucher-receipt"
+          className="hidden print:block fixed inset-0 z-[999999] bg-white p-8 font-sans"
+        >
+          <CashDisbursementReceipt
+            referenceNo={entry.reference_no || referenceNo || ''}
+            date={entry.date}
+            payeeName={entry.payee?.name}
+            amount={totalDebit}
+            description={entry.description}
+            debitLines={debitLines}
+            creditAccount={creditLine}
+            preparedBy={entry.user?.username}
+          />
+        </div>
+      )}
+
+      {/* 2. NON-DISBURSEMENTS: CLEAN STANDARD JOURNAL VOUCHER DOCUMENT */}
+      {!isDisbursement && entry && (
+        <div
+          id="printable-journal-sheet"
+          className="hidden print:block font-sans text-gray-900 bg-white p-6 max-w-[800px] mx-auto"
+        >
+          <div className="border-b-2 border-gray-900 pb-4 mb-4 flex justify-between items-start">
+            <div>
+              <h1 className="text-2xl font-black uppercase tracking-wider text-gray-900">
+                SMARTGUYS CLINIC
+              </h1>
+              <p className="text-xs font-bold text-gray-500 uppercase tracking-widest mt-1">
+                JOURNAL VOUCHER
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-base font-black font-mono text-gray-900">
+                {entry.reference_no || referenceNo}
+              </div>
+              <div className="text-xs text-gray-500">
+                Date: {entry.date ? new Date(entry.date).toLocaleDateString('en-GB') : '—'}
+              </div>
+              <div className="text-xs font-bold uppercase text-gray-600 mt-1">
+                Status: {entry.status || 'RECORDED'}
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 text-xs mb-4 bg-gray-50 p-3 rounded border border-gray-200">
+            <div>
+              <span className="text-gray-500 font-bold uppercase text-[10px]">Type: </span>
+              <span className="font-bold">
+                {refStr.startsWith('JV') || refStr.startsWith('ADJ')
+                  ? 'Manual Journal'
+                  : 'System Journal'}
+              </span>
+            </div>
+            <div>
+              <span className="text-gray-500 font-bold uppercase text-[10px]">
+                Contact / Payee:{' '}
+              </span>
+              <span className="font-bold">{entry.payee?.name || '—'}</span>
+            </div>
+          </div>
+
+          <table className="w-full text-left text-xs mb-4 border border-gray-200 border-collapse">
+            <thead>
+              <tr className="bg-gray-100 border-b border-gray-300 text-[10px] uppercase font-bold text-gray-700">
+                <th className="p-2 border-r border-gray-200">Account</th>
+                <th className="p-2 border-r border-gray-200">Description</th>
+                <th className="p-2 text-right border-r border-gray-200">Debit (PHP)</th>
+                <th className="p-2 text-right">Credit (PHP)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entry.lines?.map((line: any, idx: number) => (
+                <tr key={idx} className="border-b border-gray-100">
+                  <td className="p-2 border-r border-gray-200 font-medium">
+                    <span className="font-mono font-bold mr-1">{line.account?.code}</span>
+                    {line.account?.name}
+                  </td>
+                  <td className="p-2 border-r border-gray-200 text-gray-600">
+                    {line.description ? cleanDescription(line.description) : '-'}
+                  </td>
+                  <td className="p-2 text-right font-mono border-r border-gray-200">
+                    {Number(line.debit) > 0 ? formatCurrency(Number(line.debit)) : '-'}
+                  </td>
+                  <td className="p-2 text-right font-mono">
+                    {Number(line.credit) > 0 ? formatCurrency(Number(line.credit)) : '-'}
+                  </td>
+                </tr>
+              ))}
+              <tr className="bg-gray-50 font-bold border-t-2 border-gray-300">
+                <td colSpan={2} className="p-2 text-right uppercase text-[10px]">
+                  Total:
+                </td>
+                <td className="p-2 text-right font-mono">{formatCurrency(totalDebit)}</td>
+                <td className="p-2 text-right font-mono">{formatCurrency(totalCredit)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          {entry.description && (
+            <div className="text-xs mb-6 p-2 bg-gray-50 rounded border border-gray-200">
+              <span className="font-bold text-[10px] text-gray-500 uppercase block mb-1">
+                Notes:
+              </span>
+              <p className="text-gray-800">{cleanDescription(entry.description)}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-3 gap-4 pt-6 border-t border-gray-300 text-center text-[10px]">
+            <div>
+              <div className="border-b border-gray-400 pb-1 mb-1 font-bold">
+                {entry.user?.username || 'Preparer'}
+              </div>
+              <span className="text-gray-500 uppercase font-bold">PREPARED BY</span>
+            </div>
+            <div>
+              <div className="border-b border-gray-400 pb-1 mb-1 font-bold">Checked</div>
+              <span className="text-gray-500 uppercase font-bold">CHECKED BY</span>
+            </div>
+            <div>
+              <div className="border-b border-gray-400 pb-1 mb-1 font-bold">Approved</div>
+              <span className="text-gray-500 uppercase font-bold">APPROVED BY</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {previewAttachment && (
         <AttachmentPreviewModal

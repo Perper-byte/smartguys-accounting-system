@@ -24,7 +24,8 @@ import {
   ArrowDown,
   History,
   Calendar,
-  Upload
+  Upload,
+  Printer
 } from 'lucide-react'
 
 const getLocalDateString = () =>
@@ -50,6 +51,12 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
   const [payees, setPayees] = useState<any[]>([])
   const [recentVouchers, setRecentVouchers] = useState<any[]>([])
   const [selectedEntryKey, setSelectedEntryKey] = useState<string | null>(null)
+  const [autoPrintEntryKey, setAutoPrintEntryKey] = useState<string | null>(null)
+
+  const handlePrintDisbursement = (key: string) => {
+    setAutoPrintEntryKey(key)
+    setSelectedEntryKey(key)
+  }
 
   // Cashier Petty Cash Audit State
   const [cashierVouchers, setCashierVouchers] = useState<any[]>([])
@@ -1315,6 +1322,17 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                         <span className="text-[10px] text-emerald-600 font-bold flex items-center">
                           ✓ ISSUED
                         </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handlePrintDisbursement(v.referenceNo || v.id)
+                          }}
+                          className="text-gray-400 hover:text-[#1B9387] p-1 rounded hover:bg-gray-100 transition cursor-pointer"
+                          title="Print Cash Disbursement Voucher Slip"
+                        >
+                          <Printer size={12} />
+                        </button>
                         {v.attachments && v.attachments.length > 0 && (
                           <button
                             type="button"
@@ -1680,6 +1698,15 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                                 Standard (&lt; ₱2k)
                               </span>
                             )}
+                            <button
+                              type="button"
+                              onClick={() => handlePrintDisbursement(v.referenceNo || v.id)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-gray-50 text-gray-700 hover:text-[#1B9387] border border-gray-200 rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer ml-1.5"
+                              title="Print Petty Cash Voucher Slip"
+                            >
+                              <Printer size={12} className="text-[#1B9387]" />
+                              <span>Print</span>
+                            </button>
                           </td>
                         </tr>
                       )
@@ -1864,7 +1891,7 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                 <button
                   key={pill.id}
                   type="button"
-                  onClick={() => setHistoryTypeFilter(pill.id)}
+                  onClick={() => setHistoryTypeFilter(pill.id as any)}
                   className={`px-3 py-1 rounded-full text-xs font-bold transition cursor-pointer border ${
                     historyTypeFilter === pill.id
                       ? 'bg-[#1B9387] text-white border-[#1B9387] shadow-xs'
@@ -2040,6 +2067,15 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
                                 />
                               </label>
                             )}
+                            <button
+                              type="button"
+                              onClick={() => handlePrintDisbursement(v.referenceNo || v.id)}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-white hover:bg-[#E9FAFA] text-gray-700 hover:text-[#1B9387] border border-gray-200 hover:border-[#B0DCDA] rounded-lg text-xs font-bold transition shadow-2xs cursor-pointer ml-1.5"
+                              title="Print History Voucher Slip"
+                            >
+                              <Printer size={12} className="text-[#1B9387]" />
+                              <span>Print</span>
+                            </button>
                           </td>
                         </tr>
                       )
@@ -2173,7 +2209,12 @@ export const CashDisbursementForm: React.FC<{ userId: string }> = ({ userId }) =
       {selectedEntryKey && (
         <JournalEntryModal
           referenceNo={selectedEntryKey}
-          onClose={() => setSelectedEntryKey(null)}
+          isCashDisbursement={true}
+          autoPrint={autoPrintEntryKey === selectedEntryKey}
+          onClose={() => {
+            setSelectedEntryKey(null)
+            setAutoPrintEntryKey(null)
+          }}
           onVoidSuccess={() => {
             loadCashierVouchers()
             loadHistoricalVouchers()

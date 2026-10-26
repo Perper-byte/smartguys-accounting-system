@@ -51,13 +51,13 @@ model Attachment {
 // 6. INVENTORY MANAGEMENT (Non-Financial)
 // ------------------------------------------
 model InventoryItem {
-  id        String  @id @default(uuid()) @db.VarChar(50)
-  code      String  @unique @db.VarChar(50) // The "Item Code"
-  name      String  @db.VarChar(150) // The "Product / Description"
-  location  String? @db.VarChar(100) // The "Location"
-  stock     Int     @default(0) // The "Quantity On Hand"
-  uom       String? @default("Pieces")
-  is_active Boolean @default(true)
+  id         String  @id @default(uuid()) @db.VarChar(50)
+  code       String  @unique @db.VarChar(50) // The "Item Code"
+  name       String  @db.VarChar(150) // The "Product / Description"
+  location   String? @db.VarChar(100) // The "Location"
+  stock      Int     @default(0) // The "Quantity On Hand"
+  uom        String? @default("Pieces")
+  is_active  Boolean @default(true)
   is_vatable Boolean @default(false) // 12% VAT flag
 
   logs InventoryLog[]
@@ -255,11 +255,11 @@ model BankTransaction {
 // 5. SERVICES & PROCEDURES (POS Items)
 // ------------------------------------------
 model ServiceItem {
-  id        Int     @id @default(autoincrement())
-  category  String  @db.VarChar(100)
-  name      String  @db.VarChar(150)
-  price     Decimal @default(0.00) @db.Decimal(15, 2)
-  is_active Boolean @default(true)
+  id         Int     @id @default(autoincrement())
+  category   String  @db.VarChar(100)
+  name       String  @db.VarChar(150)
+  price      Decimal @default(0.00) @db.Decimal(15, 2)
+  is_active  Boolean @default(true)
   is_vatable Boolean @default(false) // 12% VAT flag
 
   @@map("service_items")
@@ -267,15 +267,14 @@ model ServiceItem {
 
 model Reconciliation {
   id                  String   @id @default(uuid()) @db.VarChar(50)
-  // ðŸ”¥ CHANGED: Removed @unique so multiple records can share the same bank_transaction_id
   bank_transaction_id String   @db.VarChar(50)
   journal_entry_id    String   @unique @db.VarChar(50)
   matched_at          DateTime @default(now())
   matched_by          String   @db.VarChar(50)
 
-  bank_transaction BankTransaction @relation(fields: [bank_transaction_id], references: [id], onDelete: Cascade)
-  journal_entry    JournalEntry    @relation(fields: [journal_entry_id], references: [id])
-  user             User            @relation(fields: [matched_by], references: [id])
+  bank_transaction BankTransaction @relation(fields: [bank_transaction_id], references: [id], onDelete: Cascade, map: "fk_recon_bank_tx_custom")
+  journal_entry    JournalEntry    @relation(fields: [journal_entry_id], references: [id], map: "fk_recon_journal_entry_custom")
+  user             User            @relation(fields: [matched_by], references: [id], map: "fk_recon_user_custom")
 
   @@map("reconciliations")
 }
@@ -284,18 +283,18 @@ model Reconciliation {
 // 7. SYSTEM CONFIGURATION
 // ------------------------------------------
 model SystemSetting {
-  id            String    @id @default(uuid())
-  lock_date     DateTime? @db.Date
-  auto_lock_day Int?
-  accounting_calendar String? @db.Text
-  override_pin  String?   @db.VarChar(255) // Admin Override PIN (bcrypt hash)
-  fiscal_year_start_month Int @default(1)
+  id                      String    @id @default(uuid())
+  lock_date               DateTime? @db.Date
+  auto_lock_day           Int?
+  accounting_calendar     String?   @db.Text
+  override_pin            String?   @db.VarChar(255) // Admin Override PIN (bcrypt hash)
+  fiscal_year_start_month Int       @default(1)
   year_type               String?   @default("CALENDAR") @db.VarChar(20)
   auto_close_enabled      Boolean   @default(false)
   auto_close_frequency    String?   @default("MONTHLY") @db.VarChar(20)
   role_permissions        Json?
 
-  services_vatable Boolean @default(false)
+  services_vatable  Boolean @default(false)
   medicines_vatable Boolean @default(false)
 
   // Dynamic Payroll Multipliers (Default Philippine DOLE standard multipliers)

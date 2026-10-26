@@ -22,4 +22,4 @@ if (fs.existsSync(configPath)) {
 }
 
 // 🚀 DYNAMICALLY SET THE DATABASE URL BEFORE PRISMA LOADS!
-process.env.DATABASE_URL = "mysql://root:@localhost:3307/smartguys_db"
+process.env.DATABASE_URL = "mysql://root:@localhost:3306/smartguys_db"

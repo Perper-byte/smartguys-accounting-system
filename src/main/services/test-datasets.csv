@@ -1,0 +1,13 @@
+Scenario_ID,Test_Type,Date,Reference_No,Description,Account_ID,Debit,Credit,Override_PIN,Expected_Error
+1A,POSITIVE,2026-10-22,OR-1001,Patient Consultation,1010,1500,0,,
+1A,POSITIVE,2026-10-22,OR-1001,Patient Consultation,4010,0,1500,,
+1B,NEGATIVE,2026-10-22,OR-1002,Unbalanced Error Entry,1010,1500,0,,
+1B,NEGATIVE,2026-10-22,OR-1002,Unbalanced Error Entry,4010,0,1000,,Validation Error: Journal entry must be balanced
+2A,POSITIVE,2026-10-31,ADJ-001,Accrue Utilities,5020,5000,0,,
+2A,POSITIVE,2026-10-31,ADJ-001,Accrue Utilities,2030,0,5000,,
+2B,NEGATIVE,2026-10-31,ADJ-002,Negative Adjustment,5020,5000,0,,
+2B,NEGATIVE,2026-10-31,ADJ-002,Negative Adjustment,2030,0,-5000,,Validation Error: Debit and Credit values cannot be negative
+4A,NEGATIVE,2026-09-15,JV-LATE-01,Late Entry Attempt,1010,1000,0,,PERIOD CLOSED
+4A,NEGATIVE,2026-09-15,JV-LATE-01,Late Entry Attempt,4010,0,1000,,PERIOD CLOSED
+4B,POSITIVE,2026-09-15,JV-LATE-02,Late Entry with PIN,1010,1000,0,1234,
+4B,POSITIVE,2026-09-15,JV-LATE-02,Late Entry with PIN,4010,0,1000,1234,
