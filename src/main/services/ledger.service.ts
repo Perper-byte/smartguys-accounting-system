@@ -470,6 +470,10 @@ export const LedgerService = {
             throw new Error('Validation Error: Debit and Credit values cannot be negative');
         }
 
+        if (data.lines.some(line => Number(line.debit) > 0 && Number(line.credit) > 0)) {
+            throw new Error('Validation Error: A single journal line cannot have both Debit and Credit amounts');
+        }
+
         const totalDebit = validLines.reduce((sum, line) => sum + Number(line.debit), 0);
         const totalCredit = validLines.reduce((sum, line) => sum + Number(line.credit), 0);
 

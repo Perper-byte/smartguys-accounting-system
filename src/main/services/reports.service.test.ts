@@ -2,7 +2,7 @@
 import { ReportsService } from './reports.service'
 
 describe('Sprint 3 - Week 1: Financial Reporting Engine', () => {
-  test('📊 Trial Balance: Debits must precisely equal Credits', async () => {
+  test('Trial Balance: Debits must precisely equal Credits', async () => {
     const report = await ReportsService.getTrialBalance()
 
     // Dynamically verify the mathematical balance
@@ -10,7 +10,7 @@ describe('Sprint 3 - Week 1: Financial Reporting Engine', () => {
     expect(report.isBalanced).toBe(true)
   })
 
-  test('📄 Income Statement: Net Income must equal Revenues minus Expenses', async () => {
+  test('Income Statement: Net Income must equal Revenues minus Expenses', async () => {
     const statement = await ReportsService.getIncomeStatement()
 
     const calculatedNetIncome = Number(
@@ -19,7 +19,7 @@ describe('Sprint 3 - Week 1: Financial Reporting Engine', () => {
     expect(statement.netIncome).toBe(calculatedNetIncome)
   })
 
-  test('⚖️ Balance Sheet: Fundamental Equation (Assets = Liabilities + Equity + Net Income) must hold true', async () => {
+  test('Balance Sheet: Fundamental Equation (Assets = Liabilities + Equity + Net Income) must hold true', async () => {
     const balanceSheet = await ReportsService.getBalanceSheet()
 
     // Dynamically verify the system maintains the fundamental accounting equation

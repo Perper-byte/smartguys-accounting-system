@@ -6,11 +6,18 @@
  *  3. RESULTS (PASS/FAIL, duration, error details)
  */
 
+const fs = require('fs')
+
 const SUITE_METADATA = {
   'accounting-flow-datasets.test.ts': {
-    name: 'End-to-End Accounting Flow Datasets',
-    what: 'Complete multi-module transaction cycles (sales, expenses, payroll)',
+    name: 'End-to-End Accounting Flow Datasets Across 3 Datasets',
+    what: 'Complete multi-module transaction cycles (sales, expenses, payroll, books, and financial statements)',
     why: 'Verify all journal entries remain strictly balanced across end-to-end accounting flows'
+  },
+  'corrections-and-entries.test.ts': {
+    name: 'Data-Driven Entry Validation & Corrections Across 3 Datasets',
+    what: 'CSV-driven transaction entry, adjusting entries, void approvals, and period cutoff locks',
+    why: 'Verify data integrity, validation rules, void safeguards, and period lock protections'
   },
   'accounting-period.service.test.ts': {
     name: 'Accounting Period & Fiscal Locking Service',
@@ -69,7 +76,7 @@ const SUITE_METADATA = {
   },
   'tax.service.test.ts': {
     name: 'BIR Tax Compliance & Withholding Engine',
-    what: 'BIR Form 2550M/Q (VAT), 1601-C (Withholding), and 2307 certificate calculations',
+    what: 'BIR Form 2550M/Q (VAT), 1601-C (Withholding), 0619-E (EWT), and 2307 certificate calculations',
     why: 'Comply with Bureau of Internal Revenue (BIR) statutory tax reporting standards and deadlines'
   },
   'user.service.test.ts': {
@@ -94,58 +101,73 @@ const SUITE_METADATA = {
   },
   'formatters.test.ts': {
     name: 'Financial & Number Formatting Utilities',
-    what: 'Currency (₱ PHP), percentage, date, and invoice number string formatters',
+    what: 'Currency (PHP), percentage, date, and invoice number string formatters',
     why: 'Ensure consistent and unambiguous display of financial figures across all screens'
   },
   'payroll-periods.test.ts': {
-    name: 'Payroll Cutoff & Calendar Utilities',
-    what: 'Semi-monthly cutoff boundaries (1-15, 16-EOM) and business day calculations',
-    why: 'Prevent payroll period overlap and align wage calculations with calendar cutoffs'
-  },
-  'statutory-rates.test.ts': {
-    name: 'Statutory Contribution Rate Tables',
-    what: 'SSS monthly salary credit tiers, PhilHealth 5% table, and Pag-IBIG ₱200 cap',
-    why: 'Ensure deductions mirror official government agency contribution schedules'
+    name: 'Semi-Monthly Payroll Period Calculator',
+    what: 'First half (1-15) and second half (16-EOM) date boundary resolution',
+    why: 'Accurately align compensation cutoffs with standard Philippine semi-monthly pay periods'
   },
   'App.test.tsx': {
-    name: 'Application Shell & Navigation Guard',
-    what: 'Root routing, authentication session persistence, role navigation, and live clock bar',
-    why: 'Verify core UI shell mounts properly and gates views according to user authorization'
+    name: 'Main Application Shell & Navigation',
+    what: 'Top-level view routing, tab switching, and authentication guard integration',
+    why: 'Ensure seamless view switching between modules without losing UI state'
   },
-  'BooksOfAccountsView.test.tsx': {
-    name: 'Books of Accounts UI View',
-    what: 'General Ledger, Cash Receipts Journal, Cash Disbursements Journal, and General Journal tabs',
-    why: 'Allow accountants and BIR auditors to inspect statutory books of accounts'
+  'BIRReportsView.test.tsx': {
+    name: 'BIR Tax Reports & Annexes View',
+    what: 'Form 2550Q, 1601-C, 0619-E tables, and RELIEF DAT file export UI',
+    why: 'Provide tax compliance officers with an intuitive interface for BIR filings'
   },
   'CashDisbursementForm.test.tsx': {
-    name: 'Cash Disbursement Voucher Form',
-    what: 'Voucher input validation, debit/credit matching, and liquid account restriction',
-    why: 'Prevent unbalanced vouchers and restrict disbursements to Cash in Hand, Bank, and Petty Cash'
+    name: 'Cash Disbursement Voucher Entry Form',
+    what: 'Expense category selection, 2% EWT auto-deduction, and payee assignment',
+    why: 'Enforce withholding tax compliance at the point of voucher creation'
   },
-  'CashierDisbursementView.test.tsx': {
-    name: 'Cashier Petty Cash Disbursement View',
-    what: 'Cashier voucher submission and petty cash limit validation',
-    why: 'Enforce segregation of duties between cashier petty cash expenses and accounting disbursements'
+  'CashDisbursementReceipt.test.tsx': {
+    name: 'Cash Disbursement Printable Receipt Component',
+    what: 'Print layout, payee details, check number, and breakdown of accounts',
+    why: 'Generate audit-compliant physical voucher documentation for payee signatures'
   },
   'ChartOfAccountsView.test.tsx': {
     name: 'Chart of Accounts Management View',
-    what: 'Account hierarchy tree, category dropdowns, account locking toggle, and balance display',
+    what: 'Standardized account structure, account code grouping, and locked control accounts',
     why: 'Maintain standardized account structure and protect locked control accounts from unauthorized edits'
   },
-  'FinancialStatementsView.test.tsx': {
-    name: 'Financial Statements UI View',
-    what: 'Statement of Financial Position and Income Statement date filtering, rendering, and export',
-    why: 'Ensure financial reports present reliable figures and allow exporting for business analysis'
+  'EWTPayoutView.test.tsx': {
+    name: 'Expanded Withholding Tax (EWT) Remittance View',
+    what: 'Pending EWT liabilities, payment voucher generation, and remittance status tracking',
+    why: 'Prevent penalties by tracking and timely settling accrued withholding tax liabilities'
   },
-  'LoginScreen.test.tsx': {
-    name: 'User Authentication Login Screen',
-    what: 'Credentials entry, form validation, error banners, and authentication dispatch',
-    why: 'Prevent unauthorized access and provide clear feedback on authentication failures'
+  'FinancialStatementsView.test.tsx': {
+    name: 'Financial Statements Presentation View',
+    what: 'Income Statement, Balance Sheet, and Trial Balance tab rendering and date filters',
+    why: 'Provide stakeholders with accurate, real-time financial reporting views'
+  },
+  'GeneralLedgerView.test.tsx': {
+    name: 'General Ledger Inspection View',
+    what: 'Account filter dropdown, date range picker, and chronological journal line grid',
+    why: 'Allow bookkeepers to trace transaction history account-by-account'
+  },
+  'JournalEntryForm.test.tsx': {
+    name: 'Manual Journal Voucher Entry Form',
+    what: 'Multi-line debit/credit entry, running balance difference indicator, and VAT split helper',
+    why: 'Prevent unbalanced manual journal vouchers from being submitted to the database'
+  },
+  'JournalEntryModal.test.tsx': {
+    name: 'Journal Entry Details Modal View',
+    what: 'Modal display of entry reference, date, lines, and creator audit history',
+    why: 'Provide detailed drill-down into specific journal entries from any view'
   },
   'POSBillingView.test.tsx': {
     name: 'Point of Sale (POS) Billing View',
-    what: 'Checkout item selection, automatic VAT checkbox for taxable services, and total calculation',
+    what: 'Customer invoicing, line item addition, 12% VAT calculation, and receipt generation',
     why: 'Ensure customer invoices reflect accurate 12% VAT and item pricing during POS transactions'
+  },
+  'PayrollProcessingView.test.tsx': {
+    name: 'Payroll Processing & Payslip Management View',
+    what: 'Employee list, salary calculation preview, payslip modal, and GL posting trigger',
+    why: 'Provide HR with transparent payroll review before committing wage expenses to the ledger'
   },
   'SystemSettingsView.test.tsx': {
     name: 'System Settings & Organization Profile View',
@@ -164,49 +186,182 @@ const SUITE_METADATA = {
   }
 }
 
-function deriveTestPurpose(title, suiteMeta) {
+function parseTestJSDocs(filePath) {
+  const map = {}
+  try {
+    if (!fs.existsSync(filePath)) return map
+    const code = fs.readFileSync(filePath, 'utf8')
+    const regex = /\/\*\*([\s\S]*?)\*\/\s*(?:test|it)\s*\(\s*['"`]([^'"`]+)['"`]/g
+    let match
+    while ((match = regex.exec(code)) !== null) {
+      const doc = match[1]
+      const title = match[2].trim()
+      const featureMatch = doc.match(/FEATURE:\s*([^\r\n*]+)/i)
+      const whatMatch = doc.match(/WHAT:\s*([^\r\n*]+)/i)
+      const whyMatch = doc.match(/WHY:\s*([^\r\n*]+)/i)
+      const typeMatch = doc.match(/TYPE:\s*([^\r\n*]+)/i)
+
+      map[title] = {
+        feature: featureMatch ? featureMatch[1].trim() : null,
+        what: whatMatch ? whatMatch[1].trim() : null,
+        why: whyMatch ? whyMatch[1].trim() : null,
+        type: typeMatch ? typeMatch[1].trim() : null
+      }
+    }
+  } catch (e) {
+    // Ignore read errors
+  }
+  return map
+}
+
+function deriveTestPurpose(title, suiteMeta, jsDocMap) {
   const cleanTitle = title.replace(/^[✅❌✔✖√\s]+/, '').trim()
   const lower = cleanTitle.toLowerCase()
 
+  if (jsDocMap && jsDocMap[cleanTitle]) {
+    const doc = jsDocMap[cleanTitle]
+    return {
+      feature: doc.feature || (suiteMeta ? suiteMeta.name : null),
+      what: doc.what || cleanTitle,
+      why: doc.why || (suiteMeta ? suiteMeta.why : 'Verify system business logic and integrity'),
+      type: doc.type || (lower.includes('negative') || lower.includes('reject') ? 'NON-HAPPY PATH (Negative / Edge Case)' : 'HAPPY PATH (Positive)')
+    }
+  }
+
+  let feature = suiteMeta ? suiteMeta.name : null
   let what = cleanTitle
   let why = suiteMeta ? suiteMeta.why : 'Verify system correctness and prevent functional regressions'
+  let type = (lower.includes('negative') || lower.includes('reject') || lower.includes('block') || lower.includes('invalid') || lower.includes('error'))
+    ? 'NON-HAPPY PATH (Negative / Edge Case)'
+    : 'HAPPY PATH (Positive)'
 
-  if (lower.includes('sss')) {
+  // Form 0619-E (EWT)
+  if (lower.includes('0619-e') || lower.includes('0619e') || lower.includes('ewt')) {
+    feature = 'BIR Form 0619-E (Monthly EWT Remittance)'
+    what = 'BIR Form 0619-E monthly Expanded Withholding Tax (EWT) remittance extraction'
+    why = 'Comply with BIR monthly withholding remittance requirements on supplier payments'
+  }
+  // BIR RELIEF & DAT file
+  else if (lower.includes('relief') || lower.includes('dat file') || lower.includes('slsp')) {
+    feature = 'BIR RELIEF Data Preparation Engine'
+    what = 'BIR RELIEF electronic submission DAT file generation for monthly purchases and sales'
+    why = 'Comply with BIR RELIEF magnetic data requirements for automated tax cross-referencing'
+  }
+  // Form 1601-C (Compensation Withholding)
+  else if (lower.includes('1601-c') || lower.includes('1601c') || lower.includes('compensation withholding')) {
+    feature = 'BIR Form 1601-C (Compensation Withholding)'
+    what = 'BIR Form 1601-C compensation withholding tax calculation'
+    why = 'Accurately withhold and remit payroll taxes under the TRAIN Law graduated tax tables'
+  }
+  // Form 2550Q (VAT)
+  else if (lower.includes('2550q') || lower.includes('2550m') || (lower.includes('vat') && !lower.includes('train'))) {
+    feature = 'BIR Form 2550Q (Value-Added Tax)'
+    what = 'Value-Added Tax (12% VAT) rate application, Output vs Input VAT, and tax segregation'
+    why = 'Ensure taxable sales/services charge 12% VAT per BIR compliance guidelines'
+  }
+  // Scenario 1B / Unbalanced
+  else if (lower.includes('scenario 1b') || lower.includes('unbalanced')) {
+    feature = 'Double-Entry Ledger Balancing'
+    what = 'Double-entry balance validation: Rejection of unbalanced journal entries'
+    why = 'Enforce fundamental accounting rule that total debits must equal total credits'
+  }
+  // Scenario 1A / Balanced
+  else if (lower.includes('scenario 1a') || (lower.includes('balanced') && !lower.includes('unbalanced'))) {
+    feature = 'Double-Entry Ledger Balancing'
+    what = 'Double-entry transaction acceptance: Balanced debits and credits'
+    why = 'Ensure valid balanced accounting entries post successfully to general ledger'
+  }
+  // Scenario 2B / Negative value
+  else if (lower.includes('scenario 2b') || lower.includes('negative values') || lower.includes('negative adjustment') || lower.includes('negative depreciation')) {
+    feature = 'Adjusting Journal Entries'
+    what = 'Input validation: Rejection of negative debit/credit values'
+    why = 'Ensure accounting entries use positive magnitudes with appropriate debit/credit columns'
+  }
+  // Scenario 2A / Adjusting entry
+  else if (lower.includes('scenario 2a') || lower.includes('adjusting entry')) {
+    feature = 'Adjusting Journal Entries'
+    what = 'Adjusting entry acceptance for accruals, prepayments, and reclassifications'
+    why = 'Enable legitimate period-end adjusting entries to reflect accurate financial positions'
+  }
+  // Scenario 3B / Reconciled void lock
+  else if (lower.includes('scenario 3b') || lower.includes('bank-reconciled') || lower.includes('reconciliation lock')) {
+    feature = 'Void Approvals & Reconciliation Safeguard'
+    what = 'Bank reconciliation lock: Prevention of voiding cleared/reconciled entries'
+    why = 'Protect reconciled bank statements from post-reconciliation alteration'
+  }
+  // Scenario 3A / Valid void
+  else if (lower.includes('scenario 3a') || lower.includes('valid void') || lower.includes('authorized void')) {
+    feature = 'Void Approvals & Reversal Generation'
+    what = 'Authorized void execution and automatic reversal journal entry generation'
+    why = 'Allow manager-approved voiding of erroneous transactions while preserving audit trail'
+  }
+  // Scenario 4A / Closed period without PIN
+  else if (lower.includes('scenario 4a') || (lower.includes('closed period') && lower.includes('without'))) {
+    feature = 'Accounting Period Cutoff'
+    what = 'Period cutoff enforcement: Rejects transaction posting in closed fiscal periods'
+    why = 'Enforce financial closing finality and prevent unauthorized retrospective changes'
+  }
+  // Scenario 4B / Closed period with PIN
+  else if (lower.includes('scenario 4b') || (lower.includes('closed period') && (lower.includes('pin') || lower.includes('override')))) {
+    feature = 'Accounting Period Cutoff'
+    what = 'Manager override: Permits authorized posting to locked period with valid PIN'
+    why = 'Provide dual-control emergency entry capability for legitimate audit adjustments'
+  }
+  // General Journal
+  else if (lower.includes('general journal') || lower.includes(' gj ')) {
+    feature = 'General Journal (GJ)'
+    what = 'General Journal: Chronological recording of non-cash and adjusting transactions'
+    why = 'Verify non-cash transactions and journal vouchers are accurately recorded in the General Journal'
+  }
+  // General Ledger
+  else if (lower.includes('general ledger') || lower.includes(' gl ')) {
+    feature = 'General Ledger (GL)'
+    what = 'General Ledger: Chronological journal lines with valid account details and running balances'
+    why = 'Retrieve chronological journal lines with account IDs, debits, credits, and running totals'
+  }
+  // Trial Balance
+  else if (lower.includes('trial balance')) {
+    feature = 'Trial Balance'
+    what = 'Trial Balance: Cumulative debits precisely equal cumulative credits'
+    why = 'Fundamental double-entry bookkeeping invariant: cumulative debit balances must equal credit balances'
+  }
+  // Income Statement
+  else if (lower.includes('income statement')) {
+    feature = 'Income Statement'
+    what = 'Income Statement: Net Income strictly equals Revenues minus Expenses'
+    why = 'Financial accounting principle: Net Income = Total Revenues - Total Expenses'
+  }
+  // Balance Sheet
+  else if (lower.includes('balance sheet')) {
+    feature = 'Balance Sheet'
+    what = 'Balance Sheet: Fundamental Equation (Assets = Liabilities + Equity + Net Income)'
+    why = 'Fundamental accounting equation: Assets = Liabilities + Equity (including unclosed Net Income)'
+  }
+  // SSS / PhilHealth / Pag-IBIG
+  else if (lower.includes('sss')) {
+    feature = 'Statutory Benefits'
     what = 'SSS contribution and WISP fund tier calculation'
     why = 'Deduct exact employee and employer shares matching official Social Security System contribution brackets'
   } else if (lower.includes('philhealth')) {
+    feature = 'Statutory Benefits'
     what = 'PhilHealth premium contribution (5% rate, 50/50 split)'
     why = 'Calculate statutory health insurance contributions clamped to current statutory floor and ceiling'
   } else if (lower.includes('pag-ibig') || lower.includes('pagibig')) {
-    what = 'Pag-IBIG (HDMF) contribution with statutory ₱200 cap'
-    why = 'Enforce mandatory Home Development Mutual Fund contributions capped at ₱200 maximum per employee'
-  } else if (lower.includes('withholding') || (lower.includes('tax') && !lower.includes('vat'))) {
-    what = 'TRAIN Law withholding tax calculation on compensation'
-    why = 'Accurately withhold income tax per Bureau of Internal Revenue (BIR) graduated tax tables'
+    feature = 'Statutory Benefits'
+    what = 'Pag-IBIG (HDMF) contribution with statutory 200 PHP cap'
+    why = 'Enforce mandatory Home Development Mutual Fund contributions capped at 200 PHP maximum per employee'
   } else if (lower.includes('hourly rate') || lower.includes('divisor')) {
+    feature = 'Payroll Computation'
     what = 'Hourly wage rate computation (261 days divisor / 8 hours)'
     why = 'Comply with DOLE standards for converting monthly salary into standard hourly base pay'
   } else if (lower.includes('overtime') || lower.includes('night') || lower.includes('holiday') || lower.includes('premium')) {
+    feature = 'Payroll Computation'
     what = 'Premium pay rates calculation (overtime, night differential, holiday)'
     why = 'Ensure employee compensation adheres to Philippine Labor Code premium pay multipliers'
   } else if (/\blate\b/.test(lower) || lower.includes('tardy') || lower.includes('undertime') || lower.includes('absence') || lower.includes('demerit')) {
+    feature = 'Attendance & Demerits'
     what = 'Attendance demerit & salary deduction computation'
     why = 'Apply exact wage deductions for tardiness, undertime, and unexcused absences without rounding discrepancies'
-  } else if (lower.includes('negative')) {
-    what = 'Negative amount & input boundary validation'
-    why = 'Prevent negative values from corrupting financial balances or causing mathematical anomalies'
-  } else if (lower.includes('balanced') || lower.includes('balance')) {
-    what = 'Double-entry debit/credit balancing verification'
-    why = 'Enforce fundamental accounting rule that total debits must equal total credits (Σ Debit = Σ Credit)'
-  } else if (lower.includes('void history') || lower.includes('void')) {
-    what = 'Void transaction approval & audit record resolution'
-    why = 'Ensure manager authorization is required to reverse transactions and decider audit trails are preserved'
-  } else if (lower.includes('lock') || lower.includes('closed period')) {
-    what = 'Accounting period locking & restriction verification'
-    why = 'Block journal entry posting in closed fiscal periods to maintain financial reporting integrity'
-  } else if (lower.includes('vat') || lower.includes('taxable')) {
-    what = 'Value-Added Tax (12% VAT) rate application & auto-checkbox'
-    why = 'Ensure taxable sales/services charge 12% VAT per BIR compliance guidelines'
   } else if (lower.includes('render') || lower.includes('displays') || lower.includes('shows') || lower.includes('loads')) {
     what = `UI Component rendering: ${cleanTitle}`
     why = 'Ensure required user interface elements and controls render correctly without errors'
@@ -215,7 +370,7 @@ function deriveTestPurpose(title, suiteMeta) {
     why = 'Ensure invalid inputs or unauthorized actions are rejected gracefully with helpful error messages'
   }
 
-  return { what, why }
+  return { feature, what, why, type }
 }
 
 const c = {
@@ -239,7 +394,7 @@ class TestReporter {
 
   onRunStart() {
     console.log(`\n${c.cyan}${c.bold}================================================================================${c.reset}`)
-    console.log(`${c.cyan}${c.bold}🧪 SMARTGUYS ACCOUNTING SYSTEM - UNIT TEST SUITE${c.reset}`)
+    console.log(`${c.cyan}${c.bold}SMARTGUYS ACCOUNTING SYSTEM - UNIT TEST SUITE${c.reset}`)
     console.log(`${c.dim}State: WHAT is tested, WHY it is tested, and RESULTS on the terminal${c.reset}`)
     console.log(`${c.cyan}${c.bold}================================================================================${c.reset}\n`)
   }
@@ -255,6 +410,7 @@ class TestReporter {
       why: 'Ensure module stability and business rule compliance'
     }
 
+    const jsDocMap = parseTestJSDocs(testResult.testFilePath)
     const suiteStatus = testResult.numFailingTests === 0 ? `${c.green}${c.bold}PASS${c.reset}` : `${c.red}${c.bold}FAIL${c.reset}`
 
     console.log(`\n${c.bold}--------------------------------------------------------------------------------${c.reset}`)
@@ -265,25 +421,35 @@ class TestReporter {
 
     testResult.testResults.forEach((tr) => {
       const isPass = tr.status === 'passed'
-      const icon = isPass ? `${c.green}✔ PASS${c.reset}` : `${c.red}✖ FAIL${c.reset}`
+      const icon = isPass ? `${c.green}PASS${c.reset}` : `${c.red}FAIL${c.reset}`
       const cleanTitle = tr.title.replace(/^[✅❌✔✖√\s]+/, '').trim()
       const duration = tr.duration !== null && tr.duration !== undefined ? `${tr.duration}ms` : '0ms'
 
-      const { what, why } = deriveTestPurpose(tr.title, suiteMeta)
+      const purpose = deriveTestPurpose(tr.title, suiteMeta, jsDocMap)
 
-      console.log(`  ${icon} ${c.bold}${cleanTitle}${c.reset} ${c.dim}(${duration})${c.reset}`)
-      console.log(`     ${c.cyan}• WHAT:${c.reset}   ${what}`)
-      console.log(`     ${c.yellow}• WHY:${c.reset}    ${why}`)
-      console.log(`     ${c.magenta}• RESULT:${c.reset} ${isPass ? c.green + 'PASSED' : c.red + 'FAILED'} ${c.reset}`)
+      console.log(`  [${icon}] ${c.bold}${cleanTitle}${c.reset} ${c.dim}(${duration})${c.reset}`)
+      if (purpose.feature) {
+        console.log(`     ${c.magenta}${c.bold}* FEATURE:${c.reset} ${purpose.feature}`)
+      }
+      console.log(`     ${c.cyan}* WHAT:${c.reset}    ${purpose.what}`)
+      console.log(`     ${c.yellow}* WHY:${c.reset}     ${purpose.why}`)
+      console.log(`     ${c.blue}* RESULT:${c.reset}  ${isPass ? c.green + 'PASSED' : c.red + 'FAILED'} ${c.reset}`)
 
       if (!isPass && tr.failureMessages && tr.failureMessages.length > 0) {
-        console.log(`     ${c.red}• ERROR:${c.reset}`)
+        console.log(`     ${c.red}* ERROR:${c.reset}`)
         tr.failureMessages.forEach((msg) => {
           const indented = msg.split('\n').map((l) => '       ' + l).join('\n')
           console.log(`${c.red}${indented}${c.reset}`)
         })
       }
     })
+
+    if (testResult.console && testResult.console.length > 0) {
+      console.log(`\n  ${c.cyan}${c.bold}--- DATASET RECONCILIATION & SYSTEM OUTPUT PROOF ---${c.reset}`)
+      testResult.console.forEach((item) => {
+        console.log(item.message)
+      })
+    }
   }
 
   onRunComplete(testContexts, aggregatedResults) {
@@ -297,7 +463,7 @@ class TestReporter {
     const summaryColor = allPassed ? c.green : c.red
 
     console.log(`\n${c.cyan}${c.bold}================================================================================${c.reset}`)
-    console.log(`${summaryColor}${c.bold}📊 TEST EXECUTION SUMMARY${c.reset}`)
+    console.log(`${summaryColor}${c.bold}TEST EXECUTION SUMMARY${c.reset}`)
     console.log(`${c.cyan}${c.bold}================================================================================${c.reset}`)
     console.log(`  Test Suites: ${passedSuites === totalSuites ? c.green : c.red}${passedSuites} passed${c.reset}, ${totalSuites} total`)
     console.log(`  Tests:       ${passedTests === totalTests ? c.green : c.red}${passedTests} passed${c.reset}, ${totalTests} total`)
